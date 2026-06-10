@@ -98,6 +98,30 @@
   font-weight: 700;
 }
 
+.quiz-list__sort {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  border-radius: 14px;
+  background: #202020;
+  padding: 6px;
+  margin: 0 12px 12px;
+}
+
+.quiz-list__sort button {
+  min-height: 42px;
+  border-radius: 11px;
+  color: #a3a3a3;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.quiz-list__sort button.is-active {
+  background: #12bfc0;
+  color: #ffffff;
+}
+
 .quiz-list__chips {
   flex: 0 0 auto;
   display: flex;
@@ -137,6 +161,18 @@
 
 .quiz-list__items::-webkit-scrollbar {
   display: none;
+}
+
+.quiz-list__section {
+  scroll-margin-top: 8px;
+  padding-bottom: 4px;
+}
+
+.quiz-list__section-title {
+  margin: 0 0 10px;
+  color: #ffffff;
+  font-size: 18px;
+  font-weight: 800;
 }
 
 .quiz-list__card {

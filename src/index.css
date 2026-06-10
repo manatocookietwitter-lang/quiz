@@ -77,6 +77,11 @@ button:disabled {
   -webkit-tap-highlight-color: transparent;
 }
 
+.quiz-back-button:active {
+  background: #e6e6e6;
+  transform: scale(0.96);
+}
+
 .quiz-screen-transition {
   width: 100%;
   height: 100dvh;

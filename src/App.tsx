@@ -4,6 +4,7 @@ import { createEmptyAppData, loadAppData, parseBackupJson, saveAppData } from '.
 import { HomeScreen } from './screens/HomeScreen';
 import { FolderScreen } from './screens/FolderScreen';
 import { ProblemSetDetailScreen } from './screens/ProblemSetDetailScreen';
+import { ProblemListScreen } from './screens/ProblemListScreen';
 import { ImportScreen } from './screens/ImportScreen';
 import { QuizScreen } from './screens/QuizScreen';
 import { QuizRunner } from './screens/QuizRunner';
@@ -199,6 +200,7 @@ export default function App() {
         setId={screen.setId}
         onBack={() => goBackTo({ name: 'folder', folderId: problemSet?.folderId ?? '' })}
         onOpenImport={(folderId) => navigate({ name: 'import', folderId, backScreen: { name: 'problemSetDetail', setId: screen.setId } })}
+        onOpenProblemList={() => navigate({ name: 'problemList', setId: screen.setId })}
         onStartSession={({ questions, mode, initialIndex, title, subtitle, setId }) => handleStartQuizSession({
           title,
           subtitle,
@@ -207,6 +209,24 @@ export default function App() {
           setId,
           initialIndex,
           backScreen: { name: 'problemSetDetail', setId },
+        })}
+      />
+    );
+  } else if (screen.name === 'problemList') {
+    content = (
+      <ProblemListScreen
+        data={data}
+        setId={screen.setId}
+        initialSortMode={screen.sortMode}
+        onBack={() => goBackTo({ name: 'problemSetDetail', setId: screen.setId })}
+        onStartFromQuestion={({ questions, initialIndex, title, subtitle, setId, sortMode }) => handleStartQuizSession({
+          title,
+          subtitle,
+          questions,
+          mode: 'quiz',
+          setId,
+          initialIndex,
+          backScreen: { name: 'problemList', setId: screen.setId, sortMode },
         })}
       />
     );
@@ -293,6 +313,7 @@ export default function App() {
 function getScreenKey(screen: AppScreen) {
   if (screen.name === 'folder') return `folder-${screen.folderId}`;
   if (screen.name === 'problemSetDetail') return `detail-${screen.setId}`;
+  if (screen.name === 'problemList') return `problem-list-${screen.setId}-${screen.sortMode ?? 'ordered'}`;
   if (screen.name === 'import') return `import-${screen.folderId}`;
   if (screen.name === 'quiz') return `quiz-${screen.setId}-${screen.mode}`;
   if (screen.name === 'quizSession') return `quiz-session-${screen.session.setId ?? 'custom'}-${screen.session.initialIndex ?? 0}-${screen.session.questions.length}`;

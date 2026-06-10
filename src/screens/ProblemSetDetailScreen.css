@@ -108,23 +108,12 @@
   font-weight: 700;
 }
 
-.quiz-detail__start-panel,
-.quiz-detail__list-panel {
+.quiz-detail__start-panel {
+  flex: 0 0 auto;
   margin: 0 12px 12px;
   border-radius: 16px;
   background: #202020;
   padding: 12px;
-}
-
-.quiz-detail__start-panel {
-  flex: 0 0 auto;
-}
-
-.quiz-detail__list-panel {
-  min-height: 0;
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
 }
 
 .quiz-detail__section-heading {
@@ -156,25 +145,34 @@
   scrollbar-width: none;
 }
 
-.quiz-detail__chips::-webkit-scrollbar,
-.quiz-detail__question-list::-webkit-scrollbar {
+.quiz-detail__chips::-webkit-scrollbar {
   display: none;
 }
 
 .quiz-detail__chip {
   min-height: 40px;
   flex: 0 0 auto;
+  border: 1px solid #3a3a3a;
   border-radius: 999px;
   background: #2b2b2b;
   padding: 0 16px;
-  color: #ffffff;
+  color: #e5e5e5;
   font-size: 14px;
   font-weight: 700;
 }
 
 .quiz-detail__chip--active {
+  border-color: #12bfc0;
   background: #12bfc0;
   color: #ffffff;
+  box-shadow: 0 4px 12px rgba(18, 191, 192, 0.24);
+}
+
+.quiz-detail__selected-target {
+  margin: 8px 0;
+  color: #a3a3a3;
+  font-size: 14px;
+  font-weight: 700;
 }
 
 .quiz-detail__start-actions {
@@ -218,126 +216,55 @@
   background: #12bfc0;
 }
 
-.quiz-detail__sort {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  border-radius: 14px;
-  background: #000000;
-  padding: 6px;
-  margin-bottom: 10px;
+.quiz-detail__body {
+  min-height: 0;
+  flex: 1 1 auto;
+  padding: 0 12px 16px;
+  overflow-y: auto;
 }
 
-.quiz-detail__sort button {
-  min-height: 42px;
-  border-radius: 11px;
+.quiz-detail__list-entry {
+  width: 100%;
+  min-height: 82px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-radius: 16px;
+  background: #2b2b2b;
+  padding: 16px;
+  color: #ffffff;
+  text-align: left;
+}
+
+.quiz-detail__list-entry:active {
+  background: #383838;
+}
+
+.quiz-detail__list-entry span {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.quiz-detail__list-entry strong {
+  color: #ffffff;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.quiz-detail__list-entry small {
   color: #a3a3a3;
   font-size: 14px;
   font-weight: 700;
 }
 
-.quiz-detail__sort button.is-active {
-  background: #12bfc0;
-  color: #ffffff;
-}
-
-.quiz-detail__chips--list {
-  padding-bottom: 10px;
-}
-
-.quiz-detail__question-list {
-  min-height: 0;
-  flex: 1 1 auto;
-  overflow-y: auto;
-  padding-right: 2px;
-  scrollbar-width: none;
-}
-
-.quiz-detail__category-section {
-  scroll-margin-top: 8px;
-  padding-bottom: 4px;
-}
-
-.quiz-detail__category-section h3 {
-  margin: 0 0 10px;
-  color: #ffffff;
-  font-size: 17px;
-  font-weight: 800;
-}
-
-.quiz-detail__question-card {
-  width: 100%;
-  margin-bottom: 10px;
-  border-radius: 14px;
-  background: #2b2b2b;
-  padding: 14px;
-  color: #ffffff;
-  text-align: left;
-}
-
-.quiz-detail__question-top,
-.quiz-detail__badges {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.quiz-detail__question-number {
-  color: #12bfc0;
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.quiz-detail__question-category,
-.quiz-detail__question-status,
-.quiz-detail__last {
-  overflow: hidden;
-  color: #a3a3a3;
-  font-size: 12px;
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.quiz-detail__question-status {
-  margin-left: auto;
-}
-
-.quiz-detail__question-text {
-  margin: 8px 0 10px;
-  display: -webkit-box;
-  overflow: hidden;
-  color: #ffffff;
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 1.45;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-.quiz-detail__badges {
-  flex-wrap: wrap;
-}
-
-.quiz-detail__badge {
-  min-height: 24px;
-  border-radius: 999px;
-  background: #202020;
-  padding: 4px 9px;
+.quiz-detail__list-entry b {
+  flex: 0 0 auto;
   color: #bdbdbd;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.quiz-detail__badge--ambiguous {
-  background: rgba(250, 204, 21, 0.18);
-  color: #fde68a;
-}
-
-.quiz-detail__badge--review {
-  background: rgba(18, 191, 192, 0.18);
-  color: #67e8f9;
+  font-size: 42px;
+  font-weight: 400;
+  line-height: 1;
 }
 
 @media (max-width: 390px) {
