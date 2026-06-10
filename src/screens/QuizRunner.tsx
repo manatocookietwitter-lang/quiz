@@ -1,7 +1,5 @@
 import { useMemo, useState } from 'react';
 import type { AppData, Question, QuizResult } from '../types';
-import { ChoiceButton } from '../components/ChoiceButton';
-import { Header } from '../components/Header';
 import { Layout } from '../components/Layout';
 import { getProgress, makeResult } from '../utils/quiz';
 
@@ -28,20 +26,33 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, onBa
 
   const currentQuestion = questions[currentIndex];
   const progress = currentQuestion ? getProgress(data, currentQuestion.id) : null;
-  const currentSet = currentQuestion ? data.problemSets.find((item) => item.id === currentQuestion.setId) : undefined;
   const answered = selectedIndex !== null;
+  const progressPercent = questions.length === 0 ? 0 : ((currentIndex + 1) / questions.length) * 100;
 
-  const correctRate = useMemo(() => {
-    const answeredCount = correctCount + wrongCount;
-    return answeredCount === 0 ? 0 : Math.round((correctCount / answeredCount) * 100);
-  }, [correctCount, wrongCount]);
+  const questionTextClass = useMemo(() => {
+    const length = currentQuestion?.question.length ?? 0;
+    if (length > 110) return 'text-[clamp(19px,4.7vw,25px)]';
+    if (length > 65) return 'text-[clamp(22px,5.6vw,30px)]';
+    return 'text-[clamp(28px,7.4vw,36px)]';
+  }, [currentQuestion?.question]);
 
   if (questions.length === 0 || !currentQuestion) {
     return (
       <Layout>
-        <Header title={title} subtitle="問題がありません" leftLabel="戻る" onLeft={onBack} />
-        <div className="mx-4 mt-4 rounded-[24px] bg-neutral-900 p-5 text-center text-sm font-bold leading-relaxed text-neutral-400 ring-1 ring-white/10">
-          このモードで出題できる問題がありません。
+        <div className="flex h-full flex-col bg-[#E9E5D8] text-[#111111]">
+          <QuizHeader title={title} onBack={onBack} />
+          <div className="flex min-h-0 flex-1 items-center justify-center px-5">
+            <div className="w-full rounded-[20px] bg-[#F7F7F5] p-6 text-center">
+              <p className="text-base font-bold text-[#6D5A45]">このモードで出題できる問題がありません。</p>
+              <button
+                type="button"
+                onClick={onBack}
+                className="mt-5 h-14 w-full rounded-[14px] bg-[#5FA9DD] text-base font-bold text-white active:scale-[0.98]"
+              >
+                戻る
+              </button>
+            </div>
+          </div>
         </div>
       </Layout>
     );
@@ -67,95 +78,197 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, onBa
     setLastCorrect(null);
   };
 
+  const handleAmbiguous = () => {
+    onToggleAmbiguous(currentQuestion.id);
+  };
+
   return (
     <Layout>
-      <Header
-        title={title}
-        subtitle={subtitle ?? currentSet?.title}
-        leftLabel="戻る"
-        onLeft={onBack}
-        right={
-          <div className="rounded-2xl bg-neutral-800 px-3 py-2 text-right ring-1 ring-white/10">
-            <div className="text-xs font-black text-cyan-300">{currentIndex + 1} / {questions.length}</div>
-            <div className="text-[10px] font-bold text-neutral-500">正答率 {correctRate}%</div>
-          </div>
-        }
-      />
+      <div className="relative flex h-full flex-col overflow-hidden bg-[#E9E5D8] text-[#111111]">
+        <QuizHeader title={title} onBack={onBack} />
 
-      {mode === 'review' ? (
-        <div className="mx-4 mt-3 flex shrink-0 gap-2 text-xs font-black">
-          <span className="rounded-full bg-yellow-400 px-3 py-1 text-neutral-950">reviewLevel {progress?.reviewLevel ?? 1}</span>
-          <span className={`rounded-full px-3 py-1 ${progress?.isAmbiguous ? 'bg-yellow-400/20 text-yellow-200 ring-1 ring-yellow-300/20' : 'bg-neutral-900 text-neutral-500 ring-1 ring-white/10'}`}>
-            {progress?.isAmbiguous ? '曖昧登録あり' : '曖昧なし'}
-          </span>
-        </div>
-      ) : null}
+        <ProgressBand
+          label={mode === 'review' ? `復習 Level ${progress?.reviewLevel ?? 1}` : subtitle ?? '登録順'}
+          current={currentIndex + 1}
+          total={questions.length}
+          percent={progressPercent}
+        />
 
-      <main className="flex min-h-0 flex-1 flex-col gap-3 px-4 pt-3">
-        <section className="flex min-h-0 basis-[24%] flex-col rounded-[24px] bg-neutral-900 p-4 ring-1 ring-white/10">
-          <div className="mb-2 flex shrink-0 items-center justify-between gap-2">
-            <span className="rounded-full bg-cyan-500/15 px-3 py-1 text-xs font-black text-cyan-300 ring-1 ring-cyan-400/20">問題</span>
-            {currentQuestion.category ? <span className="truncate text-xs font-bold text-neutral-500">{currentQuestion.category}</span> : null}
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto pr-1 text-base font-bold leading-relaxed text-white no-scrollbar">
-            {currentQuestion.question}
-          </div>
-        </section>
-
-        <section className="shrink-0 space-y-2">
-          {currentQuestion.choices.map((choice, index) => (
-            <ChoiceButton
-              key={`${currentQuestion.id}_${index}`}
-              index={index}
-              text={choice}
-              disabled={answered}
-              isSelected={selectedIndex === index}
-              isCorrectChoice={currentQuestion.answerIndex === index}
-              answered={answered}
-              onClick={() => handleChoice(index)}
-            />
-          ))}
-        </section>
-
-        <section className="flex min-h-0 flex-1 flex-col rounded-[24px] bg-neutral-900 p-4 ring-1 ring-white/10">
-          {!answered ? (
-            <div className="flex h-full items-center justify-center text-center text-sm font-bold leading-relaxed text-neutral-600">
-              選択肢をタップすると<br />すぐに正誤判定します。
+        <main className={`flex min-h-0 flex-1 flex-col ${answered ? 'pb-[42dvh]' : ''}`}>
+          <section className="flex h-[clamp(122px,21dvh,166px)] shrink-0 items-center justify-center bg-[#B89C79] px-5 py-4 text-center text-white">
+            <div className="min-h-0 w-full">
+              {currentQuestion.category ? (
+                <div className="mb-2 truncate text-xs font-semibold text-white/75">{currentQuestion.category}</div>
+              ) : null}
+              <div className={`mx-auto max-h-[118px] overflow-y-auto whitespace-pre-wrap break-words font-semibold leading-tight no-scrollbar ${questionTextClass}`}>
+                {currentQuestion.question}
+              </div>
             </div>
-          ) : (
-            <>
-              <div className="shrink-0">
-                <div className={`inline-flex rounded-full px-3 py-1 text-sm font-black ${lastCorrect ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'}`}>
-                  {lastCorrect ? '正解' : '不正解'}
-                </div>
-                <p className="mt-2 text-sm font-black text-white">正解：{currentQuestion.answerText}</p>
-                {currentQuestion.sourcePage ? <p className="mt-1 text-xs font-bold text-neutral-500">参照ページ：{currentQuestion.sourcePage}</p> : null}
-              </div>
-              <div className="mt-3 min-h-0 flex-1 overflow-y-auto rounded-2xl bg-neutral-950 p-3 text-sm font-medium leading-relaxed text-neutral-300 no-scrollbar">
-                {currentQuestion.explanation}
-              </div>
-            </>
-          )}
-        </section>
-      </main>
+          </section>
 
-      <div className="grid shrink-0 grid-cols-2 gap-2 px-4 pt-3">
-        <button
-          type="button"
-          onClick={() => onToggleAmbiguous(currentQuestion.id)}
-          className={`min-h-[52px] rounded-2xl px-3 text-sm font-black active:scale-[0.98] ${progress?.isAmbiguous ? 'bg-yellow-400 text-neutral-950' : 'bg-neutral-900 text-yellow-300 ring-1 ring-yellow-300/20'}`}
-        >
-          {progress?.isAmbiguous ? '曖昧解除' : '曖昧として登録'}
-        </button>
-        <button
-          type="button"
-          onClick={handleNext}
-          disabled={!answered}
-          className="min-h-[52px] rounded-2xl bg-cyan-500 px-3 text-sm font-black text-neutral-950 active:scale-[0.98] disabled:opacity-40"
-        >
-          {currentIndex + 1 >= questions.length ? '結果へ' : '次へ'}
-        </button>
+          <section className="flex min-h-0 flex-1 flex-col justify-center gap-3 px-5 py-4">
+            {currentQuestion.choices.map((choice, index) => (
+              <QuizChoiceButton
+                key={`${currentQuestion.id}_${index}`}
+                text={choice}
+                disabled={answered}
+                isSelected={selectedIndex === index}
+                isCorrectChoice={currentQuestion.answerIndex === index}
+                answered={answered}
+                onClick={() => handleChoice(index)}
+              />
+            ))}
+          </section>
+
+          {!answered ? (
+            <section className="shrink-0 px-5 pb-5">
+              <button
+                type="button"
+                onClick={handleAmbiguous}
+                className="mx-auto flex h-[54px] w-[200px] items-center justify-center rounded-full border border-[#D0D0D0] bg-[#F4F4F4] text-base font-bold text-[#9A9A9A] active:scale-[0.98]"
+              >
+                わからない
+              </button>
+            </section>
+          ) : null}
+        </main>
+
+        {answered ? (
+          <AnswerPanel
+            isCorrect={lastCorrect === true}
+            answer={currentQuestion.answerText}
+            explanation={currentQuestion.explanation}
+            sourcePage={currentQuestion.sourcePage}
+            isAmbiguous={progress?.isAmbiguous ?? false}
+            isLast={currentIndex + 1 >= questions.length}
+            onToggleAmbiguous={handleAmbiguous}
+            onNext={handleNext}
+          />
+        ) : null}
       </div>
     </Layout>
+  );
+}
+
+function QuizHeader({ title, onBack }: { title: string; onBack: () => void }) {
+  return (
+    <header className="flex h-[72px] shrink-0 items-center bg-[#F7F7F5] px-4">
+      <button
+        type="button"
+        onClick={onBack}
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#7EC3E6] bg-white text-2xl font-bold leading-none text-[#5FA9DD] active:scale-95"
+        aria-label="戻る"
+      >
+        ‹
+      </button>
+      <h1 className="min-w-0 flex-1 truncate px-3 text-center text-2xl font-bold text-[#5FA9DD]">{title}</h1>
+      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white text-lg font-bold text-[#5FA9DD]">Q</div>
+    </header>
+  );
+}
+
+function ProgressBand({ label, current, total, percent }: { label: string; current: number; total: number; percent: number }) {
+  return (
+    <section className="flex h-9 shrink-0 items-center gap-3 bg-[#B89C79] px-4">
+      <div className="min-w-0 flex-1">
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <span className="truncate text-xs font-bold text-white/85">{label}</span>
+        </div>
+        <div className="h-1.5 overflow-hidden rounded-full bg-white/25">
+          <div className="h-full rounded-full bg-white" style={{ width: `${Math.min(100, Math.max(0, percent))}%` }} />
+        </div>
+      </div>
+      <div className="shrink-0 rounded-full bg-[#F7F7F5] px-3 py-1 text-xs font-bold text-[#6D5A45]">
+        {current} / {total}
+      </div>
+    </section>
+  );
+}
+
+function QuizChoiceButton({
+  text,
+  disabled,
+  isSelected,
+  isCorrectChoice,
+  answered,
+  onClick,
+}: {
+  text: string;
+  disabled: boolean;
+  isSelected: boolean;
+  isCorrectChoice: boolean;
+  answered: boolean;
+  onClick: () => void;
+}) {
+  let stateClass = 'border-[#D0D0D0] bg-[#F8F8F8] text-[#111111]';
+
+  if (answered && isCorrectChoice) {
+    stateClass = 'border-[#72C486] bg-[#DDF5E3] text-[#111111]';
+  } else if (answered && isSelected && !isCorrectChoice) {
+    stateClass = 'border-[#E08B8B] bg-[#F8DADA] text-[#111111]';
+  } else if (answered) {
+    stateClass = 'border-[#D8D8D8] bg-[#F8F8F8] text-[#8A8A8A] opacity-70';
+  }
+
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={`flex h-[clamp(64px,10.5dvh,96px)] w-full items-center justify-center rounded-2xl border px-4 text-center text-[clamp(20px,5.7vw,29px)] font-bold leading-tight shadow-sm transition active:scale-[0.99] ${stateClass}`}
+    >
+      <span className="max-h-[72px] overflow-y-auto break-words no-scrollbar">{text}</span>
+    </button>
+  );
+}
+
+function AnswerPanel({
+  isCorrect,
+  answer,
+  explanation,
+  sourcePage,
+  isAmbiguous,
+  isLast,
+  onToggleAmbiguous,
+  onNext,
+}: {
+  isCorrect: boolean;
+  answer: string;
+  explanation: string;
+  sourcePage: string;
+  isAmbiguous: boolean;
+  isLast: boolean;
+  onToggleAmbiguous: () => void;
+  onNext: () => void;
+}) {
+  return (
+    <section className="absolute inset-x-0 bottom-0 z-20 mx-auto flex h-[42dvh] max-w-md flex-col rounded-t-[20px] bg-[#F7F7F7] px-5 pb-5 pt-4 shadow-[0_-10px_30px_rgba(0,0,0,0.12)]">
+      <div className="shrink-0">
+        <div className={`text-xl font-bold ${isCorrect ? 'text-[#2F8F46]' : 'text-[#C94F4F]'}`}>{isCorrect ? '正解' : '不正解'}</div>
+        <p className="mt-2 text-base font-bold leading-snug text-[#111111]">正解：{answer}</p>
+        {sourcePage ? <p className="mt-1 text-xs font-semibold text-[#8A8A8A]">参照ページ：{sourcePage}</p> : null}
+      </div>
+
+      <div className="mt-3 min-h-0 flex-1 overflow-y-auto pr-1 text-base font-medium leading-7 text-[#333333] no-scrollbar">
+        {explanation}
+      </div>
+
+      <div className="mt-4 grid shrink-0 grid-cols-2 gap-3">
+        <button
+          type="button"
+          onClick={onToggleAmbiguous}
+          className="h-14 rounded-[14px] border border-[#D0D0D0] bg-white px-3 text-sm font-bold text-[#6D5A45] active:scale-[0.98]"
+        >
+          {isAmbiguous ? '曖昧を解除' : '曖昧として登録'}
+        </button>
+        <button
+          type="button"
+          onClick={onNext}
+          className="h-14 rounded-[14px] bg-[#5FA9DD] px-3 text-base font-bold text-white active:scale-[0.98]"
+        >
+          {isLast ? '結果へ' : '次へ'}
+        </button>
+      </div>
+    </section>
   );
 }
