@@ -25,6 +25,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
   const [correctCount, setCorrectCount] = useState(0);
   const [wrongCount, setWrongCount] = useState(0);
   const [addedReviewCount, setAddedReviewCount] = useState(0);
+  const [answerExpanded, setAnswerExpanded] = useState(false);
 
   const currentQuestion = questions[currentIndex];
   const progress = currentQuestion ? getProgress(data, currentQuestion.id) : null;
@@ -72,6 +73,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
     const result = onAnswer(currentQuestion, index, mode === 'review');
     setSelectedIndex(index);
     setLastCorrect(result.isCorrect);
+    setAnswerExpanded(false);
     setCorrectCount((value) => value + (result.isCorrect ? 1 : 0));
     setWrongCount((value) => value + (result.isCorrect ? 0 : 1));
     setAddedReviewCount((value) => value + (result.addedToReview ? 1 : 0));
@@ -85,6 +87,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
     setCurrentIndex((value) => value + 1);
     setSelectedIndex(null);
     setLastCorrect(null);
+    setAnswerExpanded(false);
   };
 
   const handleAmbiguous = () => {
@@ -101,7 +104,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
           percent={progressPercent}
         />
 
-        <main className={`flex min-h-0 flex-1 flex-col ${answered ? 'pb-[45dvh]' : ''}`}>
+        <main className={`flex min-h-0 flex-1 flex-col ${answered ? (answerExpanded ? 'pb-[56dvh]' : 'pb-[26dvh]') : ''}`}>
           <section className="flex h-[clamp(104px,17dvh,132px)] shrink-0 items-center justify-center bg-[#B89C79] px-5 py-3 text-center text-[#111111]">
             <div className="min-h-0 w-full">
               {currentQuestion.category ? (
@@ -150,6 +153,8 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
             sourcePage={currentQuestion.sourcePage}
             isAmbiguous={progress?.isAmbiguous ?? false}
             isLast={currentIndex + 1 >= questions.length}
+            expanded={answerExpanded}
+            onToggleExpanded={() => setAnswerExpanded((value) => !value)}
             onToggleAmbiguous={handleAmbiguous}
             onNext={handleNext}
           />
@@ -239,6 +244,8 @@ function AnswerPanel({
   sourcePage,
   isAmbiguous,
   isLast,
+  expanded,
+  onToggleExpanded,
   onToggleAmbiguous,
   onNext,
 }: {
@@ -248,20 +255,29 @@ function AnswerPanel({
   sourcePage: string;
   isAmbiguous: boolean;
   isLast: boolean;
+  expanded: boolean;
+  onToggleExpanded: () => void;
   onToggleAmbiguous: () => void;
   onNext: () => void;
 }) {
   return (
-    <section className="fixed inset-x-0 bottom-0 z-40 mx-auto flex h-[45dvh] max-h-[45dvh] max-w-md flex-col overflow-hidden rounded-t-[20px] bg-[#F7F7F7] p-4 shadow-[0_-10px_30px_rgba(0,0,0,0.12)]">
+    <section className={`fixed inset-x-0 bottom-0 z-40 mx-auto flex max-w-md flex-col overflow-hidden rounded-t-[20px] bg-[#F7F7F7] p-4 shadow-[0_-10px_30px_rgba(0,0,0,0.12)] ${expanded ? 'h-[56dvh] max-h-[56dvh]' : 'h-[26dvh] max-h-[26dvh]'}`}>
+      <button type="button" className="mx-auto mb-2 h-1.5 w-12 rounded-full bg-[#D0D0D0]" onClick={onToggleExpanded} aria-label={expanded ? '解説を閉じる' : '解説を見る'} />
       <div className="shrink-0">
         <div className={`text-xl font-bold ${isCorrect ? 'text-[#2F8F46]' : 'text-[#C94F4F]'}`}>{isCorrect ? '正解' : '不正解'}</div>
         <p className="mt-2 text-base font-bold leading-snug text-[#111111]">正解：{answer}</p>
-        {sourcePage ? <p className="mt-1 text-xs font-semibold text-[#8A8A8A]">参照ページ：{sourcePage}</p> : null}
+        {expanded && sourcePage ? <p className="mt-1 text-xs font-semibold text-[#8A8A8A]">参照ページ：{sourcePage}</p> : null}
       </div>
 
-      <div className="mt-3 min-h-0 flex-1 overflow-y-auto pr-1 pb-3 text-base font-medium leading-[1.6] text-[#111111] no-scrollbar">
-        {explanation}
-      </div>
+      {expanded ? (
+        <div className="mt-3 min-h-0 flex-1 overflow-y-auto pr-1 pb-3 text-base font-medium leading-[1.6] text-[#111111] no-scrollbar">
+          {explanation}
+        </div>
+      ) : (
+        <button type="button" onClick={onToggleExpanded} className="mt-3 min-h-0 flex-1 rounded-[14px] bg-[#ECECEC] px-3 text-sm font-bold text-[#555555] active:scale-[0.99]">
+          解説を見る
+        </button>
+      )}
 
       <div className="mt-3 grid shrink-0 grid-cols-2 gap-2">
         <button

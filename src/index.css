@@ -58,21 +58,22 @@ button:disabled {
 
 .quiz-back-button {
   appearance: none;
-  border: none;
+  border: 1px solid rgba(0, 0, 0, 0.08);
   outline: none;
-  width: 52px;
-  height: 52px;
-  flex: 0 0 52px;
+  width: 56px;
+  height: 56px;
+  flex: 0 0 56px;
   border-radius: 9999px;
-  background: #e5e5e5;
+  background: #f2f2f2;
   color: #111111;
   font: inherit;
-  font-size: 28px;
+  font-size: 30px;
   font-weight: 700;
   line-height: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
   -webkit-tap-highlight-color: transparent;
 }
 

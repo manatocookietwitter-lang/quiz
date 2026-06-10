@@ -1,19 +1,18 @@
 import { useMemo, useState } from 'react';
-import type { AppData, Question } from '../types';
+import type { AppData, ProblemSortMode, Question } from '../types';
 import { BackButton } from '../components/BackButton';
 import { Layout } from '../components/Layout';
-import { formatDisplayDate } from '../utils/date';
 import { getProgress, getQuestionsBySet, shuffleArray } from '../utils/quiz';
 import './ProblemSetDetailScreen.css';
 
 type CategoryFilter = 'all' | string;
-type SortMode = 'ordered' | 'level';
 
 interface ProblemSetDetailScreenProps {
   data: AppData;
   setId: string;
   onBack: () => void;
   onOpenImport: (folderId: string) => void;
+  onOpenProblemList: (params: { category: string; sortMode: ProblemSortMode }) => void;
   onStartSession: (params: {
     questions: Question[];
     mode: 'quiz' | 'review';
@@ -26,35 +25,14 @@ interface ProblemSetDetailScreenProps {
 
 const UNCATEGORIZED = '未分類';
 
-export function ProblemSetDetailScreen({ data, setId, onBack, onOpenImport, onStartSession }: ProblemSetDetailScreenProps) {
+export function ProblemSetDetailScreen({ data, setId, onBack, onOpenImport, onOpenProblemList, onStartSession }: ProblemSetDetailScreenProps) {
   const problemSet = data.problemSets.find((set) => set.id === setId);
   const questions = useMemo(() => getQuestionsBySet(data, setId), [data, setId]);
   const [category, setCategory] = useState<CategoryFilter>('all');
-  const [sortMode, setSortMode] = useState<SortMode>('ordered');
+  const [sortMode, setSortMode] = useState<ProblemSortMode>('ordered');
 
-  const categories = useMemo(() => {
-    const names = new Set<string>();
-    let hasUncategorized = false;
-    questions.forEach((question) => {
-      const value = normalizeCategory(question.category);
-      if (value === UNCATEGORIZED) {
-        hasUncategorized = true;
-      } else {
-        names.add(value);
-      }
-    });
-    return ['すべて', ...Array.from(names), ...(hasUncategorized ? [UNCATEGORIZED] : [])];
-  }, [questions]);
-
-  const filteredQuestions = useMemo(() => {
-    if (category === 'all' || category === 'すべて') return questions;
-    return questions.filter((question) => normalizeCategory(question.category) === category);
-  }, [category, questions]);
-
-  const orderedQuestions = useMemo(() => {
-    if (sortMode === 'ordered') return filteredQuestions;
-    return [...filteredQuestions].sort((a, b) => getLevelSortScore(data, a.id) - getLevelSortScore(data, b.id));
-  }, [data, filteredQuestions, sortMode]);
+  const categories = useMemo(() => buildProblemCategories(questions), [questions]);
+  const filteredQuestions = useMemo(() => filterQuestionsByCategory(questions, category), [category, questions]);
 
   if (!problemSet) {
     return (
@@ -98,19 +76,6 @@ export function ProblemSetDetailScreen({ data, setId, onBack, onOpenImport, onSt
       mode: 'review',
       title: problemSet.title,
       subtitle: `${selectedLabel} / 復習`,
-      setId,
-    });
-  };
-
-  const startFromQuestion = (questionId: string) => {
-    const index = orderedQuestions.findIndex((question) => question.id === questionId);
-    if (index < 0) return;
-    onStartSession({
-      questions: orderedQuestions,
-      mode: 'quiz',
-      initialIndex: index,
-      title: problemSet.title,
-      subtitle: `${selectedLabel} / ${sortMode === 'level' ? 'level順' : '登録順'}`,
       setId,
     });
   };
@@ -163,16 +128,18 @@ export function ProblemSetDetailScreen({ data, setId, onBack, onOpenImport, onSt
           </div>
         </section>
 
-        <section className="quiz-detail__question-list" aria-label="問題一覧">
-          {orderedQuestions.map((question, index) => (
-            <QuestionListCard
-              key={question.id}
-              index={questions.findIndex((item) => item.id === question.id) + 1 || index + 1}
-              question={question}
-              progress={getProgress(data, question.id)}
-              onClick={() => startFromQuestion(question.id)}
-            />
-          ))}
+        <section className="quiz-detail__body">
+          <button
+            type="button"
+            className="quiz-detail__list-entry"
+            onClick={() => onOpenProblemList({ category, sortMode })}
+          >
+            <span>
+              <strong>問題一覧</strong>
+              <small>{filteredQuestions.length}問 / {selectedLabel} / {sortMode === 'level' ? 'level順' : '登録順'}で表示</small>
+            </span>
+            <b>›</b>
+          </button>
         </section>
 
         <section className="quiz-detail__start-actions">
@@ -182,7 +149,7 @@ export function ProblemSetDetailScreen({ data, setId, onBack, onOpenImport, onSt
           <button type="button" disabled={filteredQuestions.length === 0} onClick={startRandom}>
             ランダムで開始
           </button>
-          <button type="button" disabled={reviewQuestions.length === 0} onClick={startReview}>
+          <button type="button" disabled={reviewQuestions.length === 0} onClick={startReview} className="quiz-detail__review-start">
             復習する
           </button>
         </section>
@@ -208,52 +175,22 @@ function DetailHeader({ title, onBack, onOpenImport }: { title: string; onBack: 
   );
 }
 
-function QuestionListCard({
-  index,
-  question,
-  progress,
-  onClick,
-}: {
-  index: number;
-  question: Question;
-  progress: ReturnType<typeof getProgress>;
-  onClick: () => void;
-}) {
-  const status = progress.answeredCount === 0
-    ? '未解答'
-    : `${progress.correctCount}/${progress.answeredCount}`;
-
-  return (
-    <button type="button" className="quiz-detail__question-card" onClick={onClick}>
-      <div className="quiz-detail__question-top">
-        <span className="quiz-detail__question-number">Q{index}</span>
-        <span className="quiz-detail__question-category">{normalizeCategory(question.category)}</span>
-        <span className="quiz-detail__question-status">{status}</span>
-      </div>
-      <p className="quiz-detail__question-text">{question.question}</p>
-      <div className="quiz-detail__badges">
-        <span className="quiz-detail__badge">level {progress.reviewLevel ?? '-'}</span>
-        {progress.isAmbiguous ? <span className="quiz-detail__badge quiz-detail__badge--ambiguous">曖昧</span> : null}
-        {progress.isReview && !progress.isGraduated ? <span className="quiz-detail__badge quiz-detail__badge--review">復習</span> : null}
-        {progress.lastAnsweredAt ? <span className="quiz-detail__last">最終 {formatDisplayDate(progress.lastAnsweredAt)}</span> : null}
-      </div>
-    </button>
-  );
-}
-
-function normalizeCategory(category: string | null | undefined) {
+export function normalizeProblemCategory(category: string | null | undefined) {
   const value = category?.trim();
   return value || UNCATEGORIZED;
 }
 
-function getLevelSortScore(data: AppData, questionId: string) {
-  const progress = getProgress(data, questionId);
-  if (progress.isAmbiguous) return 0;
-  if (progress.isReview && !progress.isGraduated) return progress.reviewLevel ?? 1;
-  return 4;
+export function filterQuestionsByCategory(questions: Question[], category: string) {
+  if (category === 'all' || category === 'すべて') return questions;
+  return questions.filter((question) => normalizeProblemCategory(question.category) === category);
 }
 
-function buildReviewQuestions(data: AppData, questions: Question[]) {
+export function sortQuestionsForProblemList(data: AppData, questions: Question[], sortMode: ProblemSortMode) {
+  if (sortMode === 'ordered') return questions;
+  return [...questions].sort((a, b) => getLevelSortScore(data, a.id) - getLevelSortScore(data, b.id));
+}
+
+export function buildReviewQuestions(data: AppData, questions: Question[]) {
   const reviewQuestions = questions.filter((question) => {
     const progress = getProgress(data, question.id);
     return progress.isReview && !progress.isGraduated;
@@ -266,4 +203,25 @@ function buildReviewQuestions(data: AppData, questions: Question[]) {
   });
 
   return [...shuffleArray(byLevel[1]), ...shuffleArray(byLevel[2]), ...shuffleArray(byLevel[3])];
+}
+
+export function buildProblemCategories(questions: Question[]) {
+  const names = new Set<string>();
+  let hasUncategorized = false;
+  questions.forEach((question) => {
+    const value = normalizeProblemCategory(question.category);
+    if (value === UNCATEGORIZED) {
+      hasUncategorized = true;
+    } else {
+      names.add(value);
+    }
+  });
+  return ['すべて', ...Array.from(names), ...(hasUncategorized ? [UNCATEGORIZED] : [])];
+}
+
+function getLevelSortScore(data: AppData, questionId: string) {
+  const progress = getProgress(data, questionId);
+  if (progress.isAmbiguous) return 0;
+  if (progress.isReview && !progress.isGraduated) return progress.reviewLevel ?? 1;
+  return 4;
 }
