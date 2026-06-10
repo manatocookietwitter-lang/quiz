@@ -62,9 +62,9 @@
 }
 
 .quiz-import__spacer {
-  width: 56px;
-  height: 56px;
-  flex: 0 0 56px;
+  width: 60px;
+  height: 60px;
+  flex: 0 0 60px;
 }
 
 .quiz-import__content {

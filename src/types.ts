@@ -117,7 +117,6 @@ export type AppScreen =
   | { name: 'home' }
   | { name: 'folder'; folderId: string }
   | { name: 'problemSetDetail'; setId: string }
-  | { name: 'problemList'; setId: string; category: string; sortMode: ProblemSortMode }
   | { name: 'import'; folderId: string; backScreen?: AppScreen }
   | { name: 'quiz'; setId: string; mode: QuizMode }
   | { name: 'quizSession'; session: QuizSession }

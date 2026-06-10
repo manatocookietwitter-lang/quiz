@@ -116,7 +116,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
             </div>
           </section>
 
-          <section className="flex min-h-0 flex-1 flex-col justify-center gap-2.5 px-6 py-3">
+          <section className={`flex min-h-0 flex-1 flex-col justify-center gap-2.5 px-6 py-3 transition-opacity ${answered ? 'opacity-75' : ''}`}>
             {currentQuestion.choices.map((choice, index) => (
               <QuizChoiceButton
                 key={`${currentQuestion.id}_${index}`}

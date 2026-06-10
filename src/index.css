@@ -60,20 +60,20 @@ button:disabled {
   appearance: none;
   border: 1px solid rgba(0, 0, 0, 0.08);
   outline: none;
-  width: 56px;
-  height: 56px;
-  flex: 0 0 56px;
+  width: 60px;
+  height: 60px;
+  flex: 0 0 60px;
   border-radius: 9999px;
-  background: #f2f2f2;
+  background: #f4f4f4;
   color: #111111;
   font: inherit;
-  font-size: 30px;
+  font-size: 32px;
   font-weight: 700;
   line-height: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.22);
   -webkit-tap-highlight-color: transparent;
 }
 
