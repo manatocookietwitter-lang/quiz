@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { AppData, AppScreen, ProblemSet, Question, QuizMode, QuizResult } from './types';
 import { createEmptyAppData, loadAppData, parseBackupJson, saveAppData } from './storage';
 import { HomeScreen } from './screens/HomeScreen';
@@ -11,7 +11,6 @@ import { createId } from './utils/id';
 import { formatBackupDate, nowIso } from './utils/date';
 import {
   addFolder,
-  calculateStats,
   deleteFolder,
   deleteProblemSet,
   recordAnswer,
@@ -26,8 +25,6 @@ export default function App() {
   useEffect(() => {
     saveAppData(data);
   }, [data]);
-
-  const stats = useMemo(() => calculateStats(data), [data]);
 
   const goHome = () => setScreen({ name: 'home' });
 
@@ -225,11 +222,9 @@ export default function App() {
   return (
     <HomeScreen
       data={data}
-      stats={stats}
       onCreateFolder={handleCreateFolder}
       onDeleteFolder={handleDeleteFolder}
       onOpenFolder={(folderId) => setScreen({ name: 'folder', folderId })}
-      onStartReview={() => setScreen({ name: 'review' })}
       onExport={handleExport}
       onImportBackup={handleImportBackup}
       onClearAll={handleClearAll}
