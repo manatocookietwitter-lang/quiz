@@ -28,12 +28,19 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, onBa
   const progress = currentQuestion ? getProgress(data, currentQuestion.id) : null;
   const answered = selectedIndex !== null;
   const progressPercent = questions.length === 0 ? 0 : ((currentIndex + 1) / questions.length) * 100;
+  const choiceLengthInfo = useMemo(() => {
+    const maxLength = Math.max(0, ...(currentQuestion?.choices.map((choice) => choice.length) ?? []));
+    return {
+      longChoice: maxLength > 42,
+      veryLongChoice: maxLength > 72,
+    };
+  }, [currentQuestion?.choices]);
 
   const questionTextClass = useMemo(() => {
     const length = currentQuestion?.question.length ?? 0;
-    if (length > 110) return 'text-[clamp(19px,4.7vw,25px)]';
-    if (length > 65) return 'text-[clamp(22px,5.6vw,30px)]';
-    return 'text-[clamp(28px,7.4vw,36px)]';
+    if (length > 120) return 'text-[clamp(18px,4.4vw,23px)]';
+    if (length > 70) return 'text-[clamp(20px,4.8vw,26px)]';
+    return 'text-[clamp(22px,5vw,30px)]';
   }, [currentQuestion?.question]);
 
   if (questions.length === 0 || !currentQuestion) {
@@ -85,7 +92,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, onBa
   return (
     <Layout>
       <div className="relative flex h-full flex-col overflow-hidden bg-[#E9E5D8] text-[#111111]">
-        <QuizHeader title={title} onBack={onBack} />
+        <QuizHeader title={title} current={currentIndex + 1} total={questions.length} onBack={onBack} />
 
         <ProgressBand
           label={mode === 'review' ? `復習 Level ${progress?.reviewLevel ?? 1}` : subtitle ?? '登録順'}
@@ -94,23 +101,25 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, onBa
           percent={progressPercent}
         />
 
-        <main className={`flex min-h-0 flex-1 flex-col ${answered ? 'pb-[42dvh]' : ''}`}>
-          <section className="flex h-[clamp(122px,21dvh,166px)] shrink-0 items-center justify-center bg-[#B89C79] px-5 py-4 text-center text-white">
+        <main className={`flex min-h-0 flex-1 flex-col ${answered ? 'pb-[40dvh]' : ''}`}>
+          <section className="flex h-[clamp(104px,17dvh,132px)] shrink-0 items-center justify-center bg-[#B89C79] px-5 py-3 text-center text-[#111111]">
             <div className="min-h-0 w-full">
               {currentQuestion.category ? (
-                <div className="mb-2 truncate text-xs font-semibold text-white/75">{currentQuestion.category}</div>
+                <div className="mb-1 truncate text-xs font-semibold text-[#4F3F2F]/75">{currentQuestion.category}</div>
               ) : null}
-              <div className={`mx-auto max-h-[118px] overflow-y-auto whitespace-pre-wrap break-words font-semibold leading-tight no-scrollbar ${questionTextClass}`}>
+              <div className={`mx-auto max-h-[108px] overflow-y-auto whitespace-pre-wrap break-words font-semibold leading-snug no-scrollbar ${questionTextClass}`}>
                 {currentQuestion.question}
               </div>
             </div>
           </section>
 
-          <section className="flex min-h-0 flex-1 flex-col justify-center gap-3 px-5 py-4">
+          <section className="flex min-h-0 flex-1 flex-col justify-center gap-2.5 px-6 py-3">
             {currentQuestion.choices.map((choice, index) => (
               <QuizChoiceButton
                 key={`${currentQuestion.id}_${index}`}
                 text={choice}
+                longChoice={choiceLengthInfo.longChoice}
+                veryLongChoice={choiceLengthInfo.veryLongChoice}
                 disabled={answered}
                 isSelected={selectedIndex === index}
                 isCorrectChoice={currentQuestion.answerIndex === index}
@@ -121,11 +130,11 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, onBa
           </section>
 
           {!answered ? (
-            <section className="shrink-0 px-5 pb-5">
+            <section className="shrink-0 px-5 pb-[max(14px,env(safe-area-inset-bottom))]">
               <button
                 type="button"
                 onClick={handleAmbiguous}
-                className="mx-auto flex h-[54px] w-[200px] items-center justify-center rounded-full border border-[#D0D0D0] bg-[#F4F4F4] text-base font-bold text-[#9A9A9A] active:scale-[0.98]"
+                className="mx-auto mt-1 flex h-[50px] w-[200px] items-center justify-center rounded-full border border-[#D0D0D0] bg-[#F4F4F4] text-base font-bold text-[#9A9A9A] active:scale-[0.98]"
               >
                 わからない
               </button>
@@ -150,32 +159,34 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, onBa
   );
 }
 
-function QuizHeader({ title, onBack }: { title: string; onBack: () => void }) {
+function QuizHeader({ title, current, total, onBack }: { title: string; current?: number; total?: number; onBack: () => void }) {
   return (
-    <header className="flex h-[72px] shrink-0 items-center bg-[#F7F7F5] px-4">
+    <header className="flex h-[60px] shrink-0 items-center bg-[#F7F7F5] px-4">
       <button
         type="button"
         onClick={onBack}
-        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#7EC3E6] bg-white text-2xl font-bold leading-none text-[#5FA9DD] active:scale-95"
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#7EC3E6] bg-white text-2xl font-bold leading-none text-[#5FA9DD] active:scale-95"
         aria-label="戻る"
       >
         ‹
       </button>
-      <h1 className="min-w-0 flex-1 truncate px-3 text-center text-2xl font-bold text-[#5FA9DD]">{title}</h1>
-      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white text-lg font-bold text-[#5FA9DD]">Q</div>
+      <h1 className="min-w-0 flex-1 truncate px-3 text-center text-[24px] font-bold leading-none text-[#5FA9DD]">{title}</h1>
+      <div className="flex h-9 min-w-[58px] shrink-0 items-center justify-center rounded-full bg-white px-2 text-xs font-bold text-[#5FA9DD]">
+        {current && total ? `${current}/${total}` : ''}
+      </div>
     </header>
   );
 }
 
 function ProgressBand({ label, current, total, percent }: { label: string; current: number; total: number; percent: number }) {
   return (
-    <section className="flex h-9 shrink-0 items-center gap-3 bg-[#B89C79] px-4">
+    <section className="flex h-8 shrink-0 items-center gap-3 bg-[#B89C79] py-1 pl-4 pr-4">
       <div className="min-w-0 flex-1">
-        <div className="mb-1 flex items-center justify-between gap-2">
-          <span className="truncate text-xs font-bold text-white/85">{label}</span>
-        </div>
-        <div className="h-1.5 overflow-hidden rounded-full bg-white/25">
-          <div className="h-full rounded-full bg-white" style={{ width: `${Math.min(100, Math.max(0, percent))}%` }} />
+        <div className="flex items-center gap-2">
+          <span className="shrink-0 text-xs font-bold text-white/90">{label}</span>
+          <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-white/25">
+            <div className="h-full rounded-full bg-white" style={{ width: `${Math.min(100, Math.max(0, percent))}%` }} />
+          </div>
         </div>
       </div>
       <div className="shrink-0 rounded-full bg-[#F7F7F5] px-3 py-1 text-xs font-bold text-[#6D5A45]">
@@ -187,6 +198,8 @@ function ProgressBand({ label, current, total, percent }: { label: string; curre
 
 function QuizChoiceButton({
   text,
+  longChoice,
+  veryLongChoice,
   disabled,
   isSelected,
   isCorrectChoice,
@@ -194,6 +207,8 @@ function QuizChoiceButton({
   onClick,
 }: {
   text: string;
+  longChoice: boolean;
+  veryLongChoice: boolean;
   disabled: boolean;
   isSelected: boolean;
   isCorrectChoice: boolean;
@@ -201,6 +216,11 @@ function QuizChoiceButton({
   onClick: () => void;
 }) {
   let stateClass = 'border-[#D0D0D0] bg-[#F8F8F8] text-[#111111]';
+  const textSizeClass = veryLongChoice
+    ? 'text-[clamp(15px,3.7vw,18px)]'
+    : longChoice
+      ? 'text-[clamp(16px,4vw,20px)]'
+      : 'text-[clamp(18px,4.6vw,22px)]';
 
   if (answered && isCorrectChoice) {
     stateClass = 'border-[#72C486] bg-[#DDF5E3] text-[#111111]';
@@ -215,9 +235,9 @@ function QuizChoiceButton({
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className={`flex h-[clamp(64px,10.5dvh,96px)] w-full items-center justify-center rounded-2xl border px-4 text-center text-[clamp(20px,5.7vw,29px)] font-bold leading-tight shadow-sm transition active:scale-[0.99] ${stateClass}`}
+      className={`mx-auto flex min-h-[64px] max-h-[92px] w-full flex-1 items-center justify-center rounded-2xl border px-[14px] py-2.5 text-center font-semibold leading-snug shadow-sm transition active:scale-[0.99] ${textSizeClass} ${stateClass}`}
     >
-      <span className="max-h-[72px] overflow-y-auto break-words no-scrollbar">{text}</span>
+      <span className="max-h-[72px] overflow-y-auto break-words leading-[1.38] no-scrollbar">{text}</span>
     </button>
   );
 }
@@ -242,7 +262,7 @@ function AnswerPanel({
   onNext: () => void;
 }) {
   return (
-    <section className="absolute inset-x-0 bottom-0 z-20 mx-auto flex h-[42dvh] max-w-md flex-col rounded-t-[20px] bg-[#F7F7F7] px-5 pb-5 pt-4 shadow-[0_-10px_30px_rgba(0,0,0,0.12)]">
+    <section className="absolute inset-x-0 bottom-0 z-20 mx-auto flex h-[40dvh] max-h-[45dvh] max-w-md flex-col rounded-t-[20px] bg-[#F7F7F7] px-5 pb-5 pt-4 shadow-[0_-10px_30px_rgba(0,0,0,0.12)]">
       <div className="shrink-0">
         <div className={`text-xl font-bold ${isCorrect ? 'text-[#2F8F46]' : 'text-[#C94F4F]'}`}>{isCorrect ? '正解' : '不正解'}</div>
         <p className="mt-2 text-base font-bold leading-snug text-[#111111]">正解：{answer}</p>
