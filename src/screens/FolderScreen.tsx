@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import type { AppData, ProblemSet, QuizMode } from '../types';
 import { ConfirmDialog } from '../components/ConfirmDialog';
-import { Header } from '../components/Header';
 import { Layout } from '../components/Layout';
-import { ProblemSetCard } from '../components/ProblemSetCard';
+import { formatDisplayDate } from '../utils/date';
 import { getProblemSetsByFolder, getQuestionsBySet } from '../utils/quiz';
+import './FolderScreen.css';
 
 interface FolderScreenProps {
   data: AppData;
@@ -18,123 +18,175 @@ interface FolderScreenProps {
 export function FolderScreen({ data, folderId, onBack, onOpenImport, onStartQuiz, onDeleteProblemSet }: FolderScreenProps) {
   const folder = data.folders.find((item) => item.id === folderId);
   const problemSets = getProblemSetsByFolder(data, folderId);
-  const [deleteTarget, setDeleteTarget] = useState<ProblemSet | null>(null);
   const [editMode, setEditMode] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<ProblemSet | null>(null);
+  const [startTarget, setStartTarget] = useState<ProblemSet | null>(null);
 
   if (!folder) {
     return (
       <Layout>
-        <Header title="フォルダが見つかりません" leftLabel="戻る" onLeft={onBack} />
-        <div className="mx-4 mt-4 rounded-[24px] bg-neutral-900 p-5 text-sm font-bold leading-relaxed text-neutral-400 ring-1 ring-white/10">
-          削除済み、またはデータが壊れている可能性があります。
+        <div className="quiz-folder">
+          <FolderHeader title="Quiz make" onBack={onBack} />
         </div>
       </Layout>
     );
   }
 
+  const handleStart = (mode: QuizMode) => {
+    if (!startTarget) return;
+    onStartQuiz(startTarget.id, mode);
+    setStartTarget(null);
+  };
+
   return (
     <Layout>
-      <Header
-        title={folder.name}
-        subtitle="問題セット一覧"
-        leftLabel="戻る"
-        onLeft={onBack}
-        right={
-          <button
-            type="button"
-            onClick={() => setEditMode((value) => !value)}
-            className="flex h-11 w-11 items-center justify-center rounded-full bg-neutral-800 text-lg font-black text-white ring-1 ring-white/10 active:scale-95"
-            aria-label="編集"
-          >
-            {editMode ? '✓' : '✎'}
-          </button>
-        }
-      />
+      <div className="quiz-folder">
+        <FolderHeader title={folder.name} onBack={onBack} />
 
-      <section className="shrink-0 px-4 pt-4">
-        <div className="flex justify-end gap-5 pr-2">
-          <RoundActionButton
-            label={editMode ? '完了' : '編集'}
-            icon={editMode ? '✓' : '✎'}
-            active={editMode}
-            onClick={() => setEditMode((value) => !value)}
+        <section className="quiz-folder__actions" aria-label="操作">
+          <FolderCircleButton active={editMode} icon="✎" label={editMode ? '完了' : '編集'} onClick={() => setEditMode((value) => !value)} />
+          <FolderCircleButton icon="＋" label="新規問題" onClick={() => onOpenImport(folder.id)} />
+        </section>
+
+        <section className="quiz-folder__set-list" aria-label="一覧">
+          {problemSets.map((problemSet) => {
+            const summary = getSetSummary(data, problemSet.id);
+            return (
+              <SetCard
+                key={problemSet.id}
+                problemSet={problemSet}
+                questionCount={summary.questionCount}
+                reviewCount={summary.reviewCount}
+                correctRate={summary.correctRate}
+                editMode={editMode}
+                onOpen={() => setStartTarget(problemSet)}
+                onDelete={() => setDeleteTarget(problemSet)}
+              />
+            );
+          })}
+        </section>
+
+        {startTarget ? (
+          <StartModeSheet
+            title={startTarget.title}
+            onOrdered={() => handleStart('ordered')}
+            onRandom={() => handleStart('random')}
+            onCancel={() => setStartTarget(null)}
           />
-          <RoundActionButton label="新規問題" icon="＋" onClick={() => onOpenImport(folder.id)} />
-        </div>
-      </section>
+        ) : null}
 
-      <section className="mt-4 flex min-h-0 flex-1 flex-col px-4">
-        <div className="mb-3 flex items-end justify-between">
-          <div>
-            <h2 className="text-base font-black text-white">問題セット</h2>
-            <p className="text-[11px] font-bold text-neutral-500">カードをタップすると登録順で開始</p>
-          </div>
-          <span className="rounded-full bg-neutral-900 px-3 py-1 text-xs font-black text-neutral-400 ring-1 ring-white/10">
-            {problemSets.length}件
-          </span>
-        </div>
-        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pb-3 no-scrollbar">
-          {problemSets.length === 0 ? (
-            <div className="flex h-full items-center justify-center">
-              <div className="w-full rounded-[28px] bg-neutral-900 p-6 text-center ring-1 ring-white/10">
-                <div className="text-6xl">📝</div>
-                <h3 className="mt-4 text-lg font-black text-white">問題セットがまだありません</h3>
-                <p className="mt-2 text-sm font-bold leading-relaxed text-neutral-400">
-                  ChatGPTで作ったJSONを取り込んでください。
-                </p>
-                <button
-                  type="button"
-                  onClick={() => onOpenImport(folder.id)}
-                  className="mt-5 min-h-[52px] w-full rounded-2xl bg-cyan-500 text-sm font-black text-neutral-950 active:scale-[0.98]"
-                >
-                  問題セットを追加
-                </button>
-              </div>
-            </div>
-          ) : (
-            problemSets.map((problemSet) => {
-              const summary = getSetSummary(data, problemSet.id);
-              return (
-                <ProblemSetCard
-                  key={problemSet.id}
-                  problemSet={problemSet}
-                  questionCount={summary.questionCount}
-                  answeredCount={summary.answeredCount}
-                  reviewCount={summary.reviewCount}
-                  correctRate={summary.correctRate}
-                  editMode={editMode}
-                  onStartOrdered={() => onStartQuiz(problemSet.id, 'ordered')}
-                  onStartRandom={() => onStartQuiz(problemSet.id, 'random')}
-                  onDelete={() => setDeleteTarget(problemSet)}
-                />
-              );
-            })
-          )}
-        </div>
-      </section>
-
-      <ConfirmDialog
-        open={deleteTarget !== null}
-        title="問題セットを削除しますか？"
-        message="この問題セット内の問題、学習記録、復習レベルも削除されます。"
-        onCancel={() => setDeleteTarget(null)}
-        onConfirm={() => {
-          if (deleteTarget) onDeleteProblemSet(deleteTarget.id);
-          setDeleteTarget(null);
-        }}
-      />
+        <ConfirmDialog
+          open={deleteTarget !== null}
+          title="削除しますか？"
+          message="このデータ内の問題、学習記録、復習レベルも削除されます。"
+          confirmLabel="削除"
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => {
+            if (deleteTarget) onDeleteProblemSet(deleteTarget.id);
+            setDeleteTarget(null);
+          }}
+        />
+      </div>
     </Layout>
   );
 }
 
-function RoundActionButton({ label, icon, active = false, onClick }: { label: string; icon: string; active?: boolean; onClick: () => void }) {
+function FolderHeader({ title, onBack }: { title: string; onBack: () => void }) {
   return (
-    <button type="button" onClick={onClick} className="flex flex-col items-center gap-2 active:scale-95">
-      <span className={`flex h-[68px] w-[68px] items-center justify-center rounded-full text-3xl font-black shadow-lg ${active ? 'bg-white text-neutral-950' : 'bg-cyan-500 text-neutral-950'}`}>
-        {icon}
-      </span>
-      <span className="text-xs font-black text-neutral-200">{label}</span>
+    <header className="quiz-folder__header">
+      <div className="quiz-folder__header-slope" />
+      <button type="button" className="quiz-folder__back-button" aria-label="戻る" onClick={onBack}>
+        ‹
+      </button>
+      <h1 className="quiz-folder__title">{title}</h1>
+      <button type="button" className="quiz-folder__header-action" aria-label="メニュー">
+        ≡
+      </button>
+    </header>
+  );
+}
+
+function FolderCircleButton({ active = false, icon, label, onClick }: { active?: boolean; icon: string; label: string; onClick: () => void }) {
+  return (
+    <button type="button" className="quiz-folder__action" onClick={onClick}>
+      <span className={`quiz-folder__circle-button${active ? ' quiz-folder__circle-button--active' : ''}`}>{icon}</span>
+      <span className="quiz-folder__action-label">{label}</span>
     </button>
+  );
+}
+
+function SetCard({
+  problemSet,
+  questionCount,
+  reviewCount,
+  correctRate,
+  editMode,
+  onOpen,
+  onDelete,
+}: {
+  problemSet: ProblemSet;
+  questionCount: number;
+  reviewCount: number;
+  correctRate: number;
+  editMode: boolean;
+  onOpen: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <article className="quiz-folder__set-card">
+      <button type="button" className="quiz-folder__set-main" disabled={editMode} onClick={onOpen}>
+        <span className="quiz-folder__set-icon" aria-hidden="true">
+          <span className="quiz-folder__set-icon-line" />
+          <span className="quiz-folder__set-icon-line" />
+          <span className="quiz-folder__set-icon-line" />
+        </span>
+        <span className="quiz-folder__set-body">
+          <span className="quiz-folder__set-name">{problemSet.title}</span>
+          <span className="quiz-folder__set-source">{problemSet.source || `更新 ${formatDisplayDate(problemSet.updatedAt)}`}</span>
+          <span className="quiz-folder__set-stats">
+            <span>🏷 {questionCount}</span>
+            <span>🔖 {reviewCount}</span>
+            <span>✅ {correctRate}%</span>
+          </span>
+        </span>
+        {!editMode ? <span className="quiz-folder__set-arrow">›</span> : null}
+      </button>
+
+      {editMode ? (
+        <button type="button" className="quiz-folder__delete-button" onClick={onDelete}>
+          削除
+        </button>
+      ) : null}
+    </article>
+  );
+}
+
+function StartModeSheet({
+  title,
+  onOrdered,
+  onRandom,
+  onCancel,
+}: {
+  title: string;
+  onOrdered: () => void;
+  onRandom: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="quiz-folder__overlay" onClick={onCancel}>
+      <div className="quiz-folder__start-sheet" onClick={(event) => event.stopPropagation()}>
+        <div className="quiz-folder__start-title">{title}</div>
+        <button type="button" className="quiz-folder__start-button quiz-folder__start-button--primary" onClick={onOrdered}>
+          登録順で開始
+        </button>
+        <button type="button" className="quiz-folder__start-button" onClick={onRandom}>
+          ランダムで開始
+        </button>
+        <button type="button" className="quiz-folder__start-button quiz-folder__start-button--muted" onClick={onCancel}>
+          キャンセル
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -147,7 +199,6 @@ function getSetSummary(data: AppData, setId: string) {
 
   return {
     questionCount: questions.length,
-    answeredCount: logs.length,
     reviewCount: progress.filter((item) => item.isReview && !item.isGraduated).length,
     correctRate: logs.length === 0 ? 0 : Math.round((correct / logs.length) * 100),
   };
