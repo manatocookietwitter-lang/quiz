@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { BackButton } from './BackButton';
 
 interface HeaderProps {
   title: string;
@@ -15,16 +16,9 @@ export function Header({ title, subtitle, leftLabel, onLeft, right }: HeaderProp
       <div className="relative flex min-h-[58px] items-center gap-3">
         <div className="flex w-14 shrink-0 items-center justify-start">
           {leftLabel && onLeft ? (
-            <button
-              type="button"
-              onClick={onLeft}
-              className="inline-flex h-11 min-w-11 items-center justify-center rounded-full bg-neutral-800 px-3 text-sm font-black text-white ring-1 ring-white/10 active:scale-95"
-              aria-label={leftLabel}
-            >
-              ←
-            </button>
+            <BackButton onClick={onLeft} label={leftLabel} />
           ) : (
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-neutral-800 text-xl ring-1 ring-white/10">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#2B2B2B] text-xl">
               Q
             </div>
           )}

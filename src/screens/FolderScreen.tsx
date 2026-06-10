@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import type { AppData, ProblemSet, QuizMode } from '../types';
+import type { AppData, ProblemSet } from '../types';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { BackButton } from '../components/BackButton';
 import { Layout } from '../components/Layout';
 import { formatDisplayDate } from '../utils/date';
 import { getProblemSetsByFolder, getQuestionsBySet } from '../utils/quiz';
@@ -11,16 +12,15 @@ interface FolderScreenProps {
   folderId: string;
   onBack: () => void;
   onOpenImport: (folderId: string) => void;
-  onStartQuiz: (setId: string, mode: QuizMode) => void;
+  onOpenProblemSet: (setId: string) => void;
   onDeleteProblemSet: (setId: string) => void;
 }
 
-export function FolderScreen({ data, folderId, onBack, onOpenImport, onStartQuiz, onDeleteProblemSet }: FolderScreenProps) {
+export function FolderScreen({ data, folderId, onBack, onOpenImport, onOpenProblemSet, onDeleteProblemSet }: FolderScreenProps) {
   const folder = data.folders.find((item) => item.id === folderId);
   const problemSets = getProblemSetsByFolder(data, folderId);
   const [editMode, setEditMode] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ProblemSet | null>(null);
-  const [startTarget, setStartTarget] = useState<ProblemSet | null>(null);
 
   if (!folder) {
     return (
@@ -31,12 +31,6 @@ export function FolderScreen({ data, folderId, onBack, onOpenImport, onStartQuiz
       </Layout>
     );
   }
-
-  const handleStart = (mode: QuizMode) => {
-    if (!startTarget) return;
-    onStartQuiz(startTarget.id, mode);
-    setStartTarget(null);
-  };
 
   return (
     <Layout>
@@ -59,21 +53,12 @@ export function FolderScreen({ data, folderId, onBack, onOpenImport, onStartQuiz
                 reviewCount={summary.reviewCount}
                 correctRate={summary.correctRate}
                 editMode={editMode}
-                onOpen={() => setStartTarget(problemSet)}
+                onOpen={() => onOpenProblemSet(problemSet.id)}
                 onDelete={() => setDeleteTarget(problemSet)}
               />
             );
           })}
         </section>
-
-        {startTarget ? (
-          <StartModeSheet
-            title={startTarget.title}
-            onOrdered={() => handleStart('ordered')}
-            onRandom={() => handleStart('random')}
-            onCancel={() => setStartTarget(null)}
-          />
-        ) : null}
 
         <ConfirmDialog
           open={deleteTarget !== null}
@@ -95,9 +80,7 @@ function FolderHeader({ title, onBack }: { title: string; onBack: () => void }) 
   return (
     <header className="quiz-folder__header">
       <div className="quiz-folder__header-slope" />
-      <button type="button" className="quiz-folder__back-button" aria-label="戻る" onClick={onBack}>
-        ‹
-      </button>
+      <BackButton onClick={onBack} className="quiz-folder__back-button" />
       <h1 className="quiz-folder__title">{title}</h1>
       <button type="button" className="quiz-folder__header-action" aria-label="メニュー">
         ≡
@@ -158,35 +141,6 @@ function SetCard({
         </button>
       ) : null}
     </article>
-  );
-}
-
-function StartModeSheet({
-  title,
-  onOrdered,
-  onRandom,
-  onCancel,
-}: {
-  title: string;
-  onOrdered: () => void;
-  onRandom: () => void;
-  onCancel: () => void;
-}) {
-  return (
-    <div className="quiz-folder__overlay" onClick={onCancel}>
-      <div className="quiz-folder__start-sheet" onClick={(event) => event.stopPropagation()}>
-        <div className="quiz-folder__start-title">{title}</div>
-        <button type="button" className="quiz-folder__start-button quiz-folder__start-button--primary" onClick={onOrdered}>
-          登録順で開始
-        </button>
-        <button type="button" className="quiz-folder__start-button" onClick={onRandom}>
-          ランダムで開始
-        </button>
-        <button type="button" className="quiz-folder__start-button quiz-folder__start-button--muted" onClick={onCancel}>
-          キャンセル
-        </button>
-      </div>
-    </div>
   );
 }
 

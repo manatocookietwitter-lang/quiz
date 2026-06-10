@@ -133,7 +133,7 @@ export function HomeScreen({
 
         <ConfirmDialog
           open={deleteTarget !== null}
-          title="フォルダを削除しますか？"
+          title="削除しますか？"
           message="このフォルダ内の問題セット、問題、学習記録、復習レベルもすべて削除されます。"
           confirmLabel="削除"
           onCancel={() => setDeleteTarget(null)}
@@ -145,7 +145,7 @@ export function HomeScreen({
 
         <ConfirmDialog
           open={clearConfirmOpen}
-          title="全データを削除しますか？"
+          title="削除しますか？"
           message="フォルダ、問題セット、問題、回答記録、復習レベル、曖昧登録をすべて削除します。"
           confirmLabel="全削除"
           onCancel={() => setClearConfirmOpen(false)}

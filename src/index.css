@@ -55,3 +55,60 @@ button:disabled {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+.quiz-back-button {
+  appearance: none;
+  border: none;
+  outline: none;
+  width: 52px;
+  height: 52px;
+  flex: 0 0 52px;
+  border-radius: 9999px;
+  background: #e5e5e5;
+  color: #111111;
+  font: inherit;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.quiz-screen-transition {
+  width: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  background: #000000;
+}
+
+.quiz-screen-transition--forward {
+  animation: quizSlideInForward 250ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.quiz-screen-transition--back {
+  animation: quizSlideInBack 250ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes quizSlideInForward {
+  from {
+    transform: translateX(100%);
+    opacity: 0.96;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes quizSlideInBack {
+  from {
+    transform: translateX(-32%);
+    opacity: 0.96;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}

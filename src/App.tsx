@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
-import type { AppData, AppScreen, ProblemSet, Question, QuizMode, QuizResult } from './types';
+import type { AppData, AppScreen, ProblemSet, Question, QuizMode, QuizResult, QuizSession } from './types';
 import { createEmptyAppData, loadAppData, parseBackupJson, saveAppData } from './storage';
 import { HomeScreen } from './screens/HomeScreen';
 import { FolderScreen } from './screens/FolderScreen';
+import { ProblemSetDetailScreen } from './screens/ProblemSetDetailScreen';
 import { ImportScreen } from './screens/ImportScreen';
 import { QuizScreen } from './screens/QuizScreen';
+import { QuizRunner } from './screens/QuizRunner';
 import { ReviewScreen } from './screens/ReviewScreen';
 import { ResultScreen } from './screens/ResultScreen';
 import { createId } from './utils/id';
@@ -21,12 +23,28 @@ import { validateImportJson } from './utils/importValidator';
 export default function App() {
   const [data, setData] = useState<AppData>(() => loadAppData());
   const [screen, setScreen] = useState<AppScreen>({ name: 'home' });
+  const [transitionDirection, setTransitionDirection] = useState<'forward' | 'back'>('forward');
 
   useEffect(() => {
     saveAppData(data);
   }, [data]);
 
-  const goHome = () => setScreen({ name: 'home' });
+  const navigate = (next: AppScreen) => {
+    setTransitionDirection('forward');
+    setScreen(next);
+  };
+
+  const goBackTo = (next: AppScreen) => {
+    setTransitionDirection('back');
+    setScreen(next);
+  };
+
+  const replaceScreen = (next: AppScreen) => {
+    setTransitionDirection('forward');
+    setScreen(next);
+  };
+
+  const goHome = () => goBackTo({ name: 'home' });
 
   const handleCreateFolder = (name: string) => {
     setData((current) => addFolder(current, name));
@@ -34,7 +52,7 @@ export default function App() {
 
   const handleDeleteFolder = (folderId: string) => {
     setData((current) => deleteFolder(current, folderId));
-    setScreen({ name: 'home' });
+    goBackTo({ name: 'home' });
   };
 
   const handleDeleteProblemSet = (setId: string) => {
@@ -90,7 +108,7 @@ export default function App() {
         isGraduated: false,
       }))],
     }));
-    setScreen({ name: 'folder', folderId });
+    replaceScreen({ name: 'folder', folderId });
     return null;
   };
 
@@ -106,7 +124,7 @@ export default function App() {
 
   const handleClearAll = () => {
     setData(createEmptyAppData());
-    setScreen({ name: 'home' });
+    replaceScreen({ name: 'home' });
   };
 
   const handleExport = () => {
@@ -129,7 +147,7 @@ export default function App() {
       const ok = window.confirm('現在のデータをすべて上書きします。バックアップJSONをインポートしますか？');
       if (!ok) return null;
       setData(result.data);
-      setScreen({ name: 'home' });
+      replaceScreen({ name: 'home' });
       return null;
     } catch (error) {
       return error instanceof Error ? `読み込みに失敗しました: ${error.message}` : '読み込みに失敗しました。';
@@ -137,67 +155,103 @@ export default function App() {
   };
 
   const handleStartQuiz = (setId: string, mode: QuizMode) => {
-    setScreen({ name: 'quiz', setId, mode });
+    navigate({ name: 'quiz', setId, mode });
+  };
+
+  const handleStartQuizSession = (session: QuizSession) => {
+    navigate({ name: 'quizSession', session });
   };
 
   const handleFinish = (result: QuizResult) => {
-    setScreen({ name: 'result', result });
+    navigate({ name: 'result', result });
   };
 
   const handleRetry = (result: QuizResult) => {
     if (result.mode === 'review') {
-      setScreen({ name: 'review' });
+      navigate({ name: 'review' });
       return;
     }
     if (result.setId) {
-      setScreen({ name: 'quiz', setId: result.setId, mode: 'ordered' });
+      navigate({ name: 'quiz', setId: result.setId, mode: 'ordered' });
       return;
     }
-    setScreen({ name: 'home' });
+    goBackTo({ name: 'home' });
   };
 
+  let content;
+
   if (screen.name === 'folder') {
-    return (
+    content = (
       <FolderScreen
         data={data}
         folderId={screen.folderId}
         onBack={goHome}
-        onOpenImport={(folderId) => setScreen({ name: 'import', folderId })}
-        onStartQuiz={handleStartQuiz}
+        onOpenImport={(folderId) => navigate({ name: 'import', folderId })}
+        onOpenProblemSet={(setId) => navigate({ name: 'problemSetDetail', setId })}
         onDeleteProblemSet={handleDeleteProblemSet}
       />
     );
-  }
-
-  if (screen.name === 'import') {
+  } else if (screen.name === 'problemSetDetail') {
+    const problemSet = data.problemSets.find((set) => set.id === screen.setId);
+    content = (
+      <ProblemSetDetailScreen
+        data={data}
+        setId={screen.setId}
+        onBack={() => goBackTo({ name: 'folder', folderId: problemSet?.folderId ?? '' })}
+        onOpenImport={(folderId) => navigate({ name: 'import', folderId, backScreen: { name: 'problemSetDetail', setId: screen.setId } })}
+        onStartSession={({ questions, mode, initialIndex, title, subtitle, setId }) => handleStartQuizSession({
+          title,
+          subtitle,
+          questions,
+          mode,
+          setId,
+          initialIndex,
+          backScreen: { name: 'problemSetDetail', setId },
+        })}
+      />
+    );
+  } else if (screen.name === 'import') {
     const folder = data.folders.find((item) => item.id === screen.folderId);
-    return (
+    content = (
       <ImportScreen
         folderName={folder?.name ?? 'フォルダ'}
-        onBack={() => setScreen({ name: 'folder', folderId: screen.folderId })}
+        onBack={() => goBackTo(screen.backScreen ?? { name: 'folder', folderId: screen.folderId })}
         onImport={(titleOverride, jsonText) => handleImportProblemSet(screen.folderId, titleOverride, jsonText)}
       />
     );
-  }
-
-  if (screen.name === 'quiz') {
+  } else if (screen.name === 'quiz') {
     const problemSet = data.problemSets.find((set) => set.id === screen.setId);
-    return (
+    content = (
       <QuizScreen
         key={`${screen.setId}_${screen.mode}`}
         data={data}
         setId={screen.setId}
         mode={screen.mode}
-        onBack={() => setScreen({ name: 'folder', folderId: problemSet?.folderId ?? '' })}
+        onBack={() => goBackTo({ name: 'folder', folderId: problemSet?.folderId ?? '' })}
         onAnswer={handleAnswer}
         onToggleAmbiguous={handleToggleAmbiguous}
         onFinish={handleFinish}
       />
     );
-  }
-
-  if (screen.name === 'review') {
-    return (
+  } else if (screen.name === 'quizSession') {
+    content = (
+      <QuizRunner
+        key={`${screen.session.setId ?? 'session'}_${screen.session.mode}_${screen.session.initialIndex ?? 0}_${screen.session.questions.map((question) => question.id).join('_')}`}
+        data={data}
+        title={screen.session.title}
+        subtitle={screen.session.subtitle}
+        questions={screen.session.questions}
+        mode={screen.session.mode}
+        setId={screen.session.setId}
+        initialIndex={screen.session.initialIndex}
+        onBack={() => goBackTo(screen.session.backScreen)}
+        onAnswer={handleAnswer}
+        onToggleAmbiguous={handleToggleAmbiguous}
+        onFinish={handleFinish}
+      />
+    );
+  } else if (screen.name === 'review') {
+    content = (
       <ReviewScreen
         key="review"
         data={data}
@@ -207,27 +261,41 @@ export default function App() {
         onFinish={handleFinish}
       />
     );
-  }
-
-  if (screen.name === 'result') {
-    return (
+  } else if (screen.name === 'result') {
+    content = (
       <ResultScreen
         result={screen.result}
         onHome={goHome}
         onRetry={() => handleRetry(screen.result)}
       />
     );
-  }
-
-  return (
+  } else {
+    content = (
     <HomeScreen
       data={data}
       onCreateFolder={handleCreateFolder}
       onDeleteFolder={handleDeleteFolder}
-      onOpenFolder={(folderId) => setScreen({ name: 'folder', folderId })}
+      onOpenFolder={(folderId) => navigate({ name: 'folder', folderId })}
       onExport={handleExport}
       onImportBackup={handleImportBackup}
       onClearAll={handleClearAll}
     />
   );
+  }
+
+  return (
+    <div key={getScreenKey(screen)} className={`quiz-screen-transition quiz-screen-transition--${transitionDirection}`}>
+      {content}
+    </div>
+  );
+}
+
+function getScreenKey(screen: AppScreen) {
+  if (screen.name === 'folder') return `folder-${screen.folderId}`;
+  if (screen.name === 'problemSetDetail') return `detail-${screen.setId}`;
+  if (screen.name === 'import') return `import-${screen.folderId}`;
+  if (screen.name === 'quiz') return `quiz-${screen.setId}-${screen.mode}`;
+  if (screen.name === 'quizSession') return `quiz-session-${screen.session.setId ?? 'custom'}-${screen.session.initialIndex ?? 0}-${screen.session.questions.length}`;
+  if (screen.name === 'result') return `result-${screen.result.title}-${screen.result.answered}`;
+  return screen.name;
 }
