@@ -71,6 +71,7 @@ export interface ImportedQuestion {
   answerText?: string;
   explanation: string;
   sourcePage?: string;
+  reference?: string;
   category?: string;
   difficulty?: Difficulty;
 }

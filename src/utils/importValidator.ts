@@ -13,10 +13,39 @@ export const CHATGPT_TEMPLATE_PROMPT = `以下の資料内容をもとに、Quiz
 6. 定義、違い、分類、検査、治療、禁忌、アルゴリズム、症例判断をバランスよく出題する。
 7. 解説は詳しく書く。
 8. 可能な限り参照ページを記載する。
-9. JSON以外の文章は出力しない。
-10. 次の形式に厳密に従う。
+9. 各問題には必ず category を付ける。
+10. category は問題の分野分類であり、アプリ内で分野別演習・分野別復習・問題一覧の見出しに使用する。
+11. category は資料内容を読み取り、章・講義名・疾患群・検査・治療・症例判断などのまとまりごとに分類する。
+12. 同じ分野は必ず同じ category 名に統一し、表記ゆれを避ける。例：「貧血」と「貧血総論」を混在させない。
+13. category名は短く、一覧で見やすい名前にする。
+14. category は空欄にしない。分類不能な場合のみ「未分類」とする。
+15. JSON以外の文章は出力しない。
+16. 次の形式に厳密に従う。
 
-{ "setTitle": "問題セット名", "source": "資料名", "questions": [ { "id": "q001", "question": "問題文", "choices": [ "選択肢1", "選択肢2", "選択肢3", "選択肢4" ], "answerIndex": 0, "answerText": "正解の選択肢", "explanation": "詳しい解説", "sourcePage": "p.○", "category": "分野名", "difficulty": "basic" } ] }`;
+各問題には必ず category を付けてください。category は問題の分野分類であり、アプリ内で分野別演習・分野別復習・問題一覧の見出しに使用します。資料内容を読み取り、章・疾患群・検査・治療・症例判断などのまとまりごとに分類してください。同じ分野は必ず同じ category 名に統一してください。分類不能な場合のみ「未分類」としてください。
+
+{
+  "setTitle": "問題セット名",
+  "source": "資料名",
+  "questions": [
+    {
+      "id": "q001",
+      "category": "分野名",
+      "question": "問題文",
+      "choices": [
+        "選択肢1",
+        "選択肢2",
+        "選択肢3",
+        "選択肢4"
+      ],
+      "answerIndex": 0,
+      "answerText": "正解の選択肢",
+      "explanation": "解説",
+      "reference": "参照ページ",
+      "difficulty": "basic"
+    }
+  ]
+}`;
 
 export function validateImportJson(text: string): ValidationResult {
   let parsed: unknown;
@@ -94,6 +123,10 @@ export function validateImportJson(text: string): ValidationResult {
       errors.push(`${path}.sourcePage は文字列にしてください。`);
     }
 
+    if (rawQuestion.reference !== undefined && typeof rawQuestion.reference !== 'string') {
+      errors.push(`${path}.reference は文字列にしてください。`);
+    }
+
     if (rawQuestion.category !== undefined && typeof rawQuestion.category !== 'string') {
       errors.push(`${path}.category は文字列にしてください。`);
     }
@@ -125,7 +158,7 @@ export function validateImportJson(text: string): ValidationResult {
           ? rawQuestion.answerText
           : choices[answerIndex],
         explanation: rawQuestion.explanation,
-        sourcePage: typeof rawQuestion.sourcePage === 'string' ? rawQuestion.sourcePage : '',
+        sourcePage: getSourcePage(rawQuestion),
         category: typeof rawQuestion.category === 'string' ? rawQuestion.category : '',
         difficulty: typeof rawQuestion.difficulty === 'string' ? rawQuestion.difficulty : 'basic',
       });
@@ -150,4 +183,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
+}
+
+function getSourcePage(rawQuestion: Record<string, unknown>) {
+  if (typeof rawQuestion.sourcePage === 'string') return rawQuestion.sourcePage;
+  if (typeof rawQuestion.reference === 'string') return rawQuestion.reference;
+  return '';
 }

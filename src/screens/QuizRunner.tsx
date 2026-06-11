@@ -44,9 +44,9 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
 
   const questionTextClass = useMemo(() => {
     const length = currentQuestion?.question.length ?? 0;
-    if (length > 120) return 'text-[clamp(18px,4.4vw,23px)]';
-    if (length > 70) return 'text-[clamp(20px,4.8vw,26px)]';
-    return 'text-[clamp(22px,5vw,30px)]';
+    if (length >= 180) return 'text-[16px]';
+    if (length >= 100) return 'text-[17px]';
+    return 'text-[18px]';
   }, [currentQuestion?.question]);
 
   if (questions.length === 0 || !currentQuestion) {
@@ -108,12 +108,12 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
         />
 
         <main className="flex min-h-0 flex-1 flex-col">
-          <section className="flex h-[clamp(104px,17dvh,132px)] shrink-0 items-center justify-center bg-[#B89C79] px-5 py-3 text-center text-[#111111]">
+          <section className="flex h-[clamp(104px,17dvh,132px)] shrink-0 items-center justify-center overflow-hidden bg-[#B89C79] px-5 py-3 text-center text-[#111111]">
             <div className="min-h-0 w-full">
               {currentQuestion.category ? (
                 <div className="mb-1 truncate text-xs font-semibold text-[#4F3F2F]/75">{currentQuestion.category}</div>
               ) : null}
-              <div className={`mx-auto max-h-[108px] overflow-y-auto whitespace-pre-wrap break-words font-semibold leading-snug no-scrollbar ${questionTextClass}`}>
+              <div className={`mx-auto max-h-[96px] overflow-y-auto whitespace-pre-wrap break-words font-semibold leading-[1.45] no-scrollbar ${questionTextClass}`}>
                 {currentQuestion.question}
               </div>
             </div>
