@@ -58,27 +58,29 @@ button:disabled {
 
 .quiz-back-button {
   appearance: none;
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
   outline: none;
-  width: 52px;
-  height: 52px;
-  flex: 0 0 52px;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
   border-radius: 9999px;
-  background: rgba(255, 255, 255, 0.92);
-  color: #111111;
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+  backdrop-filter: blur(6px);
   font: inherit;
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 700;
   line-height: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
   -webkit-tap-highlight-color: transparent;
 }
 
 .quiz-back-button:active {
-  background: rgba(255, 255, 255, 0.98);
+  background: rgba(255, 255, 255, 0.22);
   transform: scale(0.96);
 }
 

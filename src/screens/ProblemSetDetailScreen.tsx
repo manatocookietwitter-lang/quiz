@@ -6,6 +6,15 @@ import { getProgress, getQuestionsBySet, shuffleArray } from '../utils/quiz';
 import './ProblemSetDetailScreen.css';
 
 type CategoryFilter = 'all' | string;
+type ReviewFilter = 'all' | 'level1' | 'level2' | 'level3' | 'ambiguous';
+
+const REVIEW_FILTERS: { value: ReviewFilter; label: string }[] = [
+  { value: 'all', label: '全Level' },
+  { value: 'level1', label: 'Level 1' },
+  { value: 'level2', label: 'Level 2' },
+  { value: 'level3', label: 'Level 3' },
+  { value: 'ambiguous', label: '曖昧' },
+];
 
 interface ProblemSetDetailScreenProps {
   data: AppData;
@@ -36,6 +45,7 @@ export function ProblemSetDetailScreen({
   const problemSet = data.problemSets.find((set) => set.id === setId);
   const questions = useMemo(() => getQuestionsBySet(data, setId), [data, setId]);
   const [startCategory, setStartCategory] = useState<CategoryFilter>('all');
+  const [reviewFilter, setReviewFilter] = useState<ReviewFilter>('all');
 
   const categories = useMemo(() => buildProblemCategories(questions), [questions]);
   const startQuestions = useMemo(() => filterQuestionsByCategory(questions, startCategory), [questions, startCategory]);
@@ -50,12 +60,13 @@ export function ProblemSetDetailScreen({
     );
   }
 
-  const reviewQuestions = buildReviewQuestions(data, startQuestions);
+  const reviewQuestions = buildReviewQuestions(data, startQuestions, reviewFilter);
   const allReviewQuestions = buildReviewQuestions(data, questions);
   const logs = data.answerLogs.filter((log) => log.setId === setId);
   const correct = logs.filter((log) => log.isCorrect).length;
   const correctRate = logs.length === 0 ? 0 : Math.round((correct / logs.length) * 100);
   const selectedLabel = getCategoryLabel(startCategory);
+  const reviewFilterLabel = getReviewFilterLabel(reviewFilter);
 
   const startOrdered = () => {
     onStartSession({
@@ -82,7 +93,7 @@ export function ProblemSetDetailScreen({
       questions: reviewQuestions,
       mode: 'review',
       title: problemSet.title,
-      subtitle: `${selectedLabel} / 復習`,
+      subtitle: `${selectedLabel} / ${reviewFilterLabel}`,
       setId,
     });
   };
@@ -112,7 +123,7 @@ export function ProblemSetDetailScreen({
             <h2>開始</h2>
             <span>{startQuestions.length}問</span>
           </div>
-          <div className="quiz-detail__chips" aria-label="開始対象">
+          <div className="quiz-detail__segments" aria-label="開始対象">
             {categories.map((item) => {
               const value = item === 'すべて' ? 'all' : item;
               const active = startCategory === value || (startCategory === 'all' && item === 'すべて');
@@ -120,7 +131,7 @@ export function ProblemSetDetailScreen({
                 <button
                   key={item}
                   type="button"
-                  className={`quiz-detail__chip${active ? ' quiz-detail__chip--active' : ''}`}
+                  className={`quiz-detail__segment-item${active ? ' quiz-detail__segment-item--active' : ''}`}
                   onClick={() => setStartCategory(value)}
                 >
                   {item}
@@ -129,6 +140,20 @@ export function ProblemSetDetailScreen({
             })}
           </div>
           <p className="quiz-detail__selected-target">開始対象：{selectedLabel}</p>
+          <div className="quiz-detail__segment-caption">復習Level</div>
+          <div className="quiz-detail__segments" aria-label="復習Level">
+            {REVIEW_FILTERS.map((item) => (
+              <button
+                key={item.value}
+                type="button"
+                className={`quiz-detail__segment-item${reviewFilter === item.value ? ' quiz-detail__segment-item--active' : ''}`}
+                onClick={() => setReviewFilter(item.value)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          <p className="quiz-detail__selected-target">復習条件：{selectedLabel} / {reviewFilterLabel}</p>
           <div className="quiz-detail__start-actions">
             <button type="button" disabled={startQuestions.length === 0} onClick={startOrdered}>
               登録順で開始
@@ -188,11 +213,18 @@ export function sortQuestionsForProblemList(data: AppData, questions: Question[]
   return [...questions].sort((a, b) => getLevelSortScore(data, a.id) - getLevelSortScore(data, b.id));
 }
 
-export function buildReviewQuestions(data: AppData, questions: Question[]) {
+export function buildReviewQuestions(data: AppData, questions: Question[], filter: ReviewFilter = 'all') {
   const reviewQuestions = questions.filter((question) => {
     const progress = getProgress(data, question.id);
-    return progress.isReview && !progress.isGraduated;
+    if (filter === 'ambiguous') return progress.isAmbiguous;
+    if (!(progress.isReview && !progress.isGraduated)) return false;
+    if (filter === 'level1') return progress.reviewLevel === 1;
+    if (filter === 'level2') return progress.reviewLevel === 2;
+    if (filter === 'level3') return progress.reviewLevel === 3;
+    return true;
   });
+
+  if (filter === 'ambiguous') return shuffleArray(reviewQuestions);
 
   const byLevel: Record<1 | 2 | 3, Question[]> = { 1: [], 2: [], 3: [] };
   reviewQuestions.forEach((question) => {
@@ -219,6 +251,10 @@ export function buildProblemCategories(questions: Question[]) {
 
 function getCategoryLabel(category: string) {
   return category === 'all' || category === 'すべて' ? 'すべて' : category;
+}
+
+function getReviewFilterLabel(filter: ReviewFilter) {
+  return REVIEW_FILTERS.find((item) => item.value === filter)?.label ?? '全Level';
 }
 
 function getLevelSortScore(data: AppData, questionId: string) {

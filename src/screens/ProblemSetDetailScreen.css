@@ -137,6 +137,45 @@
   font-weight: 700;
 }
 
+.quiz-detail__segments {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  border-radius: 18px;
+  background: #202020;
+  padding: 6px;
+  scrollbar-width: none;
+}
+
+.quiz-detail__segments::-webkit-scrollbar {
+  display: none;
+}
+
+.quiz-detail__segment-item {
+  min-height: 44px;
+  flex: 0 0 auto;
+  border-radius: 14px;
+  background: transparent;
+  padding: 0 18px;
+  color: #bdbdbd;
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.quiz-detail__segment-item--active {
+  background: #12bfc0;
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(18, 191, 192, 0.28);
+}
+
+.quiz-detail__segment-caption {
+  margin: 10px 0 8px;
+  color: #a3a3a3;
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .quiz-detail__chips {
   display: flex;
   gap: 10px;
@@ -170,7 +209,7 @@
 
 .quiz-detail__selected-target {
   margin: 8px 0 10px;
-  color: #cfcfcf;
+  color: #d0d0d0;
   font-size: 14px;
   font-weight: 600;
 }
