@@ -122,15 +122,14 @@ button:disabled {
   opacity: 1;
 }
 
-.answer-panel--compact {
-  min-height: 180px;
-  height: min(32dvh, 240px);
-  max-height: 32dvh;
-}
-
 .answer-panel--expanded {
   height: min(56dvh, 520px);
   max-height: min(56dvh, 520px);
+}
+
+.answer-panel-body {
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .answer-minimized-bar {
@@ -152,13 +151,6 @@ button:disabled {
   box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.18);
 }
 
-@media (max-height: 620px) {
-  .answer-panel--compact {
-    min-height: 164px;
-    height: 30dvh;
-    max-height: 30dvh;
-  }
-}
 
 .quiz-screen-transition {
   width: 100%;

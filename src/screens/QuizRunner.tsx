@@ -5,7 +5,7 @@ import { BackButton } from '../components/BackButton';
 import { Layout } from '../components/Layout';
 import { getProgress, makeResult } from '../utils/quiz';
 
-type AnswerSheetState = 'compact' | 'expanded' | 'minimized';
+type AnswerSheetState = 'expanded' | 'minimized';
 
 interface QuizRunnerProps {
   data: AppData;
@@ -28,7 +28,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
   const [correctCount, setCorrectCount] = useState(0);
   const [wrongCount, setWrongCount] = useState(0);
   const [addedReviewCount, setAddedReviewCount] = useState(0);
-  const [answerSheetState, setAnswerSheetState] = useState<AnswerSheetState>('compact');
+  const [answerSheetState, setAnswerSheetState] = useState<AnswerSheetState>('expanded');
 
   const currentQuestion = questions[currentIndex];
   const progress = currentQuestion ? getProgress(data, currentQuestion.id) : null;
@@ -76,7 +76,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
     const result = onAnswer(currentQuestion, index, mode === 'review');
     setSelectedIndex(index);
     setLastCorrect(result.isCorrect);
-    setAnswerSheetState('compact');
+    setAnswerSheetState('expanded');
     setCorrectCount((value) => value + (result.isCorrect ? 1 : 0));
     setWrongCount((value) => value + (result.isCorrect ? 0 : 1));
     setAddedReviewCount((value) => value + (result.addedToReview ? 1 : 0));
@@ -90,7 +90,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
     setCurrentIndex((value) => value + 1);
     setSelectedIndex(null);
     setLastCorrect(null);
-    setAnswerSheetState('compact');
+    setAnswerSheetState('expanded');
   };
 
   const handleAmbiguous = () => {
@@ -157,8 +157,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
             isAmbiguous={progress?.isAmbiguous ?? false}
             isLast={currentIndex + 1 >= questions.length}
             state={answerSheetState}
-            onExpand={() => setAnswerSheetState('expanded')}
-            onCompact={() => setAnswerSheetState('compact')}
+            onShow={() => setAnswerSheetState('expanded')}
             onMinimize={() => setAnswerSheetState('minimized')}
             onToggleAmbiguous={handleAmbiguous}
             onNext={handleNext}
@@ -251,8 +250,7 @@ function AnswerPanel({
   isAmbiguous,
   isLast,
   state,
-  onExpand,
-  onCompact,
+  onShow,
   onMinimize,
   onToggleAmbiguous,
   onNext,
@@ -264,8 +262,7 @@ function AnswerPanel({
   isAmbiguous: boolean;
   isLast: boolean;
   state: AnswerSheetState;
-  onExpand: () => void;
-  onCompact: () => void;
+  onShow: () => void;
   onMinimize: () => void;
   onToggleAmbiguous: () => void;
   onNext: () => void;
@@ -277,10 +274,10 @@ function AnswerPanel({
           <span className={`whitespace-nowrap text-sm font-bold ${isCorrect ? 'text-[#2F8F46]' : 'text-[#C94F4F]'}`}>{isCorrect ? '正解' : '不正解'}</span>
           <button
             type="button"
-            onClick={onCompact}
+            onClick={onShow}
             className="h-10 min-w-0 rounded-[14px] bg-[#ECECEC] px-3 text-sm font-bold text-[#333333] active:scale-[0.98]"
           >
-            回答を見る
+            解答解説を表示
           </button>
           <button
             type="button"
@@ -294,18 +291,11 @@ function AnswerPanel({
     );
   }
 
-  const expanded = state === 'expanded';
-
   return (
-    <section className={`answer-panel ${expanded ? 'answer-panel--expanded' : 'answer-panel--compact'} transition-opacity duration-150 ease-out`}>
+    <section className="answer-panel answer-panel--expanded transition-opacity duration-150 ease-out">
       <div className="mb-2 grid shrink-0 grid-cols-[1fr_auto_1fr] items-center">
         <span />
-        <button
-          type="button"
-          className="h-1.5 w-12 rounded-full bg-[#D0D0D0]"
-          onClick={expanded ? onCompact : onExpand}
-          aria-label={expanded ? '解説を閉じる' : '解説を見る'}
-        />
+        <div className="h-1.5 w-12 rounded-full bg-[#D0D0D0]" aria-hidden="true" />
         <button
           type="button"
           onClick={onMinimize}
@@ -317,18 +307,12 @@ function AnswerPanel({
       <div className="shrink-0">
         <div className={`text-xl font-bold ${isCorrect ? 'text-[#2F8F46]' : 'text-[#C94F4F]'}`}>{isCorrect ? '正解' : '不正解'}</div>
         <p className="mt-2 max-h-[48px] overflow-y-auto text-base font-bold leading-snug text-[#111111] no-scrollbar">正解：{answer}</p>
-        {expanded && sourcePage ? <p className="mt-1 text-xs font-semibold text-[#8A8A8A]">参照ページ：{sourcePage}</p> : null}
+        {sourcePage ? <p className="mt-1 text-xs font-semibold text-[#8A8A8A]">参照ページ：{sourcePage}</p> : null}
       </div>
 
-      {expanded ? (
-        <div className="mt-3 min-h-0 flex-1 overflow-y-auto pr-1 pb-3 text-base font-medium leading-[1.6] text-[#111111] no-scrollbar">
-          {explanation}
-        </div>
-      ) : (
-        <button type="button" onClick={onExpand} className="mt-3 min-h-0 flex-1 rounded-[14px] bg-[#ECECEC] px-3 text-sm font-bold text-[#555555] active:scale-[0.99]">
-          解説を見る
-        </button>
-      )}
+      <div className="answer-panel-body mt-3 flex-1 pr-1 pb-3 text-base font-medium leading-[1.6] text-[#111111] no-scrollbar">
+        {explanation}
+      </div>
 
       <div className="mt-3 grid shrink-0 grid-cols-2 gap-2">
         <button
