@@ -42,7 +42,7 @@
 
 .quiz-list__back-button {
   position: absolute;
-  left: 16px;
+  left: 24px;
   top: 50%;
   z-index: 2;
   transform: translateY(-50%);

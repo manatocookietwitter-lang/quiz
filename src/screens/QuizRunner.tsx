@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { AppData, Question, QuizResult } from '../types';
 import { BackButton } from '../components/BackButton';
 import { Layout } from '../components/Layout';
@@ -147,7 +148,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
           ) : null}
         </main>
 
-        {answered ? (
+        {answered ? createPortal(
           <AnswerPanel
             isCorrect={lastCorrect === true}
             answer={currentQuestion.answerText}
@@ -161,7 +162,8 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
             onMinimize={() => setAnswerSheetState('minimized')}
             onToggleAmbiguous={handleAmbiguous}
             onNext={handleNext}
-          />
+          />,
+          document.body,
         ) : null}
       </div>
     </Layout>
@@ -270,7 +272,7 @@ function AnswerPanel({
 }) {
   if (state === 'minimized') {
     return (
-      <section className="fixed bottom-3 left-4 right-4 z-50 mx-auto flex h-14 max-w-md items-center overflow-hidden rounded-[18px] bg-[#F7F7F7] px-3 shadow-[0_-6px_20px_rgba(0,0,0,0.18)] transition-all duration-200 ease-out">
+      <section className="answer-minimized-bar transition-all duration-200 ease-out">
         <div className="grid w-full grid-cols-[auto_1fr_auto] items-center gap-2">
           <span className={`whitespace-nowrap text-sm font-bold ${isCorrect ? 'text-[#2F8F46]' : 'text-[#C94F4F]'}`}>{isCorrect ? '正解' : '不正解'}</span>
           <button

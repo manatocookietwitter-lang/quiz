@@ -56,32 +56,50 @@ button:disabled {
   scrollbar-width: none;
 }
 
-.quiz-back-button {
+.quiz-back-button.quiz-back-button {
   appearance: none;
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  border: none;
   outline: none;
   width: 44px;
   height: 44px;
   flex: 0 0 44px;
   border-radius: 9999px;
-  background: rgba(255, 255, 255, 0.14);
-  color: #ffffff;
-  backdrop-filter: blur(6px);
+  background: #ffffff;
+  color: #111111;
   font: inherit;
-  font-size: 22px;
+  font-size: 30px;
   font-weight: 700;
   line-height: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), inset 0 0 0 1px rgba(0, 0, 0, 0.08);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.22);
+  opacity: 1;
+  text-shadow: none;
   -webkit-tap-highlight-color: transparent;
 }
 
-.quiz-back-button:active {
-  background: rgba(255, 255, 255, 0.22);
+.quiz-back-button.quiz-back-button:active {
+  background: #ffffff;
   transform: scale(0.96);
+}
+
+.answer-minimized-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 14px;
+  z-index: 9999;
+  width: calc(100% - 32px);
+  max-width: 420px;
+  height: 56px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  border-radius: 18px;
+  background: #f7f7f7;
+  padding: 0 12px;
+  box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.18);
 }
 
 .quiz-screen-transition {
