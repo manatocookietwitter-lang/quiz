@@ -12,7 +12,7 @@ export function BackButton({ onClick, label = '戻る', className = '' }: BackBu
       className={`quiz-back-button ${className}`.trim()}
       aria-label={label}
     >
-      ‹
+      <span className="quiz-back-button-icon" aria-hidden="true">‹</span>
     </button>
   );
 }

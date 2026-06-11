@@ -107,7 +107,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
           percent={progressPercent}
         />
 
-        <main className={`flex min-h-0 flex-1 flex-col ${answered ? 'pb-[26dvh]' : ''}`}>
+        <main className="flex min-h-0 flex-1 flex-col">
           <section className="flex h-[clamp(104px,17dvh,132px)] shrink-0 items-center justify-center bg-[#B89C79] px-5 py-3 text-center text-[#111111]">
             <div className="min-h-0 w-full">
               {currentQuestion.category ? (
@@ -297,7 +297,7 @@ function AnswerPanel({
   const expanded = state === 'expanded';
 
   return (
-    <section className={`fixed inset-x-0 bottom-0 z-40 mx-auto flex max-w-md flex-col overflow-hidden rounded-t-[20px] bg-[#F7F7F7] p-4 shadow-[0_-10px_30px_rgba(0,0,0,0.14)] transition-all duration-200 ease-out ${expanded ? 'h-[52dvh] max-h-[52dvh]' : 'h-[24dvh] max-h-[24dvh]'}`}>
+    <section className={`answer-panel ${expanded ? 'answer-panel--expanded' : 'answer-panel--compact'} transition-opacity duration-150 ease-out`}>
       <div className="mb-2 grid shrink-0 grid-cols-[1fr_auto_1fr] items-center">
         <span />
         <button

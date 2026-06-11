@@ -43,9 +43,8 @@
 .quiz-list__back-button {
   position: absolute;
   left: 24px;
-  top: 50%;
+  top: 28px;
   z-index: 2;
-  transform: translateY(-50%);
 }
 
 .quiz-list__title-wrap {

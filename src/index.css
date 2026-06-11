@@ -62,6 +62,8 @@ button:disabled {
   outline: none;
   width: 44px;
   height: 44px;
+  min-width: 44px;
+  min-height: 44px;
   flex: 0 0 44px;
   border-radius: 9999px;
   background: #ffffff;
@@ -70,29 +72,77 @@ button:disabled {
   font-size: 30px;
   font-weight: 700;
   line-height: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  margin: 0;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.22);
   opacity: 1;
   text-shadow: none;
+  transform: none;
+  transition: background-color 0.15s ease, opacity 0.15s ease;
   -webkit-tap-highlight-color: transparent;
 }
 
 .quiz-back-button.quiz-back-button:active {
   background: #ffffff;
-  transform: scale(0.96);
+  transform: none;
+  margin-top: 0;
+  padding-top: 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.22);
+}
+
+.quiz-back-button.quiz-back-button:focus {
+  outline: none;
+}
+
+.quiz-back-button-icon {
+  display: block;
+  line-height: 1;
+  transform: translateY(-1px);
+  pointer-events: none;
+}
+
+.answer-panel {
+  position: fixed;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+  z-index: 99999;
+  width: calc(100% - 24px);
+  max-width: 430px;
+  transform: translateX(-50%) translateY(0);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 20px;
+  background: #f7f7f7;
+  padding: 16px;
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.14);
+  opacity: 1;
+}
+
+.answer-panel--compact {
+  min-height: 180px;
+  height: min(32dvh, 240px);
+  max-height: 32dvh;
+}
+
+.answer-panel--expanded {
+  height: min(56dvh, 520px);
+  max-height: min(56dvh, 520px);
 }
 
 .answer-minimized-bar {
   position: fixed;
   left: 50%;
-  bottom: 14px;
-  z-index: 9999;
-  width: calc(100% - 32px);
-  max-width: 420px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+  z-index: 99999;
+  width: calc(100% - 24px);
+  max-width: 430px;
   height: 56px;
   transform: translateX(-50%);
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   overflow: hidden;
@@ -100,6 +150,14 @@ button:disabled {
   background: #f7f7f7;
   padding: 0 12px;
   box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.18);
+}
+
+@media (max-height: 620px) {
+  .answer-panel--compact {
+    min-height: 164px;
+    height: 30dvh;
+    max-height: 30dvh;
+  }
 }
 
 .quiz-screen-transition {
