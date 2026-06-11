@@ -4,6 +4,8 @@ import { BackButton } from '../components/BackButton';
 import { Layout } from '../components/Layout';
 import { getProgress, makeResult } from '../utils/quiz';
 
+type AnswerSheetState = 'compact' | 'expanded' | 'collapsed';
+
 interface QuizRunnerProps {
   data: AppData;
   title: string;
@@ -25,7 +27,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
   const [correctCount, setCorrectCount] = useState(0);
   const [wrongCount, setWrongCount] = useState(0);
   const [addedReviewCount, setAddedReviewCount] = useState(0);
-  const [answerExpanded, setAnswerExpanded] = useState(false);
+  const [answerSheetState, setAnswerSheetState] = useState<AnswerSheetState>('compact');
 
   const currentQuestion = questions[currentIndex];
   const progress = currentQuestion ? getProgress(data, currentQuestion.id) : null;
@@ -73,7 +75,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
     const result = onAnswer(currentQuestion, index, mode === 'review');
     setSelectedIndex(index);
     setLastCorrect(result.isCorrect);
-    setAnswerExpanded(false);
+    setAnswerSheetState('compact');
     setCorrectCount((value) => value + (result.isCorrect ? 1 : 0));
     setWrongCount((value) => value + (result.isCorrect ? 0 : 1));
     setAddedReviewCount((value) => value + (result.addedToReview ? 1 : 0));
@@ -87,7 +89,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
     setCurrentIndex((value) => value + 1);
     setSelectedIndex(null);
     setLastCorrect(null);
-    setAnswerExpanded(false);
+    setAnswerSheetState('compact');
   };
 
   const handleAmbiguous = () => {
@@ -104,7 +106,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
           percent={progressPercent}
         />
 
-        <main className={`flex min-h-0 flex-1 flex-col ${answered ? (answerExpanded ? 'pb-[56dvh]' : 'pb-[26dvh]') : ''}`}>
+        <main className={`flex min-h-0 flex-1 flex-col ${answered ? getAnswerSheetPadding(answerSheetState) : ''}`}>
           <section className="flex h-[clamp(104px,17dvh,132px)] shrink-0 items-center justify-center bg-[#B89C79] px-5 py-3 text-center text-[#111111]">
             <div className="min-h-0 w-full">
               {currentQuestion.category ? (
@@ -153,8 +155,10 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
             sourcePage={currentQuestion.sourcePage}
             isAmbiguous={progress?.isAmbiguous ?? false}
             isLast={currentIndex + 1 >= questions.length}
-            expanded={answerExpanded}
-            onToggleExpanded={() => setAnswerExpanded((value) => !value)}
+            state={answerSheetState}
+            onExpand={() => setAnswerSheetState('expanded')}
+            onCompact={() => setAnswerSheetState('compact')}
+            onCollapse={() => setAnswerSheetState('collapsed')}
             onToggleAmbiguous={handleAmbiguous}
             onNext={handleNext}
           />
@@ -162,6 +166,12 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
       </div>
     </Layout>
   );
+}
+
+function getAnswerSheetPadding(state: AnswerSheetState) {
+  if (state === 'expanded') return 'pb-[58dvh]';
+  if (state === 'collapsed') return 'pb-[92px]';
+  return 'pb-[30dvh]';
 }
 
 function QuizHeader({ title, current, total, onBack }: { title: string; current?: number; total?: number; onBack: () => void }) {
@@ -244,8 +254,10 @@ function AnswerPanel({
   sourcePage,
   isAmbiguous,
   isLast,
-  expanded,
-  onToggleExpanded,
+  state,
+  onExpand,
+  onCompact,
+  onCollapse,
   onToggleAmbiguous,
   onNext,
 }: {
@@ -255,17 +267,60 @@ function AnswerPanel({
   sourcePage: string;
   isAmbiguous: boolean;
   isLast: boolean;
-  expanded: boolean;
-  onToggleExpanded: () => void;
+  state: AnswerSheetState;
+  onExpand: () => void;
+  onCompact: () => void;
+  onCollapse: () => void;
   onToggleAmbiguous: () => void;
   onNext: () => void;
 }) {
+  if (state === 'collapsed') {
+    return (
+      <section className="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-md rounded-t-[18px] bg-[#F7F7F7] px-4 pb-[max(12px,env(safe-area-inset-bottom))] pt-3 shadow-[0_-10px_30px_rgba(0,0,0,0.14)] transition-all duration-200 ease-out">
+        <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2">
+          <span className={`text-base font-bold ${isCorrect ? 'text-[#2F8F46]' : 'text-[#C94F4F]'}`}>{isCorrect ? '正解' : '不正解'}</span>
+          <button
+            type="button"
+            onClick={onCompact}
+            className="h-11 rounded-[14px] bg-[#ECECEC] px-3 text-sm font-bold text-[#333333] active:scale-[0.98]"
+          >
+            回答を見る
+          </button>
+          <button
+            type="button"
+            onClick={onNext}
+            className="h-11 rounded-[14px] bg-[#5FA9DD] px-4 text-sm font-bold text-white active:scale-[0.98]"
+          >
+            {isLast ? '結果へ' : '次へ'}
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  const expanded = state === 'expanded';
+
   return (
-    <section className={`fixed inset-x-0 bottom-0 z-40 mx-auto flex max-w-md flex-col overflow-hidden rounded-t-[20px] bg-[#F7F7F7] p-4 shadow-[0_-10px_30px_rgba(0,0,0,0.12)] ${expanded ? 'h-[56dvh] max-h-[56dvh]' : 'h-[26dvh] max-h-[26dvh]'}`}>
-      <button type="button" className="mx-auto mb-2 h-1.5 w-12 rounded-full bg-[#D0D0D0]" onClick={onToggleExpanded} aria-label={expanded ? '解説を閉じる' : '解説を見る'} />
+    <section className={`fixed inset-x-0 bottom-0 z-40 mx-auto flex max-w-md flex-col overflow-hidden rounded-t-[20px] bg-[#F7F7F7] p-4 shadow-[0_-10px_30px_rgba(0,0,0,0.14)] transition-all duration-200 ease-out ${expanded ? 'h-[56dvh] max-h-[56dvh]' : 'h-[30dvh] max-h-[30dvh]'}`}>
+      <div className="mb-2 grid shrink-0 grid-cols-[1fr_auto_1fr] items-center">
+        <span />
+        <button
+          type="button"
+          className="h-1.5 w-12 rounded-full bg-[#D0D0D0]"
+          onClick={expanded ? onCompact : onExpand}
+          aria-label={expanded ? '解説を閉じる' : '解説を見る'}
+        />
+        <button
+          type="button"
+          onClick={onCollapse}
+          className="ml-auto h-8 rounded-full bg-[#ECECEC] px-3 text-xs font-bold text-[#555555] active:scale-[0.98]"
+        >
+          しまう
+        </button>
+      </div>
       <div className="shrink-0">
         <div className={`text-xl font-bold ${isCorrect ? 'text-[#2F8F46]' : 'text-[#C94F4F]'}`}>{isCorrect ? '正解' : '不正解'}</div>
-        <p className="mt-2 text-base font-bold leading-snug text-[#111111]">正解：{answer}</p>
+        <p className="mt-2 max-h-[48px] overflow-y-auto text-base font-bold leading-snug text-[#111111] no-scrollbar">正解：{answer}</p>
         {expanded && sourcePage ? <p className="mt-1 text-xs font-semibold text-[#8A8A8A]">参照ページ：{sourcePage}</p> : null}
       </div>
 
@@ -274,7 +329,7 @@ function AnswerPanel({
           {explanation}
         </div>
       ) : (
-        <button type="button" onClick={onToggleExpanded} className="mt-3 min-h-0 flex-1 rounded-[14px] bg-[#ECECEC] px-3 text-sm font-bold text-[#555555] active:scale-[0.99]">
+        <button type="button" onClick={onExpand} className="mt-3 min-h-0 flex-1 rounded-[14px] bg-[#ECECEC] px-3 text-sm font-bold text-[#555555] active:scale-[0.99]">
           解説を見る
         </button>
       )}
