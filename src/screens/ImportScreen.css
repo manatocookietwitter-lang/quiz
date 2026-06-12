@@ -80,14 +80,16 @@
 }
 
 .quiz-import__title-card,
+.quiz-import__tool-card,
 .quiz-import__file-card,
 .quiz-import__json-card {
   margin: 16px;
-  padding: 16px;
-  border-radius: 16px;
+  padding: 18px;
+  border-radius: 20px;
   background: #202020;
 }
 
+.quiz-import__tool-card,
 .quiz-import__file-card {
   margin-top: 0;
 }
@@ -102,6 +104,35 @@
   color: #bdbdbd;
   font-size: 13px;
   font-weight: 700;
+}
+
+.quiz-import__card-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.quiz-import__card-heading span {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border-radius: 999px;
+  background: #12bfc0;
+  display: grid;
+  place-items: center;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.quiz-import__card-heading h2 {
+  margin: 0;
+  color: #e5e5e5;
+  font-size: 17px;
+  font-weight: 900;
+  line-height: 1.2;
 }
 
 .quiz-import__input {
@@ -123,18 +154,11 @@
   color: #777777;
 }
 
-.quiz-import__utility-actions {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 10px;
-  margin: 0 16px 14px;
-}
-
 .quiz-import__template-button,
 .quiz-import__clipboard-button {
   width: 100%;
-  height: 48px;
-  border-radius: 14px;
+  min-height: 50px;
+  border-radius: 16px;
   font-size: 15px;
   font-weight: 700;
 }
@@ -148,6 +172,7 @@
   border: 1px solid #3a3a3a;
   background: #2b2b2b;
   color: #ffffff;
+  margin-bottom: 14px;
 }
 
 .quiz-import__notice {
@@ -158,6 +183,37 @@
   color: #d8ffff;
   font-size: 13px;
   font-weight: 800;
+}
+
+.quiz-import__progress {
+  min-height: 46px;
+  margin: 0 16px 12px;
+  border-radius: 14px;
+  background: rgba(18, 191, 192, 0.14);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  color: #d8ffff;
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.4;
+}
+
+.quiz-import__progress span {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  border-radius: 999px;
+  border: 2px solid rgba(216, 255, 255, 0.32);
+  border-top-color: #12bfc0;
+  animation: quizImportSpin 0.8s linear infinite;
+}
+
+@keyframes quizImportSpin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .quiz-import__file-input {
@@ -258,8 +314,9 @@
 
 .quiz-import__textarea {
   width: 100%;
-  height: 40dvh;
+  height: 38dvh;
   min-height: 220px;
+  max-height: 420px;
   resize: none;
   overflow-y: auto;
   border: 1px solid #333333;

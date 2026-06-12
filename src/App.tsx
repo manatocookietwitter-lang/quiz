@@ -270,6 +270,7 @@ export default function App() {
         folderName={folder?.name ?? 'フォルダ'}
         onBack={() => goBackTo(screen.backScreen ?? { name: 'folder', folderId: screen.folderId })}
         onImport={(titleOverride, jsonText, stayOnScreen) => handleImportProblemSet(screen.folderId, titleOverride, jsonText, stayOnScreen)}
+        onImportComplete={() => replaceScreen({ name: 'folder', folderId: screen.folderId })}
       />
     );
   } else if (screen.name === 'quiz') {

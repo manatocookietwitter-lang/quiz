@@ -8,6 +8,7 @@ interface ImportScreenProps {
   folderName: string;
   onBack: () => void;
   onImport: (titleOverride: string, jsonText: string, stayOnScreen?: boolean) => string | null;
+  onImportComplete: () => void;
 }
 
 interface ImportResult {
@@ -23,7 +24,7 @@ interface ImportFileItem {
   readError?: string;
 }
 
-export function ImportScreen({ folderName, onBack, onImport }: ImportScreenProps) {
+export function ImportScreen({ folderName, onBack, onImport, onImportComplete }: ImportScreenProps) {
   const [title, setTitle] = useState('');
   const [titleEdited, setTitleEdited] = useState(false);
   const [jsonText, setJsonText] = useState('');
@@ -33,6 +34,7 @@ export function ImportScreen({ folderName, onBack, onImport }: ImportScreenProps
   const [isImporting, setIsImporting] = useState(false);
   const [isPreparingFiles, setIsPreparingFiles] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [importProgress, setImportProgress] = useState('');
   const [notice, setNotice] = useState('');
 
   const handleCopyTemplate = async () => {
@@ -115,22 +117,39 @@ export function ImportScreen({ folderName, onBack, onImport }: ImportScreenProps
   const handleImport = async () => {
     setError('');
     setImportResult(null);
+    setNotice('');
 
     const hasFiles = importFiles.length > 0;
     const hasPastedJson = jsonText.trim().length > 0;
+    const totalItems = importFiles.length + (hasPastedJson ? 1 : 0);
+
+    setIsImporting(true);
+    setImportProgress(hasFiles ? `取り込み中... 0 / ${totalItems}` : '取り込み中...');
+    await yieldToUi();
 
     if (!hasFiles) {
       const pastedTitle = title.trim() || extractSetTitle(jsonText) || '無題の問題セット';
-      const result = onImport(pastedTitle, jsonText);
-      if (result) setError(result);
+      const result = onImport(pastedTitle, jsonText, true);
+      if (result) {
+        setError(result);
+        setIsImporting(false);
+        setImportProgress('');
+        return;
+      }
+      setImportResult({ successCount: 1, failures: [] });
+      setImportProgress('取り込み完了');
+      setNotice('取り込み完了。問題セット一覧へ戻ります');
+      window.setTimeout(onImportComplete, 700);
       return;
     }
 
-    setIsImporting(true);
     let successCount = 0;
     const failures: ImportResult['failures'] = [];
+    let processedCount = 0;
 
     if (hasPastedJson) {
+      setImportProgress(`貼り付けJSONを取り込み中... ${processedCount + 1} / ${totalItems}`);
+      await yieldToUi();
       const pastedTitle = title.trim() || extractSetTitle(jsonText) || '無題の問題セット';
       const result = onImport(pastedTitle, jsonText, true);
       if (result) {
@@ -138,16 +157,22 @@ export function ImportScreen({ folderName, onBack, onImport }: ImportScreenProps
       } else {
         successCount += 1;
       }
+      processedCount += 1;
+      setImportProgress(`取り込み中... ${processedCount} / ${totalItems}`);
     }
 
     for (const file of importFiles) {
+      setImportProgress(`${file.fileName} を取り込み中... ${processedCount + 1} / ${totalItems}`);
+      await yieldToUi();
       if (file.readError) {
         failures.push({ fileName: file.fileName, error: file.readError });
+        processedCount += 1;
         continue;
       }
       const fileTitle = file.title.trim();
       if (!fileTitle) {
         failures.push({ fileName: file.fileName, error: '問題セット名を入力してください。' });
+        processedCount += 1;
         continue;
       }
       const result = onImport(fileTitle, file.text, true);
@@ -156,10 +181,17 @@ export function ImportScreen({ folderName, onBack, onImport }: ImportScreenProps
       } else {
         successCount += 1;
       }
+      processedCount += 1;
+      setImportProgress(`取り込み中... ${processedCount} / ${totalItems}`);
     }
 
     setImportResult({ successCount, failures });
     setIsImporting(false);
+    setImportProgress('');
+    if (successCount > 0 && failures.length === 0) {
+      setNotice('取り込み完了。問題セット一覧へ戻ります');
+      window.setTimeout(onImportComplete, 700);
+    }
   };
 
   return (
@@ -176,6 +208,10 @@ export function ImportScreen({ folderName, onBack, onImport }: ImportScreenProps
 
         <main className="quiz-import__content">
           <section className="quiz-import__title-card">
+            <div className="quiz-import__card-heading">
+              <span>1</span>
+              <h2>問題セット名</h2>
+            </div>
             <label htmlFor="setTitle" className="quiz-import__label">問題セット名</label>
             <input
               id="setTitle"
@@ -186,18 +222,24 @@ export function ImportScreen({ folderName, onBack, onImport }: ImportScreenProps
             />
           </section>
 
-          <div className="quiz-import__utility-actions">
+          <section className="quiz-import__tool-card">
+            <div className="quiz-import__card-heading">
+              <span>2</span>
+              <h2>ChatGPTで作る</h2>
+            </div>
             <button type="button" onClick={handleCopyTemplate} className="quiz-import__template-button">
               {copied ? 'コピーしました' : 'ChatGPTテンプレートをコピー'}
             </button>
+          </section>
+
+          <section className="quiz-import__file-card">
+            <div className="quiz-import__card-heading">
+              <span>3</span>
+              <h2>JSONを読み込む</h2>
+            </div>
             <button type="button" onClick={handleReadClipboard} className="quiz-import__clipboard-button">
               クリップボードから読み込む
             </button>
-          </div>
-
-          {notice ? <div className="quiz-import__notice">{notice}</div> : null}
-
-          <section className="quiz-import__file-card">
             <label htmlFor="jsonFiles" className="quiz-import__label">JSONファイル選択</label>
             <input
               id="jsonFiles"
@@ -228,15 +270,22 @@ export function ImportScreen({ folderName, onBack, onImport }: ImportScreenProps
           </section>
 
           <section className="quiz-import__json-card">
+            <div className="quiz-import__card-heading">
+              <span>4</span>
+              <h2>JSON貼り付け欄</h2>
+            </div>
             <label htmlFor="jsonText" className="quiz-import__label">JSON貼り付け欄</label>
             <textarea
               id="jsonText"
               value={jsonText}
               onChange={(event) => handleJsonTextChange(event.target.value)}
-              placeholder='{ "setTitle": "問題セット名", "source": "資料名", "questions": [...] }'
+              placeholder="ここにJSONを貼り付けるか、クリップボード/JSONファイルから読み込んでください"
               className="quiz-import__textarea"
             />
           </section>
+
+          {notice ? <div className="quiz-import__notice">{notice}</div> : null}
+          {importProgress ? <div className="quiz-import__progress"><span />{importProgress}</div> : null}
 
           {importResult ? (
             <div className={importResult.failures.length > 0 ? 'quiz-import__result quiz-import__result--mixed' : 'quiz-import__result'}>
@@ -281,4 +330,10 @@ function extractSetTitle(text: string) {
 
 function getFileBaseName(fileName: string) {
   return fileName.replace(/\.[^.]+$/u, '').trim();
+}
+
+function yieldToUi() {
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, 0);
+  });
 }
