@@ -2,13 +2,20 @@ import { useMemo, useState } from 'react';
 import type { AppData, ProblemSortMode, Question } from '../types';
 import { BackButton } from '../components/BackButton';
 import { Layout } from '../components/Layout';
-import { getProgress, getQuestionsBySet, getVirtualLevel, groupReviewQuestionsByLevel, shuffleArray } from '../utils/quiz';
+import {
+  getProgress,
+  getQuestionsBySet,
+  getVirtualLevel,
+  groupReviewQuestionsByLevel,
+  matchesReviewLevel,
+  shuffleArray,
+  type ReviewLevelFilter,
+} from '../utils/quiz';
 import './ProblemSetDetailScreen.css';
 
 type CategoryFilter = 'all' | string;
-export type ReviewFilter = 'all' | 'level0' | 'level1' | 'level2' | 'level3' | 'ambiguous';
 
-const REVIEW_FILTERS: { value: ReviewFilter; label: string }[] = [
+const REVIEW_FILTERS: { value: ReviewLevelFilter; label: string }[] = [
   { value: 'all', label: '全Level' },
   { value: 'level0', label: 'Level 0' },
   { value: 'level1', label: 'Level 1' },
@@ -46,7 +53,7 @@ export function ProblemSetDetailScreen({
   const problemSet = data.problemSets.find((set) => set.id === setId);
   const questions = useMemo(() => getQuestionsBySet(data, setId), [data, setId]);
   const [startCategory, setStartCategory] = useState<CategoryFilter>('all');
-  const [reviewFilter, setReviewFilter] = useState<ReviewFilter>('all');
+  const [reviewFilter, setReviewFilter] = useState<ReviewLevelFilter>('all');
 
   const categories = useMemo(() => buildProblemCategories(questions), [questions]);
   const startQuestions = useMemo(() => filterQuestionsByCategory(questions, startCategory), [questions, startCategory]);
@@ -90,8 +97,11 @@ export function ProblemSetDetailScreen({
   };
 
   const startReview = () => {
+    const categoryFilteredQuestions = filterQuestionsByCategory(questions, startCategory);
+    const levelFilteredQuestions = buildReviewQuestions(data, categoryFilteredQuestions, reviewFilter);
+
     onStartSession({
-      questions: reviewQuestions,
+      questions: levelFilteredQuestions,
       mode: 'review',
       title: problemSet.title,
       subtitle: `${selectedLabel} / ${reviewFilterLabel}`,
@@ -214,9 +224,9 @@ export function sortQuestionsForProblemList(data: AppData, questions: Question[]
   return [...questions].sort((a, b) => getLevelSortScore(data, a.id) - getLevelSortScore(data, b.id));
 }
 
-export function buildReviewQuestions(data: AppData, questions: Question[], filter: ReviewFilter = 'all') {
+export function buildReviewQuestions(data: AppData, questions: Question[], filter: ReviewLevelFilter = 'all') {
   if (filter !== 'all') {
-    const filtered = questions.filter((question) => matchesReviewFilter(getProgress(data, question.id), filter));
+    const filtered = questions.filter((question) => matchesReviewLevel(getProgress(data, question.id), filter));
     return shuffleArray(filtered);
   }
 
@@ -228,16 +238,6 @@ export function buildReviewQuestions(data: AppData, questions: Question[], filte
     ...shuffleArray(groups.level2),
     ...shuffleArray(groups.level3),
   ];
-}
-
-function matchesReviewFilter(progress: ReturnType<typeof getProgress>, filter: ReviewFilter) {
-  if (progress.isGraduated) return false;
-  if (filter === 'ambiguous') return progress.isAmbiguous === true;
-  if (filter === 'level0') return progress.answeredCount === 0;
-  if (filter === 'level1') return progress.answeredCount > 0 && progress.reviewLevel === 1;
-  if (filter === 'level2') return progress.answeredCount > 0 && progress.reviewLevel === 2;
-  if (filter === 'level3') return progress.answeredCount > 0 && progress.reviewLevel === 3;
-  return true;
 }
 
 export function buildProblemCategories(questions: Question[]) {
@@ -258,7 +258,7 @@ function getCategoryLabel(category: string) {
   return category === 'all' || category === 'すべて' ? 'すべて' : category;
 }
 
-function getReviewFilterLabel(filter: ReviewFilter) {
+function getReviewFilterLabel(filter: ReviewLevelFilter) {
   return REVIEW_FILTERS.find((item) => item.value === filter)?.label ?? '全Level';
 }
 

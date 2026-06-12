@@ -2,6 +2,9 @@ import type { AppData, Folder, ProblemSet, Question, QuestionProgress, QuizResul
 import { createId } from './id';
 import { isToday, nowIso } from './date';
 
+export type ReviewLevelFilter = 'all' | 'level0' | 'level1' | 'level2' | 'level3' | 'ambiguous';
+export type EffectiveReviewLevel = 0 | 1 | 2 | 3 | 'graduated';
+
 export function createInitialProgress(questionId: string): QuestionProgress {
   return {
     questionId,
@@ -29,6 +32,24 @@ export function getProgress(data: AppData, questionId: string): QuestionProgress
 export function getVirtualLevel(progress: QuestionProgress | undefined): 0 | 1 | 2 | 3 {
   if (!progress || progress.answeredCount === 0) return 0;
   return progress.reviewLevel ?? 1;
+}
+
+export function getEffectiveLevel(progress: QuestionProgress | undefined): EffectiveReviewLevel {
+  if (!progress || progress.answeredCount === 0) return 0;
+  if (progress.isGraduated) return 'graduated';
+  return progress.reviewLevel ?? 1;
+}
+
+export function matchesReviewLevel(progress: QuestionProgress | undefined, selectedLevel: ReviewLevelFilter): boolean {
+  if (selectedLevel === 'all') return progress?.isGraduated !== true;
+  if (selectedLevel === 'level0') return !progress || progress.answeredCount === 0;
+  if (!progress) return false;
+  if (selectedLevel === 'level1') return progress.answeredCount > 0 && progress.reviewLevel === 1 && progress.isGraduated !== true;
+  if (selectedLevel === 'level2') return progress.answeredCount > 0 && progress.reviewLevel === 2 && progress.isGraduated !== true;
+  if (selectedLevel === 'level3') return progress.answeredCount > 0 && progress.reviewLevel === 3 && progress.isGraduated !== true;
+  if (selectedLevel === 'ambiguous') return progress?.isAmbiguous === true && progress.isGraduated !== true;
+
+  return true;
 }
 
 export function getProgressLevelLabel(progress: QuestionProgress | undefined): string {
@@ -250,16 +271,16 @@ export function groupReviewQuestionsByLevel(data: AppData, questions: Question[]
 
   questions.forEach((question) => {
     const progress = getProgress(data, question.id);
-    if (progress.isGraduated) return;
+    if (!matchesReviewLevel(progress, 'all')) return;
     if (progress.isAmbiguous) {
       groups.ambiguous.push(question);
       return;
     }
-    const level = getVirtualLevel(progress);
+    const level = getEffectiveLevel(progress);
     if (level === 0) groups.level0.push(question);
-    if (level === 1 && progress.isReview) groups.level1.push(question);
-    if (level === 2 && progress.isReview) groups.level2.push(question);
-    if (level === 3 && progress.isReview) groups.level3.push(question);
+    if (level === 1) groups.level1.push(question);
+    if (level === 2) groups.level2.push(question);
+    if (level === 3) groups.level3.push(question);
   });
 
   return groups;

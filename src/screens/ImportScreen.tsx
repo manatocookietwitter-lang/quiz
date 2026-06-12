@@ -19,7 +19,10 @@ interface ImportResult {
 interface ImportFileItem {
   id: string;
   fileName: string;
+  fallbackTitle: string;
+  detectedSetTitle: string;
   title: string;
+  titleEdited: boolean;
   text: string;
   readError?: string;
 }
@@ -78,14 +81,20 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
         return {
           id: `${file.name}_${file.lastModified}_${file.size}`,
           fileName: file.name,
+          fallbackTitle: fallbackTitle || '無題の問題セット',
+          detectedSetTitle: extractSetTitle(text),
           title: extractSetTitle(text) || fallbackTitle || '無題の問題セット',
+          titleEdited: false,
           text: normalizeJsonText(text),
         };
       } catch (readError) {
         return {
           id: `${file.name}_${file.lastModified}_${file.size}`,
           fileName: file.name,
+          fallbackTitle: fallbackTitle || '無題の問題セット',
+          detectedSetTitle: '',
           title: fallbackTitle || '無題の問題セット',
+          titleEdited: false,
           text: '',
           readError: readError instanceof Error ? readError.message : 'ファイルの読み込みに失敗しました。',
         };
@@ -111,7 +120,7 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
   };
 
   const handleFileTitleChange = (id: string, value: string) => {
-    setImportFiles((items) => items.map((item) => (item.id === id ? { ...item, title: value } : item)));
+    setImportFiles((items) => items.map((item) => (item.id === id ? { ...item, title: value, titleEdited: true } : item)));
   };
 
   const handleImport = async () => {
@@ -171,7 +180,7 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
         processedCount += 1;
         continue;
       }
-      const fileTitle = file.title.trim();
+      const fileTitle = getFinalFileTitle(file);
       if (!fileTitle) {
         failures.push({ fileName: file.fileName, error: '問題セット名を入力してください。' });
         processedCount += 1;
@@ -325,13 +334,26 @@ function extractSetTitle(text: string) {
   return readSetTitle(text).title;
 }
 
+function getFinalFileTitle(file: ImportFileItem) {
+  if (file.titleEdited) return file.title.trim();
+  return (
+    extractSetTitle(file.text) ||
+    file.detectedSetTitle.trim() ||
+    file.title.trim() ||
+    file.fallbackTitle.trim() ||
+    '無題の問題セット'
+  );
+}
+
 function readSetTitle(text: string): { parsed: boolean; title: string } {
   const normalizedText = normalizeJsonText(text);
   try {
-    const parsed = JSON.parse(normalizedText) as { setTitle?: unknown };
+    const parsed = JSON.parse(normalizedText) as { setTitle?: unknown; title?: unknown };
+    const setTitle = typeof parsed.setTitle === 'string' && parsed.setTitle.trim() ? parsed.setTitle.trim() : '';
+    const title = typeof parsed.title === 'string' && parsed.title.trim() ? parsed.title.trim() : '';
     return {
       parsed: true,
-      title: typeof parsed.setTitle === 'string' && parsed.setTitle.trim() ? parsed.setTitle.trim() : '',
+      title: setTitle || title,
     };
   } catch {
     const title = extractSetTitleByRegex(normalizedText);
@@ -348,7 +370,7 @@ function normalizeJsonText(text: string) {
 }
 
 function extractSetTitleByRegex(text: string) {
-  const match = text.match(/"setTitle"\s*:\s*"((?:\\.|[^"\\])*)"/u);
+  const match = text.match(/"setTitle"\s*:\s*"((?:\\.|[^"\\])*)"/u) ?? text.match(/"title"\s*:\s*"((?:\\.|[^"\\])*)"/u);
   if (!match) return '';
   try {
     return JSON.parse(`"${match[1]}"`).trim();
