@@ -46,6 +46,7 @@ export interface QuestionProgress {
   correctCount: number;
   wrongCount: number;
   lastSelectedIndex: number | null;
+  lastAnswerCorrect?: boolean | null;
   lastAnsweredAt: string | null;
   isReview: boolean;
   isAmbiguous: boolean;

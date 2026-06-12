@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import type { AppData, Question, QuizResult } from '../types';
 import { BackButton } from '../components/BackButton';
 import { Layout } from '../components/Layout';
-import { getProgress, makeResult } from '../utils/quiz';
+import { getProgress, getVirtualLevel, makeResult } from '../utils/quiz';
 
 type AnswerSheetState = 'expanded' | 'minimized';
 
@@ -16,7 +16,7 @@ interface QuizRunnerProps {
   setId?: string;
   initialIndex?: number;
   onBack: () => void;
-  onAnswer: (question: Question, selectedIndex: number, isReviewMode: boolean) => { isCorrect: boolean; addedToReview: boolean };
+  onAnswer: (question: Question, selectedIndex: number, isReviewMode: boolean) => { isCorrect: boolean; addedToReview: boolean; levelLabel?: string };
   onToggleAmbiguous: (questionId: string) => void;
   onFinish: (result: QuizResult) => void;
 }
@@ -29,6 +29,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
   const [wrongCount, setWrongCount] = useState(0);
   const [addedReviewCount, setAddedReviewCount] = useState(0);
   const [answerSheetState, setAnswerSheetState] = useState<AnswerSheetState>('expanded');
+  const [savedLevelLabel, setSavedLevelLabel] = useState('');
 
   const currentQuestion = questions[currentIndex];
   const progress = currentQuestion ? getProgress(data, currentQuestion.id) : null;
@@ -77,6 +78,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
     setSelectedIndex(index);
     setLastCorrect(result.isCorrect);
     setAnswerSheetState('expanded');
+    setSavedLevelLabel(result.levelLabel ? `保存済み・${result.levelLabel}` : '保存済み');
     setCorrectCount((value) => value + (result.isCorrect ? 1 : 0));
     setWrongCount((value) => value + (result.isCorrect ? 0 : 1));
     setAddedReviewCount((value) => value + (result.addedToReview ? 1 : 0));
@@ -91,6 +93,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
     setSelectedIndex(null);
     setLastCorrect(null);
     setAnswerSheetState('expanded');
+    setSavedLevelLabel('');
   };
 
   const handleAmbiguous = () => {
@@ -103,7 +106,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
         <QuizHeader title={title} current={currentIndex + 1} total={questions.length} onBack={onBack} />
 
         <ProgressBand
-          label={mode === 'review' ? `復習 Level ${progress?.reviewLevel ?? 1}` : subtitle ?? '登録順'}
+          label={mode === 'review' ? `復習 Level ${getVirtualLevel(progress ?? undefined)}` : subtitle ?? '登録順'}
           percent={progressPercent}
         />
 
@@ -154,6 +157,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
             answer={currentQuestion.answerText}
             explanation={currentQuestion.explanation}
             sourcePage={currentQuestion.sourcePage}
+            savedLevelLabel={savedLevelLabel}
             isAmbiguous={progress?.isAmbiguous ?? false}
             isLast={currentIndex + 1 >= questions.length}
             state={answerSheetState}
@@ -247,6 +251,7 @@ function AnswerPanel({
   answer,
   explanation,
   sourcePage,
+  savedLevelLabel,
   isAmbiguous,
   isLast,
   state,
@@ -259,6 +264,7 @@ function AnswerPanel({
   answer: string;
   explanation: string;
   sourcePage: string;
+  savedLevelLabel: string;
   isAmbiguous: boolean;
   isLast: boolean;
   state: AnswerSheetState;
@@ -306,6 +312,7 @@ function AnswerPanel({
       </div>
       <div className="shrink-0">
         <div className={`text-xl font-bold ${isCorrect ? 'text-[#2F8F46]' : 'text-[#C94F4F]'}`}>{isCorrect ? '正解' : '不正解'}</div>
+        {savedLevelLabel ? <p className="mt-1 text-xs font-bold text-[#5FA9DD]">{savedLevelLabel}</p> : null}
         <p className="mt-2 max-h-[48px] overflow-y-auto text-base font-bold leading-snug text-[#111111] no-scrollbar">正解：{answer}</p>
         {sourcePage ? <p className="mt-1 text-xs font-semibold text-[#8A8A8A]">参照ページ：{sourcePage}</p> : null}
       </div>

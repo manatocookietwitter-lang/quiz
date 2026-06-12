@@ -9,6 +9,7 @@ export function createInitialProgress(questionId: string): QuestionProgress {
     correctCount: 0,
     wrongCount: 0,
     lastSelectedIndex: null,
+    lastAnswerCorrect: null,
     lastAnsweredAt: null,
     isReview: false,
     isAmbiguous: false,
@@ -23,6 +24,16 @@ export function findProgress(data: AppData, questionId: string): QuestionProgres
 
 export function getProgress(data: AppData, questionId: string): QuestionProgress {
   return findProgress(data, questionId) ?? createInitialProgress(questionId);
+}
+
+export function getVirtualLevel(progress: QuestionProgress | undefined): 0 | 1 | 2 | 3 {
+  if (!progress || progress.answeredCount === 0) return 0;
+  return progress.reviewLevel ?? 1;
+}
+
+export function getProgressLevelLabel(progress: QuestionProgress | undefined): string {
+  if (progress?.isGraduated) return '卒業';
+  return `Level ${getVirtualLevel(progress)}`;
 }
 
 export function calculateStats(data: AppData): StudyStats {
@@ -50,22 +61,13 @@ export function getProblemSetsByFolder(data: AppData, folderId: string): Problem
 }
 
 export function getReviewQuestions(data: AppData): Question[] {
-  const reviewProgress = data.progress.filter((progress) => progress.isReview && !progress.isGraduated);
-  const questionMap = new Map(data.questions.map((question) => [question.id, question]));
-
-  const byLevel: Record<1 | 2 | 3, Question[]> = { 1: [], 2: [], 3: [] };
-  reviewProgress.forEach((progress) => {
-    const question = questionMap.get(progress.questionId);
-    const level = progress.reviewLevel ?? 1;
-    if (question && (level === 1 || level === 2 || level === 3)) {
-      byLevel[level].push(question);
-    }
-  });
-
+  const groups = groupReviewQuestionsByLevel(data, data.questions);
   return [
-    ...shuffleArray(byLevel[1]),
-    ...shuffleArray(byLevel[2]),
-    ...shuffleArray(byLevel[3]),
+    ...shuffleArray(groups.ambiguous),
+    ...shuffleArray(groups.level0),
+    ...shuffleArray(groups.level1),
+    ...shuffleArray(groups.level2),
+    ...shuffleArray(groups.level3),
   ];
 }
 
@@ -119,13 +121,15 @@ export function recordAnswer(
   question: Question,
   selectedIndex: number,
   isReviewMode: boolean,
-): { data: AppData; isCorrect: boolean; addedToReview: boolean } {
+): { data: AppData; isCorrect: boolean; addedToReview: boolean; progress: QuestionProgress } {
   const problemSet = data.problemSets.find((set) => set.id === question.setId);
   const folderId = problemSet?.folderId ?? '';
   const timestamp = nowIso();
   const isCorrect = selectedIndex === question.answerIndex;
   const existing = getProgress(data, question.id);
-  const addedToReview = !isReviewMode && !isCorrect && !(existing.isReview && !existing.isGraduated);
+  const wasReviewTarget = existing.isReview && !existing.isGraduated;
+  const wasUnanswered = existing.answeredCount === 0;
+  const currentLevel = getVirtualLevel(existing);
 
   const nextProgress: QuestionProgress = {
     ...existing,
@@ -133,11 +137,15 @@ export function recordAnswer(
     correctCount: existing.correctCount + (isCorrect ? 1 : 0),
     wrongCount: existing.wrongCount + (isCorrect ? 0 : 1),
     lastSelectedIndex: selectedIndex,
+    lastAnswerCorrect: isCorrect,
     lastAnsweredAt: timestamp,
   };
 
-  if (isReviewMode) {
-    const currentLevel = existing.reviewLevel ?? 1;
+  if (wasUnanswered) {
+    nextProgress.isReview = true;
+    nextProgress.isGraduated = false;
+    nextProgress.reviewLevel = 1;
+  } else {
     if (isCorrect) {
       if (currentLevel >= 3) {
         nextProgress.isReview = false;
@@ -153,11 +161,9 @@ export function recordAnswer(
       nextProgress.isGraduated = false;
       nextProgress.reviewLevel = Math.max(1, currentLevel - 1) as 1 | 2;
     }
-  } else if (!isCorrect) {
-    nextProgress.isReview = true;
-    nextProgress.isGraduated = false;
-    nextProgress.reviewLevel = 1;
   }
+
+  const addedToReview = !isReviewMode && !wasReviewTarget && nextProgress.isReview && !nextProgress.isGraduated;
 
   const nextProgressList = upsertProgress(data.progress, nextProgress);
   const nextLog = {
@@ -178,20 +184,48 @@ export function recordAnswer(
     },
     isCorrect,
     addedToReview,
+    progress: nextProgress,
   };
 }
 
 export function toggleAmbiguous(data: AppData, questionId: string): AppData {
   const existing = getProgress(data, questionId);
   const nextIsAmbiguous = !existing.isAmbiguous;
+  const isUnanswered = existing.answeredCount === 0;
   const nextProgress: QuestionProgress = {
     ...existing,
     isAmbiguous: nextIsAmbiguous,
-    isReview: nextIsAmbiguous ? true : existing.isReview,
+    isReview: nextIsAmbiguous ? true : (isUnanswered ? false : existing.isReview),
     isGraduated: nextIsAmbiguous ? false : existing.isGraduated,
-    reviewLevel: nextIsAmbiguous ? 1 : existing.reviewLevel,
+    reviewLevel: nextIsAmbiguous ? (isUnanswered ? existing.reviewLevel : existing.reviewLevel ?? 1) : existing.reviewLevel,
   };
   return { ...data, progress: upsertProgress(data.progress, nextProgress) };
+}
+
+export function groupReviewQuestionsByLevel(data: AppData, questions: Question[]) {
+  const groups: Record<'ambiguous' | 'level0' | 'level1' | 'level2' | 'level3', Question[]> = {
+    ambiguous: [],
+    level0: [],
+    level1: [],
+    level2: [],
+    level3: [],
+  };
+
+  questions.forEach((question) => {
+    const progress = getProgress(data, question.id);
+    if (progress.isGraduated) return;
+    if (progress.isAmbiguous) {
+      groups.ambiguous.push(question);
+      return;
+    }
+    const level = getVirtualLevel(progress);
+    if (level === 0) groups.level0.push(question);
+    if (level === 1 && progress.isReview) groups.level1.push(question);
+    if (level === 2 && progress.isReview) groups.level2.push(question);
+    if (level === 3 && progress.isReview) groups.level3.push(question);
+  });
+
+  return groups;
 }
 
 export function makeResult(mode: 'quiz' | 'review', title: string, setId: string | undefined, correct: number, wrong: number, addedReviewCount: number): QuizResult {

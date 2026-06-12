@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { AppData, AppScreen, ProblemSet, Question, QuizMode, QuizResult, QuizSession } from './types';
 import { createEmptyAppData, loadAppData, parseBackupJson, saveAppData } from './storage';
 import { HomeScreen } from './screens/HomeScreen';
@@ -23,12 +23,29 @@ import { validateImportJson } from './utils/importValidator';
 
 export default function App() {
   const [data, setData] = useState<AppData>(() => loadAppData());
+  const dataRef = useRef(data);
   const [screen, setScreen] = useState<AppScreen>({ name: 'home' });
   const [transitionDirection, setTransitionDirection] = useState<'forward' | 'back'>('forward');
+  const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
 
   useEffect(() => {
+    dataRef.current = data;
     saveAppData(data);
   }, [data]);
+
+  useEffect(() => {
+    const handleUpdate = (event: WindowEventMap['quiz-make-sw-update']) => {
+      setWaitingWorker(event.detail.worker);
+    };
+    window.addEventListener('quiz-make-sw-update', handleUpdate);
+    return () => window.removeEventListener('quiz-make-sw-update', handleUpdate);
+  }, []);
+
+  const commitData = (nextData: AppData) => {
+    dataRef.current = nextData;
+    setData(nextData);
+    saveAppData(nextData);
+  };
 
   const navigate = (next: AppScreen) => {
     setTransitionDirection('forward');
@@ -102,6 +119,7 @@ export default function App() {
         correctCount: 0,
         wrongCount: 0,
         lastSelectedIndex: null,
+        lastAnswerCorrect: null,
         lastAnsweredAt: null,
         isReview: false,
         isAmbiguous: false,
@@ -114,13 +132,14 @@ export default function App() {
   };
 
   const handleAnswer = (question: Question, selectedIndex: number, isReviewMode: boolean) => {
-    const answerResult = recordAnswer(data, question, selectedIndex, isReviewMode);
-    setData(answerResult.data);
-    return { isCorrect: answerResult.isCorrect, addedToReview: answerResult.addedToReview };
+    const answerResult = recordAnswer(dataRef.current, question, selectedIndex, isReviewMode);
+    commitData(answerResult.data);
+    const levelLabel = answerResult.progress.isGraduated ? '卒業' : `Level ${answerResult.progress.reviewLevel ?? 1}`;
+    return { isCorrect: answerResult.isCorrect, addedToReview: answerResult.addedToReview, levelLabel };
   };
 
   const handleToggleAmbiguous = (questionId: string) => {
-    setData((current) => toggleAmbiguous(current, questionId));
+    commitData(toggleAmbiguous(dataRef.current, questionId));
   };
 
   const handleClearAll = () => {
@@ -138,6 +157,10 @@ export default function App() {
     anchor.click();
     anchor.remove();
     URL.revokeObjectURL(url);
+  };
+
+  const handleApplyUpdate = () => {
+    waitingWorker?.postMessage({ type: 'SKIP_WAITING' });
   };
 
   const handleImportBackup = async (file: File): Promise<string | null> => {
@@ -304,9 +327,17 @@ export default function App() {
   }
 
   return (
-    <div key={getScreenKey(screen)} className={`quiz-screen-transition quiz-screen-transition--${transitionDirection}`}>
-      {content}
-    </div>
+    <>
+      <div key={getScreenKey(screen)} className={`quiz-screen-transition quiz-screen-transition--${transitionDirection}`}>
+        {content}
+      </div>
+      {waitingWorker ? (
+        <div className="quiz-update-toast">
+          <span>新しいバージョンがあります</span>
+          <button type="button" onClick={handleApplyUpdate}>更新する</button>
+        </div>
+      ) : null}
+    </>
   );
 }
 

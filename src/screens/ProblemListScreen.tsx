@@ -3,7 +3,7 @@ import type { AppData, ProblemSortMode, Question } from '../types';
 import { BackButton } from '../components/BackButton';
 import { Layout } from '../components/Layout';
 import { formatDisplayDate } from '../utils/date';
-import { getProgress, getQuestionsBySet } from '../utils/quiz';
+import { getProgress, getProgressLevelLabel, getQuestionsBySet } from '../utils/quiz';
 import {
   buildProblemCategories,
   filterQuestionsByCategory,
@@ -164,7 +164,7 @@ function QuestionListCard({
       </div>
       <p className="quiz-list__text">{question.question}</p>
       <div className="quiz-list__badges">
-        <span className="quiz-list__badge">level {progress.reviewLevel ?? '-'}</span>
+        <span className="quiz-list__badge">{getProgressLevelLabel(progress)}</span>
         {progress.isAmbiguous ? <span className="quiz-list__badge quiz-list__badge--ambiguous">曖昧</span> : null}
         {progress.isReview && !progress.isGraduated ? <span className="quiz-list__badge quiz-list__badge--review">復習</span> : null}
         {progress.lastAnsweredAt ? <span className="quiz-list__last">最終 {formatDisplayDate(progress.lastAnsweredAt)}</span> : null}

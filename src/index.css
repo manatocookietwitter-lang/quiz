@@ -151,6 +151,48 @@ button:disabled {
   box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.18);
 }
 
+.quiz-update-toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  z-index: 99999;
+  width: calc(100% - 32px);
+  max-width: 420px;
+  min-height: 58px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-radius: 16px;
+  background: #202020;
+  padding: 12px 14px;
+  color: #ffffff;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.32);
+}
+
+.quiz-update-toast span {
+  min-width: 0;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.quiz-update-toast button {
+  appearance: none;
+  border: none;
+  outline: none;
+  min-width: 92px;
+  min-height: 40px;
+  border-radius: 12px;
+  background: #12bfc0;
+  padding: 0 14px;
+  color: #ffffff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+}
+
 
 .quiz-screen-transition {
   width: 100%;

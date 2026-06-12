@@ -1,4 +1,4 @@
-const CACHE_NAME = 'quiz-make-cache-v1';
+const CACHE_NAME = 'quiz-make-cache-v2';
 const BASE_PATH = '/quiz/';
 const APP_SHELL = [
   BASE_PATH,
@@ -12,9 +12,14 @@ const APP_SHELL = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(APP_SHELL))
-      .then(() => self.skipWaiting()),
+      .then((cache) => cache.addAll(APP_SHELL)),
   );
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('activate', (event) => {
