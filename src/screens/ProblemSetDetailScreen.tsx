@@ -216,17 +216,7 @@ export function sortQuestionsForProblemList(data: AppData, questions: Question[]
 
 export function buildReviewQuestions(data: AppData, questions: Question[], filter: ReviewFilter = 'all') {
   if (filter !== 'all') {
-    const filtered = questions.filter((question) => {
-      const progress = getProgress(data, question.id);
-      if (progress.isGraduated) return false;
-      const level = getVirtualLevel(progress);
-      if (filter === 'ambiguous') return progress.isAmbiguous;
-      if (filter === 'level0') return level === 0;
-      if (filter === 'level1') return level === 1 && progress.isReview;
-      if (filter === 'level2') return level === 2 && progress.isReview;
-      if (filter === 'level3') return level === 3 && progress.isReview;
-      return false;
-    });
+    const filtered = questions.filter((question) => matchesReviewFilter(getProgress(data, question.id), filter));
     return shuffleArray(filtered);
   }
 
@@ -238,6 +228,16 @@ export function buildReviewQuestions(data: AppData, questions: Question[], filte
     ...shuffleArray(groups.level2),
     ...shuffleArray(groups.level3),
   ];
+}
+
+function matchesReviewFilter(progress: ReturnType<typeof getProgress>, filter: ReviewFilter) {
+  if (progress.isGraduated) return false;
+  if (filter === 'ambiguous') return progress.isAmbiguous === true;
+  if (filter === 'level0') return progress.answeredCount === 0;
+  if (filter === 'level1') return progress.answeredCount > 0 && progress.reviewLevel === 1;
+  if (filter === 'level2') return progress.answeredCount > 0 && progress.reviewLevel === 2;
+  if (filter === 'level3') return progress.answeredCount > 0 && progress.reviewLevel === 3;
+  return true;
 }
 
 export function buildProblemCategories(questions: Question[]) {

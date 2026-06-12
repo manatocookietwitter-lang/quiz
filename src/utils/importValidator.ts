@@ -72,9 +72,10 @@ export const CHATGPT_TEMPLATE_PROMPT = `以下の資料内容をもとに、Quiz
 
 export function validateImportJson(text: string): ValidationResult {
   let parsed: unknown;
+  const normalizedText = text.replace(/^\uFEFF/u, '').trim();
 
   try {
-    parsed = JSON.parse(text);
+    parsed = JSON.parse(normalizedText);
   } catch (error) {
     return {
       ok: false,

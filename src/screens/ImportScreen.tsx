@@ -79,7 +79,7 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
           id: `${file.name}_${file.lastModified}_${file.size}`,
           fileName: file.name,
           title: extractSetTitle(text) || fallbackTitle || '無題の問題セット',
-          text,
+          text: normalizeJsonText(text),
         };
       } catch (readError) {
         return {
@@ -99,9 +99,9 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
     setJsonText(value);
     setImportResult(null);
     setNotice('');
-    const extractedTitle = extractSetTitle(value);
-    if (!titleEdited && extractedTitle) {
-      setTitle(extractedTitle);
+    const titleResult = readSetTitle(value);
+    if (!titleEdited && titleResult.parsed) {
+      setTitle(titleResult.title || '無題の問題セット');
     }
   };
 
@@ -128,8 +128,9 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
     await yieldToUi();
 
     if (!hasFiles) {
+      const normalizedJsonText = normalizeJsonText(jsonText);
       const pastedTitle = title.trim() || extractSetTitle(jsonText) || '無題の問題セット';
-      const result = onImport(pastedTitle, jsonText, true);
+      const result = onImport(pastedTitle, normalizedJsonText, true);
       if (result) {
         setError(result);
         setIsImporting(false);
@@ -150,8 +151,9 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
     if (hasPastedJson) {
       setImportProgress(`貼り付けJSONを取り込み中... ${processedCount + 1} / ${totalItems}`);
       await yieldToUi();
+      const normalizedJsonText = normalizeJsonText(jsonText);
       const pastedTitle = title.trim() || extractSetTitle(jsonText) || '無題の問題セット';
-      const result = onImport(pastedTitle, jsonText, true);
+      const result = onImport(pastedTitle, normalizedJsonText, true);
       if (result) {
         failures.push({ fileName: '貼り付けJSON', error: result });
       } else {
@@ -320,16 +322,39 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
 }
 
 function extractSetTitle(text: string) {
+  return readSetTitle(text).title;
+}
+
+function readSetTitle(text: string): { parsed: boolean; title: string } {
+  const normalizedText = normalizeJsonText(text);
   try {
-    const parsed = JSON.parse(text) as { setTitle?: unknown };
-    return typeof parsed.setTitle === 'string' && parsed.setTitle.trim() ? parsed.setTitle.trim() : '';
+    const parsed = JSON.parse(normalizedText) as { setTitle?: unknown };
+    return {
+      parsed: true,
+      title: typeof parsed.setTitle === 'string' && parsed.setTitle.trim() ? parsed.setTitle.trim() : '',
+    };
   } catch {
-    return '';
+    const title = extractSetTitleByRegex(normalizedText);
+    return { parsed: Boolean(title), title };
   }
 }
 
 function getFileBaseName(fileName: string) {
   return fileName.replace(/\.[^.]+$/u, '').trim();
+}
+
+function normalizeJsonText(text: string) {
+  return text.replace(/^\uFEFF/u, '').trim();
+}
+
+function extractSetTitleByRegex(text: string) {
+  const match = text.match(/"setTitle"\s*:\s*"((?:\\.|[^"\\])*)"/u);
+  if (!match) return '';
+  try {
+    return JSON.parse(`"${match[1]}"`).trim();
+  } catch {
+    return match[1].trim();
+  }
 }
 
 function yieldToUi() {

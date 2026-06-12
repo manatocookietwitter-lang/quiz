@@ -131,10 +131,19 @@ button:disabled {
   -webkit-tap-highlight-color: transparent;
 }
 
-.answer-panel--expanded {
-  top: clamp(220px, 36dvh, 280px);
+.answer-panel.answer-panel--expanded {
+  left: 12px;
+  right: 12px;
+  top: clamp(210px, 34dvh, 240px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
+  width: auto;
+  max-width: 430px;
+  margin-right: auto;
+  margin-left: auto;
+  transform: none;
   height: auto;
   max-height: none;
+  padding: 18px;
 }
 
 .answer-panel-header {
@@ -184,6 +193,7 @@ button:disabled {
   background: #ffffff;
   padding: 14px;
   overflow: visible;
+  max-height: none;
 }
 
 .answer-panel-label {
@@ -206,6 +216,7 @@ button:disabled {
 
 .answer-explanation-scroll {
   flex: 1 1 auto;
+  flex-basis: 0;
   min-height: 0;
   overflow-y: auto;
   margin-top: 14px;
