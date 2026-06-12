@@ -8,7 +8,7 @@ import { QuizRunner } from './QuizRunner';
 interface ReviewScreenProps {
   data: AppData;
   onBack: () => void;
-  onAnswer: (question: Question, selectedIndex: number, isReviewMode: boolean) => { isCorrect: boolean; addedToReview: boolean };
+  onAnswer: (question: Question, selectedIndexes: number[], isReviewMode: boolean) => { isCorrect: boolean; addedToReview: boolean; levelLabel?: string };
   onToggleAmbiguous: (questionId: string) => void;
   onFinish: (result: QuizResult) => void;
 }

@@ -1,5 +1,9 @@
 export type Difficulty = 'basic' | 'standard' | 'advanced' | string;
 
+export type ChoiceList =
+  | [string, string, string, string]
+  | [string, string, string, string, string];
+
 export interface AppData {
   version: 1;
   folders: Folder[];
@@ -29,8 +33,9 @@ export interface Question {
   id: string;
   setId: string;
   question: string;
-  choices: [string, string, string, string];
+  choices: ChoiceList;
   answerIndex: number;
+  answerIndexes?: number[];
   answerText: string;
   explanation: string;
   sourcePage: string;
@@ -60,6 +65,7 @@ export interface AnswerLog {
   setId: string;
   folderId: string;
   selectedIndex: number;
+  selectedIndexes?: number[];
   isCorrect: boolean;
   answeredAt: string;
 }
@@ -67,8 +73,9 @@ export interface AnswerLog {
 export interface ImportedQuestion {
   id?: string;
   question: string;
-  choices: [string, string, string, string];
-  answerIndex: number;
+  choices: ChoiceList;
+  answerIndex?: number;
+  answerIndexes?: number[];
   answerText?: string;
   explanation: string;
   sourcePage?: string;

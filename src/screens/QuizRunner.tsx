@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import type { AppData, Question, QuizResult } from '../types';
 import { BackButton } from '../components/BackButton';
 import { Layout } from '../components/Layout';
-import { getProgress, getVirtualLevel, makeResult } from '../utils/quiz';
+import { getAnswerIndexes, getAnswerText, getChoiceLabel, getProgress, getVirtualLevel, makeResult } from '../utils/quiz';
 
 type AnswerSheetState = 'expanded' | 'minimized';
 
@@ -16,24 +16,28 @@ interface QuizRunnerProps {
   setId?: string;
   initialIndex?: number;
   onBack: () => void;
-  onAnswer: (question: Question, selectedIndex: number, isReviewMode: boolean) => { isCorrect: boolean; addedToReview: boolean; levelLabel?: string };
+  onAnswer: (question: Question, selectedIndexes: number[], isReviewMode: boolean) => { isCorrect: boolean; addedToReview: boolean; levelLabel?: string };
   onToggleAmbiguous: (questionId: string) => void;
   onFinish: (result: QuizResult) => void;
 }
 
 export function QuizRunner({ data, title, subtitle, questions, mode, setId, initialIndex = 0, onBack, onAnswer, onToggleAmbiguous, onFinish }: QuizRunnerProps) {
   const [currentIndex, setCurrentIndex] = useState(() => Math.min(Math.max(initialIndex, 0), Math.max(questions.length - 1, 0)));
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [selectedIndexes, setSelectedIndexes] = useState<number[]>([]);
   const [lastCorrect, setLastCorrect] = useState<boolean | null>(null);
   const [correctCount, setCorrectCount] = useState(0);
   const [wrongCount, setWrongCount] = useState(0);
   const [addedReviewCount, setAddedReviewCount] = useState(0);
   const [answerSheetState, setAnswerSheetState] = useState<AnswerSheetState>('expanded');
   const [savedLevelLabel, setSavedLevelLabel] = useState('');
+  const [answerMessage, setAnswerMessage] = useState('');
 
   const currentQuestion = questions[currentIndex];
   const progress = currentQuestion ? getProgress(data, currentQuestion.id) : null;
-  const answered = selectedIndex !== null;
+  const answered = lastCorrect !== null;
+  const answerIndexes = useMemo(() => (currentQuestion ? getAnswerIndexes(currentQuestion) : []), [currentQuestion]);
+  const answerText = useMemo(() => (currentQuestion ? getAnswerText(currentQuestion) : ''), [currentQuestion]);
+  const isMultipleAnswer = answerIndexes.length > 1;
   const progressPercent = questions.length === 0 ? 0 : ((currentIndex + 1) / questions.length) * 100;
   const choiceLengthInfo = useMemo(() => {
     const maxLength = Math.max(0, ...(currentQuestion?.choices.map((choice) => choice.length) ?? []));
@@ -74,8 +78,23 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
 
   const handleChoice = (index: number) => {
     if (answered) return;
-    const result = onAnswer(currentQuestion, index, mode === 'review');
-    setSelectedIndex(index);
+    setAnswerMessage('');
+    if (isMultipleAnswer) {
+      setSelectedIndexes((current) => (
+        current.includes(index)
+          ? current.filter((item) => item !== index)
+          : [...current, index].sort((a, b) => a - b)
+      ));
+      return;
+    }
+    setSelectedIndexes([index]);
+  };
+
+  const submitAnswer = (indexes: number[]) => {
+    if (answered) return;
+    const normalizedIndexes = Array.from(new Set(indexes)).sort((a, b) => a - b);
+    const result = onAnswer(currentQuestion, normalizedIndexes, mode === 'review');
+    setSelectedIndexes(normalizedIndexes);
     setLastCorrect(result.isCorrect);
     setAnswerSheetState('expanded');
     setSavedLevelLabel(result.levelLabel ? `保存済み・${result.levelLabel}` : '保存済み');
@@ -84,16 +103,30 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
     setAddedReviewCount((value) => value + (result.addedToReview ? 1 : 0));
   };
 
+  const handleSubmitAnswer = () => {
+    if (selectedIndexes.length === 0) {
+      setAnswerMessage('選択してください');
+      return;
+    }
+    submitAnswer(selectedIndexes);
+  };
+
+  const handleUnknown = () => {
+    setAnswerMessage('');
+    submitAnswer([]);
+  };
+
   const handleNext = () => {
     if (currentIndex + 1 >= questions.length) {
       onFinish(makeResult(mode, title, setId, correctCount, wrongCount, addedReviewCount));
       return;
     }
     setCurrentIndex((value) => value + 1);
-    setSelectedIndex(null);
+    setSelectedIndexes([]);
     setLastCorrect(null);
     setAnswerSheetState('expanded');
     setSavedLevelLabel('');
+    setAnswerMessage('');
   };
 
   const handleAmbiguous = () => {
@@ -116,6 +149,9 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
               {currentQuestion.category ? (
                 <div className="mb-1 truncate text-xs font-semibold text-[#4F3F2F]/75">{currentQuestion.category}</div>
               ) : null}
+              {isMultipleAnswer ? (
+                <div className="mb-1 text-xs font-bold text-[#4F3F2F]/80">正しいものをすべて選択</div>
+              ) : null}
               <div className={`mx-auto max-h-[96px] overflow-y-auto whitespace-pre-wrap break-words font-semibold leading-[1.45] no-scrollbar ${questionTextClass}`}>
                 {currentQuestion.question}
               </div>
@@ -127,11 +163,13 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
               <QuizChoiceButton
                 key={`${currentQuestion.id}_${index}`}
                 text={choice}
+                label={getChoiceLabel(index)}
+                choiceCount={currentQuestion.choices.length}
                 longChoice={choiceLengthInfo.longChoice}
                 veryLongChoice={choiceLengthInfo.veryLongChoice}
                 disabled={answered}
-                isSelected={selectedIndex === index}
-                isCorrectChoice={currentQuestion.answerIndex === index}
+                isSelected={selectedIndexes.includes(index)}
+                isCorrectChoice={answerIndexes.includes(index)}
                 answered={answered}
                 onClick={() => handleChoice(index)}
               />
@@ -140,13 +178,30 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
 
           {!answered ? (
             <section className="shrink-0 px-5 pb-[max(14px,env(safe-area-inset-bottom))]">
+              {answerMessage ? (
+                <p className="mb-2 text-center text-sm font-bold text-[#C94F4F]">{answerMessage}</p>
+              ) : null}
+              <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
-                onClick={handleAmbiguous}
-                className="mx-auto mt-1 flex h-[50px] w-[200px] items-center justify-center rounded-full border border-[#D0D0D0] bg-[#F4F4F4] text-base font-bold text-[#9A9A9A] active:scale-[0.98]"
+                onClick={handleUnknown}
+                className="flex h-[52px] items-center justify-center rounded-full border border-[#D0D0D0] bg-[#F4F4F4] text-base font-bold text-[#8A8A8A] active:scale-[0.98]"
               >
                 わからない
               </button>
+              <button
+                type="button"
+                onClick={handleSubmitAnswer}
+                aria-disabled={selectedIndexes.length === 0}
+                className={`flex h-[52px] items-center justify-center rounded-full text-base font-bold active:scale-[0.98] ${
+                  selectedIndexes.length > 0
+                    ? 'bg-[#5FA9DD] text-white'
+                    : 'bg-[#CFCFCF] text-[#777777]'
+                }`}
+              >
+                解答
+              </button>
+              </div>
             </section>
           ) : null}
         </main>
@@ -154,7 +209,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
         {answered ? createPortal(
           <AnswerPanel
             isCorrect={lastCorrect === true}
-            answer={currentQuestion.answerText}
+            answer={answerText}
             explanation={currentQuestion.explanation}
             sourcePage={currentQuestion.sourcePage}
             savedLevelLabel={savedLevelLabel}
@@ -202,6 +257,8 @@ function ProgressBand({ label, percent }: { label: string; percent: number }) {
 
 function QuizChoiceButton({
   text,
+  label,
+  choiceCount,
   longChoice,
   veryLongChoice,
   disabled,
@@ -211,6 +268,8 @@ function QuizChoiceButton({
   onClick,
 }: {
   text: string;
+  label: string;
+  choiceCount: number;
   longChoice: boolean;
   veryLongChoice: boolean;
   disabled: boolean;
@@ -220,13 +279,17 @@ function QuizChoiceButton({
   onClick: () => void;
 }) {
   let stateClass = 'border-[#D0D0D0] bg-[#F8F8F8] text-[#111111]';
+  const sizeClass = choiceCount >= 5 ? 'min-h-[52px] max-h-[78px]' : 'min-h-[64px] max-h-[92px]';
+  const textMaxClass = choiceCount >= 5 ? 'max-h-[58px]' : 'max-h-[72px]';
   const textSizeClass = veryLongChoice
     ? 'text-[clamp(15px,3.7vw,18px)]'
     : longChoice
       ? 'text-[clamp(16px,4vw,20px)]'
       : 'text-[clamp(18px,4.6vw,22px)]';
 
-  if (answered && isCorrectChoice) {
+  if (!answered && isSelected) {
+    stateClass = 'border-[#5FA9DD] bg-[#E8F4FB] text-[#111111]';
+  } else if (answered && isCorrectChoice) {
     stateClass = 'border-[#72C486] bg-[#DDF5E3] text-[#111111]';
   } else if (answered && isSelected && !isCorrectChoice) {
     stateClass = 'border-[#E08B8B] bg-[#F8DADA] text-[#111111]';
@@ -239,9 +302,18 @@ function QuizChoiceButton({
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className={`mx-auto flex min-h-[64px] max-h-[92px] w-full flex-1 items-center justify-center rounded-2xl border px-[14px] py-2.5 text-center font-semibold leading-snug shadow-sm transition active:scale-[0.99] ${textSizeClass} ${stateClass}`}
+      className={`mx-auto flex w-full flex-1 items-center justify-start gap-3 rounded-2xl border px-[14px] py-2.5 text-left font-semibold leading-snug shadow-sm transition active:scale-[0.99] ${sizeClass} ${textSizeClass} ${stateClass}`}
     >
-      <span className="max-h-[72px] overflow-y-auto break-words leading-[1.38] no-scrollbar">{text}</span>
+      <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-black ${
+        answered && isCorrectChoice
+          ? 'bg-[#72C486] text-white'
+          : isSelected
+            ? 'bg-[#5FA9DD] text-white'
+            : 'bg-[#E4E4E4] text-[#555555]'
+      }`}>
+        {label}
+      </span>
+      <span className={`${textMaxClass} min-w-0 flex-1 overflow-y-auto break-words leading-[1.38] no-scrollbar`}>{text}</span>
     </button>
   );
 }
@@ -313,12 +385,15 @@ function AnswerPanel({
       <div className="shrink-0">
         <div className={`text-xl font-bold ${isCorrect ? 'text-[#2F8F46]' : 'text-[#C94F4F]'}`}>{isCorrect ? '正解' : '不正解'}</div>
         {savedLevelLabel ? <p className="mt-1 text-xs font-bold text-[#5FA9DD]">{savedLevelLabel}</p> : null}
-        <p className="mt-2 max-h-[48px] overflow-y-auto text-base font-bold leading-snug text-[#111111] no-scrollbar">正解：{answer}</p>
-        {sourcePage ? <p className="mt-1 text-xs font-semibold text-[#8A8A8A]">参照ページ：{sourcePage}</p> : null}
+        <div className="mt-2 max-h-[88px] overflow-y-auto rounded-[14px] bg-white/70 p-3 text-sm font-bold leading-snug text-[#111111] no-scrollbar">
+          <p className="mb-1 text-xs text-[#6D5A45]">正解</p>
+          <p className="whitespace-pre-wrap">{answer}</p>
+        </div>
       </div>
 
       <div className="answer-panel-body mt-3 flex-1 pr-1 pb-3 text-base font-medium leading-[1.6] text-[#111111] no-scrollbar">
-        {explanation}
+        <div className="whitespace-pre-wrap">{explanation}</div>
+        {sourcePage ? <p className="mt-4 text-sm font-bold text-[#8A8A8A]">参照：{sourcePage}</p> : null}
       </div>
 
       <div className="mt-3 grid shrink-0 grid-cols-2 gap-2">

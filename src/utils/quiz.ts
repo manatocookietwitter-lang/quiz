@@ -119,13 +119,14 @@ export function deleteProblemSet(data: AppData, setId: string): AppData {
 export function recordAnswer(
   data: AppData,
   question: Question,
-  selectedIndex: number,
+  selectedIndexes: number[],
   isReviewMode: boolean,
 ): { data: AppData; isCorrect: boolean; addedToReview: boolean; progress: QuestionProgress } {
   const problemSet = data.problemSets.find((set) => set.id === question.setId);
   const folderId = problemSet?.folderId ?? '';
   const timestamp = nowIso();
-  const isCorrect = selectedIndex === question.answerIndex;
+  const answerIndexes = getAnswerIndexes(question);
+  const isCorrect = answerIndexes.length > 0 && areSameIndexSet(selectedIndexes, answerIndexes);
   const existing = getProgress(data, question.id);
   const wasReviewTarget = existing.isReview && !existing.isGraduated;
   const wasUnanswered = existing.answeredCount === 0;
@@ -136,7 +137,7 @@ export function recordAnswer(
     answeredCount: existing.answeredCount + 1,
     correctCount: existing.correctCount + (isCorrect ? 1 : 0),
     wrongCount: existing.wrongCount + (isCorrect ? 0 : 1),
-    lastSelectedIndex: selectedIndex,
+    lastSelectedIndex: selectedIndexes[0] ?? -1,
     lastAnswerCorrect: isCorrect,
     lastAnsweredAt: timestamp,
   };
@@ -171,7 +172,8 @@ export function recordAnswer(
     questionId: question.id,
     setId: question.setId,
     folderId,
-    selectedIndex,
+    selectedIndex: selectedIndexes[0] ?? -1,
+    selectedIndexes,
     isCorrect,
     answeredAt: timestamp,
   };
@@ -186,6 +188,33 @@ export function recordAnswer(
     addedToReview,
     progress: nextProgress,
   };
+}
+
+export function getAnswerIndexes(question: Question): number[] {
+  if (Array.isArray(question.answerIndexes) && question.answerIndexes.length > 0) {
+    return normalizeIndexes(question.answerIndexes).filter((index) => index >= 0 && index < question.choices.length);
+  }
+  return question.answerIndex >= 0 && question.answerIndex < question.choices.length ? [question.answerIndex] : [];
+}
+
+export function getAnswerText(question: Question): string {
+  return getAnswerIndexes(question)
+    .map((index) => `${getChoiceLabel(index)}. ${question.choices[index] ?? ''}`)
+    .join('\n');
+}
+
+export function getChoiceLabel(index: number) {
+  return ['A', 'B', 'C', 'D', 'E'][index] ?? String(index + 1);
+}
+
+function areSameIndexSet(a: number[], b: number[]) {
+  const left = normalizeIndexes(a);
+  const right = normalizeIndexes(b);
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function normalizeIndexes(indexes: number[]) {
+  return Array.from(new Set(indexes)).sort((a, b) => a - b);
 }
 
 export function toggleAmbiguous(data: AppData, questionId: string): AppData {

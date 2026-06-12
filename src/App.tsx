@@ -77,7 +77,7 @@ export default function App() {
     setData((current) => deleteProblemSet(current, setId));
   };
 
-  const handleImportProblemSet = (folderId: string, titleOverride: string, jsonText: string): string | null => {
+  const handleImportProblemSet = (folderId: string, titleOverride: string, jsonText: string, stayOnScreen = false): string | null => {
     const validation = validateImportJson(jsonText);
     if (!validation.ok) {
       return validation.errors.join('\n');
@@ -99,8 +99,12 @@ export default function App() {
       setId,
       question: question.question,
       choices: question.choices,
-      answerIndex: question.answerIndex,
-      answerText: question.answerText ?? question.choices[question.answerIndex],
+      answerIndex: question.answerIndex ?? question.answerIndexes?.[0] ?? 0,
+      answerIndexes: question.answerIndexes,
+      answerText: question.answerText ?? (question.answerIndexes ?? [question.answerIndex ?? 0])
+        .map((index) => question.choices[index])
+        .filter(Boolean)
+        .join(' / '),
       explanation: question.explanation,
       sourcePage: question.sourcePage ?? '',
       category: question.category ?? '',
@@ -127,12 +131,14 @@ export default function App() {
         isGraduated: false,
       }))],
     }));
-    replaceScreen({ name: 'folder', folderId });
+    if (!stayOnScreen) {
+      replaceScreen({ name: 'folder', folderId });
+    }
     return null;
   };
 
-  const handleAnswer = (question: Question, selectedIndex: number, isReviewMode: boolean) => {
-    const answerResult = recordAnswer(dataRef.current, question, selectedIndex, isReviewMode);
+  const handleAnswer = (question: Question, selectedIndexes: number[], isReviewMode: boolean) => {
+    const answerResult = recordAnswer(dataRef.current, question, selectedIndexes, isReviewMode);
     commitData(answerResult.data);
     const levelLabel = answerResult.progress.isGraduated ? '卒業' : `Level ${answerResult.progress.reviewLevel ?? 1}`;
     return { isCorrect: answerResult.isCorrect, addedToReview: answerResult.addedToReview, levelLabel };
@@ -259,7 +265,7 @@ export default function App() {
       <ImportScreen
         folderName={folder?.name ?? 'フォルダ'}
         onBack={() => goBackTo(screen.backScreen ?? { name: 'folder', folderId: screen.folderId })}
-        onImport={(titleOverride, jsonText) => handleImportProblemSet(screen.folderId, titleOverride, jsonText)}
+        onImport={(titleOverride, jsonText, stayOnScreen) => handleImportProblemSet(screen.folderId, titleOverride, jsonText, stayOnScreen)}
       />
     );
   } else if (screen.name === 'quiz') {

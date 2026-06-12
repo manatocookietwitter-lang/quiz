@@ -2,25 +2,32 @@ import type { ImportedProblemSet, ImportedQuestion } from '../types';
 
 type ValidationResult = { ok: true; value: ImportedProblemSet } | { ok: false; errors: string[] };
 
-export const CHATGPT_TEMPLATE_PROMPT = `以下の資料内容をもとに、Quiz make に取り込むための4択問題を作成してください。
+export const CHATGPT_TEMPLATE_PROMPT = `以下の資料内容をもとに、Quiz make に取り込むための選択式問題を作成してください。
 
 条件：
-1. 4択問題にする。
-2. 正解は必ず1つだけにする。
-3. answerIndexは0始まりで記載する。
-4. 正解番号が偏らないようにする。
-5. 問題は重要事項を漏らさないように作成する。
-6. 定義、違い、分類、検査、治療、禁忌、アルゴリズム、症例判断をバランスよく出題する。
-7. 解説は詳しく書く。
-8. 可能な限り参照ページを記載する。
-9. 各問題には必ず category を付ける。
-10. category は問題の分野分類であり、アプリ内で分野別演習・分野別復習・問題一覧の見出しに使用する。
-11. category は資料内容を読み取り、章・講義名・疾患群・検査・治療・症例判断などのまとまりごとに分類する。
-12. 同じ分野は必ず同じ category 名に統一し、表記ゆれを避ける。例：「貧血」と「貧血総論」を混在させない。
-13. category名は短く、一覧で見やすい名前にする。
-14. category は空欄にしない。分類不能な場合のみ「未分類」とする。
-15. JSON以外の文章は出力しない。
-16. 次の形式に厳密に従う。
+1. 問題は4択または5択にする。
+2. choices は4個または5個にする。
+3. 正解が1つだけの場合は answerIndex を使用する。
+4. 正解が複数ある場合は answerIndexes を使用する。
+5. answerIndex / answerIndexes は0始まりで記載する。4択では0〜3、5択では0〜4を使用する。
+6. 複数正解問題では、問題文に「正しいものをすべて選べ」と明記し、answerIndexes に正解の選択肢番号をすべて入れる。
+7. answerIndexes に重複番号を入れない。
+8. 正解は必ず1つ以上にする。
+9. 正解番号が偏らないようにする。
+10. 問題は重要事項を漏らさないように作成する。
+11. 定義、違い、分類、検査、治療、禁忌、アルゴリズム、症例判断をバランスよく出題する。
+12. 解説は詳しく書く。
+13. 参照ページは reference に記載する。
+14. 各問題には必ず category を付ける。
+15. category は問題の分野分類であり、アプリ内で分野別演習・分野別復習・問題一覧の見出しに使用する。
+16. category は資料内容を読み取り、章・講義名・疾患群・検査・治療・症例判断などのまとまりごとに分類する。
+17. 同じ分野は必ず同じ category 名に統一し、表記ゆれを避ける。例：「貧血」と「貧血総論」を混在させない。
+18. category名は短く、一覧で見やすい名前にする。
+19. category は空欄にしない。分類不能な場合のみ「未分類」とする。
+20. JSON以外の文章は出力しない。
+21. 次の形式に厳密に従う。
+
+問題は4択または5択で作成してください。choices は4個または5個にしてください。正解が1つだけの場合は answerIndex を使用し、複数正解の場合は answerIndexes を使用してください。answerIndex / answerIndexes は0始まりで、4択では0〜3、5択では0〜4を使用します。複数正解問題では、問題文に「正しいものをすべて選べ」と明記し、answerIndexes に正解の選択肢番号をすべて入れてください。
 
 各問題には必ず category を付けてください。category は問題の分野分類であり、アプリ内で分野別演習・分野別復習・問題一覧の見出しに使用します。資料内容を読み取り、章・疾患群・検査・治療・症例判断などのまとまりごとに分類してください。同じ分野は必ず同じ category 名に統一してください。分類不能な場合のみ「未分類」としてください。
 
@@ -42,6 +49,22 @@ export const CHATGPT_TEMPLATE_PROMPT = `以下の資料内容をもとに、Quiz
       "answerText": "正解の選択肢",
       "explanation": "解説",
       "reference": "参照ページ",
+      "difficulty": "basic"
+    },
+    {
+      "id": "q002",
+      "category": "分野名",
+      "question": "正しいものをすべて選べ。",
+      "choices": [
+        "選択肢1",
+        "選択肢2",
+        "選択肢3",
+        "選択肢4",
+        "選択肢5"
+      ],
+      "answerIndexes": [0, 3],
+      "explanation": "解説",
+      "reference": "p.18",
       "difficulty": "basic"
     }
   ]
@@ -97,18 +120,14 @@ export function validateImportJson(text: string): ValidationResult {
 
     if (!Array.isArray(rawQuestion.choices)) {
       errors.push(`${path}.choices は配列にしてください。`);
-    } else if (rawQuestion.choices.length !== 4) {
-      errors.push(`${path}.choices は必ず4個にしてください。現在 ${rawQuestion.choices.length} 個です。`);
+    } else if (rawQuestion.choices.length !== 4 && rawQuestion.choices.length !== 5) {
+      errors.push(`${path}.choices は4個または5個にしてください。現在 ${rawQuestion.choices.length} 個です。`);
     } else {
       rawQuestion.choices.forEach((choice, choiceIndex) => {
         if (!isNonEmptyString(choice)) {
           errors.push(`${path}.choices[${choiceIndex}] は空でない文字列にしてください。`);
         }
       });
-    }
-
-    if (!Number.isInteger(rawQuestion.answerIndex) || Number(rawQuestion.answerIndex) < 0 || Number(rawQuestion.answerIndex) > 3) {
-      errors.push(`${path}.answerIndex は0〜3の整数にしてください。`);
     }
 
     if (!isNonEmptyString(rawQuestion.explanation)) {
@@ -135,31 +154,32 @@ export function validateImportJson(text: string): ValidationResult {
       errors.push(`${path}.difficulty は文字列にしてください。`);
     }
 
-    const choices = Array.isArray(rawQuestion.choices) && rawQuestion.choices.length === 4
+    const choices = Array.isArray(rawQuestion.choices) && (rawQuestion.choices.length === 4 || rawQuestion.choices.length === 5)
       ? rawQuestion.choices
       : ['', '', '', ''];
-    const answerIndex = Number(rawQuestion.answerIndex);
+    const answerIndexesResult = getAnswerIndexes(rawQuestion, choices.length, path);
+    errors.push(...answerIndexesResult.errors);
 
     if (
       isNonEmptyString(rawQuestion.question) &&
-      choices.length === 4 &&
+      (choices.length === 4 || choices.length === 5) &&
       choices.every(isNonEmptyString) &&
-      Number.isInteger(answerIndex) &&
-      answerIndex >= 0 &&
-      answerIndex <= 3 &&
+      answerIndexesResult.value.length > 0 &&
       isNonEmptyString(rawQuestion.explanation)
     ) {
+      const answerIndexes = answerIndexesResult.value;
       questions.push({
         id: typeof rawQuestion.id === 'string' ? rawQuestion.id : undefined,
         question: rawQuestion.question,
-        choices: choices as [string, string, string, string],
-        answerIndex,
+        choices: choices as ImportedQuestion['choices'],
+        answerIndex: answerIndexes[0],
+        answerIndexes,
         answerText: typeof rawQuestion.answerText === 'string' && rawQuestion.answerText.trim() !== ''
           ? rawQuestion.answerText
-          : choices[answerIndex],
+          : answerIndexes.map((index) => choices[index]).join(' / '),
         explanation: rawQuestion.explanation,
         sourcePage: getSourcePage(rawQuestion),
-        category: typeof rawQuestion.category === 'string' ? rawQuestion.category : '',
+        category: typeof rawQuestion.category === 'string' && rawQuestion.category.trim() !== '' ? rawQuestion.category : '未分類',
         difficulty: typeof rawQuestion.difficulty === 'string' ? rawQuestion.difficulty : 'basic',
       });
     }
@@ -189,4 +209,45 @@ function getSourcePage(rawQuestion: Record<string, unknown>) {
   if (typeof rawQuestion.sourcePage === 'string') return rawQuestion.sourcePage;
   if (typeof rawQuestion.reference === 'string') return rawQuestion.reference;
   return '';
+}
+
+function getAnswerIndexes(rawQuestion: Record<string, unknown>, choiceCount: number, path: string): { value: number[]; errors: string[] } {
+  const errors: string[] = [];
+
+  if (Array.isArray(rawQuestion.answerIndexes)) {
+    if (rawQuestion.answerIndexes.length === 0) {
+      errors.push(`${path}.answerIndexes は1つ以上指定してください。`);
+      return { value: [], errors };
+    }
+
+    const indexes: number[] = [];
+    rawQuestion.answerIndexes.forEach((item, index) => {
+      if (!Number.isInteger(item)) {
+        errors.push(`${path}.answerIndexes[${index}] は整数にしてください。`);
+      } else if (Number(item) < 0 || Number(item) >= choiceCount) {
+        errors.push(`${path}.answerIndexes[${index}] は0〜${choiceCount - 1}の整数にしてください。`);
+      } else {
+        indexes.push(Number(item));
+      }
+    });
+
+    if (new Set(indexes).size !== indexes.length) {
+      errors.push(`${path}.answerIndexes に重複があります。`);
+    }
+
+    return { value: Array.from(new Set(indexes)).sort((a, b) => a - b), errors };
+  }
+
+  if (!Number.isInteger(rawQuestion.answerIndex)) {
+    errors.push(`${path}.answerIndex または answerIndexes を指定してください。`);
+    return { value: [], errors };
+  }
+
+  const answerIndex = Number(rawQuestion.answerIndex);
+  if (answerIndex < 0 || answerIndex >= choiceCount) {
+    errors.push(`${path}.answerIndex は0〜${choiceCount - 1}の整数にしてください。`);
+    return { value: [], errors };
+  }
+
+  return { value: [answerIndex], errors };
 }
