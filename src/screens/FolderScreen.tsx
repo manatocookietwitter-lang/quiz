@@ -37,10 +37,19 @@ export function FolderScreen({ data, folderId, onBack, onOpenImport, onOpenProbl
       <div className="quiz-folder">
         <FolderHeader title={folder.name} onBack={onBack} />
 
-        <section className="quiz-folder__actions" aria-label="操作">
-          <FolderCircleButton active={editMode} icon="✎" label={editMode ? '完了' : '編集'} onClick={() => setEditMode((value) => !value)} />
-          <FolderCircleButton icon="＋" label="新規問題" onClick={() => onOpenImport(folder.id)} />
-        </section>
+        {editMode ? (
+          <section className="quiz-folder__delete-mode-bar" aria-label="削除モード">
+            <span>削除する問題セットを選択</span>
+            <button type="button" onClick={() => setEditMode(false)}>
+              完了
+            </button>
+          </section>
+        ) : (
+          <section className="quiz-folder__actions" aria-label="操作">
+            <FolderCircleButton icon="✎" label="編集" onClick={() => setEditMode(true)} />
+            <FolderCircleButton icon="＋" label="新規問題" onClick={() => onOpenImport(folder.id)} />
+          </section>
+        )}
 
         <section className="quiz-folder__set-list" aria-label="一覧">
           {problemSets.map((problemSet) => {
@@ -62,8 +71,8 @@ export function FolderScreen({ data, folderId, onBack, onOpenImport, onOpenProbl
 
         <ConfirmDialog
           open={deleteTarget !== null}
-          title="削除しますか？"
-          message="このデータ内の問題、学習記録、復習レベルも削除されます。"
+          title="この問題セットを削除しますか？"
+          message={`問題セット名：\n${deleteTarget?.title ?? ''}\n\nこのデータ内の問題、学習記録、復習レベルも削除されます。`}
           confirmLabel="削除"
           onCancel={() => setDeleteTarget(null)}
           onConfirm={() => {

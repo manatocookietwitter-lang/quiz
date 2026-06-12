@@ -93,6 +93,35 @@
   background: #000000;
 }
 
+.quiz-folder__delete-mode-bar {
+  min-height: 74px;
+  flex: 0 0 74px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 0;
+  padding: 14px 16px;
+  background: #000000;
+}
+
+.quiz-folder__delete-mode-bar span {
+  min-width: 0;
+  color: #e5e5e5;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.quiz-folder__delete-mode-bar button {
+  min-width: 86px;
+  height: 44px;
+  border-radius: 14px;
+  background: #2b2b2b;
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 800;
+}
+
 .quiz-folder__action {
   width: 88px;
   display: flex;
@@ -308,6 +337,12 @@
   .quiz-folder__actions {
     gap: 30px;
     padding-right: 34px;
+  }
+
+  .quiz-folder__delete-mode-bar {
+    min-height: 68px;
+    flex-basis: 68px;
+    padding: 12px;
   }
 
   .quiz-folder__set-icon {

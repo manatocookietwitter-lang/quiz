@@ -24,10 +24,13 @@ export const CHATGPT_TEMPLATE_PROMPT = `以下の資料内容をもとに、Quiz
 17. 同じ分野は必ず同じ category 名に統一し、表記ゆれを避ける。例：「貧血」と「貧血総論」を混在させない。
 18. category名は短く、一覧で見やすい名前にする。
 19. category は空欄にしない。分類不能な場合のみ「未分類」とする。
-20. JSON以外の文章は出力しない。
-21. 次の形式に厳密に従う。
+20. アプリ上では選択肢は 1 / 2 / 3 / 4 / 5 として表示する。
+21. JSON の answerIndex / answerIndexes は0始まりで記載する。画面上の1番目は answerIndex: 0、2番目は answerIndex: 1。
+22. choices の本文には A. / B. / 1. などのラベルを付けない。選択肢本文だけを書く。
+23. JSON以外の文章は出力しない。
+24. 次の形式に厳密に従う。
 
-問題は4択または5択で作成してください。choices は4個または5個にしてください。正解が1つだけの場合は answerIndex を使用し、複数正解の場合は answerIndexes を使用してください。answerIndex / answerIndexes は0始まりで、4択では0〜3、5択では0〜4を使用します。複数正解問題では、問題文に「正しいものをすべて選べ」と明記し、answerIndexes に正解の選択肢番号をすべて入れてください。
+問題は4択または5択で作成してください。choices は4個または5個にしてください。正解が1つだけの場合は answerIndex を使用し、複数正解の場合は answerIndexes を使用してください。answerIndex / answerIndexes は0始まりで、4択では0〜3、5択では0〜4を使用します。アプリ上では選択肢は 1 / 2 / 3 / 4 / 5 として表示します。ただし JSON の answerIndex / answerIndexes は0始まりで記載してください。つまり、画面上の1番目は answerIndex: 0、画面上の2番目は answerIndex: 1 です。複数正解問題では、問題文に「正しいものをすべて選べ」と明記し、answerIndexes に正解の選択肢番号をすべて入れてください。choices には A. B. などのラベルを付けず、選択肢本文だけを書いてください。
 
 各問題には必ず category を付けてください。category は問題の分野分類であり、アプリ内で分野別演習・分野別復習・問題一覧の見出しに使用します。資料内容を読み取り、章・疾患群・検査・治療・症例判断などのまとまりごとに分類してください。同じ分野は必ず同じ category 名に統一してください。分類不能な場合のみ「未分類」としてください。
 
@@ -38,7 +41,7 @@ export const CHATGPT_TEMPLATE_PROMPT = `以下の資料内容をもとに、Quiz
     {
       "id": "q001",
       "category": "分野名",
-      "question": "問題文",
+      "question": "単一正解の問題文",
       "choices": [
         "選択肢1",
         "選択肢2",
@@ -46,10 +49,8 @@ export const CHATGPT_TEMPLATE_PROMPT = `以下の資料内容をもとに、Quiz
         "選択肢4"
       ],
       "answerIndex": 0,
-      "answerText": "正解の選択肢",
       "explanation": "解説",
-      "reference": "参照ページ",
-      "difficulty": "basic"
+      "reference": "p.12"
     },
     {
       "id": "q002",
@@ -64,8 +65,7 @@ export const CHATGPT_TEMPLATE_PROMPT = `以下の資料内容をもとに、Quiz
       ],
       "answerIndexes": [0, 3],
       "explanation": "解説",
-      "reference": "p.18",
-      "difficulty": "basic"
+      "reference": "p.18"
     }
   ]
 }`;
@@ -87,8 +87,8 @@ export function validateImportJson(text: string): ValidationResult {
     return { ok: false, errors: ['最上位はオブジェクトにしてください。'] };
   }
 
-  if (!isNonEmptyString(parsed.setTitle)) {
-    errors.push('setTitle が存在しない、または空です。');
+  if (parsed.setTitle !== undefined && typeof parsed.setTitle !== 'string') {
+    errors.push('setTitle は文字列にしてください。');
   }
 
   if (parsed.source !== undefined && typeof parsed.source !== 'string') {
@@ -155,7 +155,7 @@ export function validateImportJson(text: string): ValidationResult {
     }
 
     const choices = Array.isArray(rawQuestion.choices) && (rawQuestion.choices.length === 4 || rawQuestion.choices.length === 5)
-      ? rawQuestion.choices
+      ? rawQuestion.choices.map((choice) => (typeof choice === 'string' ? stripChoicePrefix(choice) : choice))
       : ['', '', '', ''];
     const answerIndexesResult = getAnswerIndexes(rawQuestion, choices.length, path);
     errors.push(...answerIndexesResult.errors);
@@ -190,7 +190,7 @@ export function validateImportJson(text: string): ValidationResult {
   return {
     ok: true,
     value: {
-      setTitle: parsed.setTitle as string,
+      setTitle: typeof parsed.setTitle === 'string' && parsed.setTitle.trim() !== '' ? parsed.setTitle : '無題の問題セット',
       source: typeof parsed.source === 'string' ? parsed.source : '',
       questions,
     },
@@ -209,6 +209,10 @@ function getSourcePage(rawQuestion: Record<string, unknown>) {
   if (typeof rawQuestion.sourcePage === 'string') return rawQuestion.sourcePage;
   if (typeof rawQuestion.reference === 'string') return rawQuestion.reference;
   return '';
+}
+
+function stripChoicePrefix(text: string) {
+  return text.replace(/^\s*(?:[A-EＡ-Ｅａ-ｅa-e]|[1-5１-５])\s*[\.\)\]:：．）]\s*/u, '').trim();
 }
 
 function getAnswerIndexes(rawQuestion: Record<string, unknown>, choiceCount: number, path: string): { value: number[]; errors: string[] } {

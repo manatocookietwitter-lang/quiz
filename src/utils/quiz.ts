@@ -199,12 +199,20 @@ export function getAnswerIndexes(question: Question): number[] {
 
 export function getAnswerText(question: Question): string {
   return getAnswerIndexes(question)
-    .map((index) => `${getChoiceLabel(index)}. ${question.choices[index] ?? ''}`)
+    .map((index) => `${getChoiceLabel(index)}. ${getChoiceText(question, index)}`)
     .join('\n');
 }
 
 export function getChoiceLabel(index: number) {
-  return ['A', 'B', 'C', 'D', 'E'][index] ?? String(index + 1);
+  return String(index + 1);
+}
+
+export function getChoiceText(question: Question, index: number) {
+  return stripChoicePrefix(question.choices[index] ?? '');
+}
+
+export function stripChoicePrefix(text: string) {
+  return text.replace(/^\s*(?:[A-EＡ-Ｅａ-ｅa-e]|[1-5１-５])\s*[\.\)\]:：．）]\s*/u, '').trim();
 }
 
 function areSameIndexSet(a: number[], b: number[]) {

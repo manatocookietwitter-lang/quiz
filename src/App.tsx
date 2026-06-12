@@ -85,14 +85,7 @@ export default function App() {
 
     const timestamp = nowIso();
     const setId = createId('set');
-    const problemSet: ProblemSet = {
-      id: setId,
-      folderId,
-      title: titleOverride.trim() || validation.value.setTitle.trim(),
-      source: validation.value.source ?? '',
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    };
+    const titleCandidate = titleOverride.trim() || validation.value.setTitle.trim() || '無題の問題セット';
 
     const questions: Question[] = validation.value.questions.map((question) => ({
       id: createId('q'),
@@ -113,24 +106,35 @@ export default function App() {
       updatedAt: timestamp,
     }));
 
-    setData((current) => ({
-      ...current,
-      problemSets: [problemSet, ...current.problemSets],
-      questions: [...questions, ...current.questions],
-      progress: [...current.progress, ...questions.map((question) => ({
-        questionId: question.id,
-        answeredCount: 0,
-        correctCount: 0,
-        wrongCount: 0,
-        lastSelectedIndex: null,
-        lastAnswerCorrect: null,
-        lastAnsweredAt: null,
-        isReview: false,
-        isAmbiguous: false,
-        reviewLevel: null,
-        isGraduated: false,
-      }))],
-    }));
+    setData((current) => {
+      const problemSet: ProblemSet = {
+        id: setId,
+        folderId,
+        title: makeUniqueProblemSetTitle(current, folderId, titleCandidate),
+        source: validation.value.source ?? '',
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+
+      return {
+        ...current,
+        problemSets: [problemSet, ...current.problemSets],
+        questions: [...questions, ...current.questions],
+        progress: [...current.progress, ...questions.map((question) => ({
+          questionId: question.id,
+          answeredCount: 0,
+          correctCount: 0,
+          wrongCount: 0,
+          lastSelectedIndex: null,
+          lastAnswerCorrect: null,
+          lastAnsweredAt: null,
+          isReview: false,
+          isAmbiguous: false,
+          reviewLevel: null,
+          isGraduated: false,
+        }))],
+      };
+    });
     if (!stayOnScreen) {
       replaceScreen({ name: 'folder', folderId });
     }
@@ -356,4 +360,23 @@ function getScreenKey(screen: AppScreen) {
   if (screen.name === 'quizSession') return `quiz-session-${screen.session.setId ?? 'custom'}-${screen.session.initialIndex ?? 0}-${screen.session.questions.length}`;
   if (screen.name === 'result') return `result-${screen.result.title}-${screen.result.answered}`;
   return screen.name;
+}
+
+function makeUniqueProblemSetTitle(data: AppData, folderId: string, rawTitle: string) {
+  const baseTitle = rawTitle.trim() || '無題の問題セット';
+  const existingTitles = new Set(
+    data.problemSets
+      .filter((set) => set.folderId === folderId)
+      .map((set) => set.title.trim()),
+  );
+
+  if (!existingTitles.has(baseTitle)) return baseTitle;
+
+  let count = 2;
+  let nextTitle = `${baseTitle} (${count})`;
+  while (existingTitles.has(nextTitle)) {
+    count += 1;
+    nextTitle = `${baseTitle} (${count})`;
+  }
+  return nextTitle;
 }

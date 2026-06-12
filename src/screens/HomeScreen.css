@@ -346,6 +346,16 @@
   line-height: 1.5;
 }
 
+.quiz-home__menu-notice {
+  border-radius: 12px;
+  background: rgba(18, 191, 192, 0.16);
+  padding: 10px;
+  color: #d8ffff;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
 @media (max-width: 390px) {
   .quiz-home__actions {
     gap: 30px;

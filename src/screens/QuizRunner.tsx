@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import type { AppData, Question, QuizResult } from '../types';
 import { BackButton } from '../components/BackButton';
 import { Layout } from '../components/Layout';
-import { getAnswerIndexes, getAnswerText, getChoiceLabel, getProgress, getVirtualLevel, makeResult } from '../utils/quiz';
+import { getAnswerIndexes, getAnswerText, getChoiceLabel, getChoiceText, getProgress, getVirtualLevel, makeResult } from '../utils/quiz';
 
 type AnswerSheetState = 'expanded' | 'minimized';
 
@@ -162,7 +162,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
             {currentQuestion.choices.map((choice, index) => (
               <QuizChoiceButton
                 key={`${currentQuestion.id}_${index}`}
-                text={choice}
+                text={getChoiceText(currentQuestion, index)}
                 label={getChoiceLabel(index)}
                 choiceCount={currentQuestion.choices.length}
                 longChoice={choiceLengthInfo.longChoice}
@@ -371,43 +371,43 @@ function AnswerPanel({
 
   return (
     <section className="answer-panel answer-panel--expanded transition-opacity duration-150 ease-out">
-      <div className="mb-2 grid shrink-0 grid-cols-[1fr_auto_1fr] items-center">
-        <span />
-        <div className="h-1.5 w-12 rounded-full bg-[#D0D0D0]" aria-hidden="true" />
+      <div className="answer-panel-header">
+        <div>
+          <div className={`answer-panel-result ${isCorrect ? 'answer-panel-result--correct' : 'answer-panel-result--wrong'}`}>{isCorrect ? '正解' : '不正解'}</div>
+          {savedLevelLabel ? <p className="answer-panel-saved">{savedLevelLabel}</p> : null}
+        </div>
         <button
           type="button"
           onClick={onMinimize}
-          className="ml-auto h-8 rounded-full bg-[#ECECEC] px-3 text-xs font-bold text-[#555555] active:scale-[0.98]"
+          className="answer-panel-minimize"
         >
           しまう
         </button>
       </div>
-      <div className="shrink-0">
-        <div className={`text-xl font-bold ${isCorrect ? 'text-[#2F8F46]' : 'text-[#C94F4F]'}`}>{isCorrect ? '正解' : '不正解'}</div>
-        {savedLevelLabel ? <p className="mt-1 text-xs font-bold text-[#5FA9DD]">{savedLevelLabel}</p> : null}
-        <div className="mt-2 max-h-[88px] overflow-y-auto rounded-[14px] bg-white/70 p-3 text-sm font-bold leading-snug text-[#111111] no-scrollbar">
-          <p className="mb-1 text-xs text-[#6D5A45]">正解</p>
-          <p className="whitespace-pre-wrap">{answer}</p>
-        </div>
+
+      <div className="answer-correct-section">
+        <p className="answer-panel-label">正解</p>
+        <p className="answer-correct-text">{answer}</p>
       </div>
 
-      <div className="answer-panel-body mt-3 flex-1 pr-1 pb-3 text-base font-medium leading-[1.6] text-[#111111] no-scrollbar">
-        <div className="whitespace-pre-wrap">{explanation}</div>
-        {sourcePage ? <p className="mt-4 text-sm font-bold text-[#8A8A8A]">参照：{sourcePage}</p> : null}
+      <div className="answer-explanation-scroll no-scrollbar">
+        <p className="answer-panel-label">解説</p>
+        <div className="answer-explanation-text">{explanation}</div>
+        {sourcePage ? <p className="answer-source">参照：{sourcePage}</p> : null}
       </div>
 
-      <div className="mt-3 grid shrink-0 grid-cols-2 gap-2">
+      <div className="answer-panel-actions">
         <button
           type="button"
           onClick={onToggleAmbiguous}
-          className="h-[52px] rounded-[14px] border border-[#D0D0D0] bg-white px-3 text-sm font-bold text-[#6D5A45] active:scale-[0.98]"
+          className="answer-panel-action answer-panel-action--secondary"
         >
           {isAmbiguous ? '曖昧を解除' : '曖昧として登録'}
         </button>
         <button
           type="button"
           onClick={onNext}
-          className="h-[52px] rounded-[14px] bg-[#5FA9DD] px-3 text-base font-bold text-white active:scale-[0.98]"
+          className="answer-panel-action answer-panel-action--primary"
         >
           {isLast ? '結果へ' : '次へ'}
         </button>

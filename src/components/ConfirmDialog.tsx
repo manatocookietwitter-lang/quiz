@@ -23,7 +23,7 @@ export function ConfirmDialog({
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[rgba(0,0,0,0.65)] p-5">
       <div className="w-[calc(100vw-40px)] max-w-[360px] rounded-[20px] bg-[#202020] p-6 text-white shadow-2xl">
         <h2 className="text-xl font-bold">{title}</h2>
-        <p className="mt-3 text-sm font-medium leading-relaxed text-[#bdbdbd]">{message}</p>
+        <p className="mt-3 whitespace-pre-line text-sm font-medium leading-relaxed text-[#bdbdbd]">{message}</p>
         <div className="mt-6 grid grid-cols-2 gap-3">
           <button
             type="button"

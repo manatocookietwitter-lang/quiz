@@ -285,6 +285,7 @@ function HomeMenu({
         <button type="button" className="quiz-home__menu-item quiz-home__menu-item--danger" onClick={onClearAll}>
           全データ削除
         </button>
+        {copied ? <div className="quiz-home__menu-notice">テンプレートをクリップボードにコピーしました</div> : null}
         {importError ? <div className="quiz-home__menu-error">{importError}</div> : null}
       </div>
     </div>

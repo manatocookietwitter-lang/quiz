@@ -138,7 +138,7 @@
 
 .quiz-detail__segments {
   display: flex;
-  gap: 6px;
+  gap: 10px;
   overflow-x: auto;
   border-radius: 18px;
   background: #202020;
@@ -153,19 +153,22 @@
 .quiz-detail__segment-item {
   min-height: 44px;
   flex: 0 0 auto;
+  border: 1px solid #3a3a3a;
   border-radius: 14px;
-  background: transparent;
+  background: #2b2b2b;
   padding: 0 18px;
-  color: #bdbdbd;
+  color: #e5e5e5;
   font-size: 14px;
   font-weight: 700;
   white-space: nowrap;
 }
 
 .quiz-detail__segment-item--active {
+  border-color: #12bfc0;
   background: #12bfc0;
   color: #ffffff;
-  box-shadow: 0 4px 12px rgba(18, 191, 192, 0.28);
+  font-weight: 800;
+  box-shadow: 0 0 0 2px rgba(18, 191, 192, 0.18);
 }
 
 .quiz-detail__segment-caption {
