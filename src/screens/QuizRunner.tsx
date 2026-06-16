@@ -1,11 +1,11 @@
-import { useMemo, useState } from 'react';
+import { type PointerEvent, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { AppData, Question, QuizResult } from '../types';
 import { BackButton } from '../components/BackButton';
 import { Layout } from '../components/Layout';
 import { getAnswerIndexes, getAnswerText, getChoiceLabel, getChoiceText, getProgress, getVirtualLevel, makeResult } from '../utils/quiz';
 
-type AnswerSheetState = 'expanded' | 'minimized';
+type AnswerSheetState = 'expanded' | 'default' | 'hidden';
 
 interface QuizRunnerProps {
   data: AppData;
@@ -28,7 +28,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
   const [correctCount, setCorrectCount] = useState(0);
   const [wrongCount, setWrongCount] = useState(0);
   const [addedReviewCount, setAddedReviewCount] = useState(0);
-  const [answerSheetState, setAnswerSheetState] = useState<AnswerSheetState>('expanded');
+  const [answerSheetState, setAnswerSheetState] = useState<AnswerSheetState>('default');
   const [savedLevelLabel, setSavedLevelLabel] = useState('');
   const [answerMessage, setAnswerMessage] = useState('');
 
@@ -38,6 +38,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
   const answerIndexes = useMemo(() => (currentQuestion ? getAnswerIndexes(currentQuestion) : []), [currentQuestion]);
   const answerText = useMemo(() => (currentQuestion ? getAnswerText(currentQuestion) : ''), [currentQuestion]);
   const isMultipleAnswer = answerIndexes.length > 1;
+  const instructionInfo = useMemo(() => getQuestionInstructionInfo(currentQuestion), [currentQuestion]);
   const progressPercent = questions.length === 0 ? 0 : ((currentIndex + 1) / questions.length) * 100;
   const choiceLengthInfo = useMemo(() => {
     const maxLength = Math.max(0, ...(currentQuestion?.choices.map((choice) => choice.length) ?? []));
@@ -96,7 +97,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
     const result = onAnswer(currentQuestion, normalizedIndexes, mode === 'review');
     setSelectedIndexes(normalizedIndexes);
     setLastCorrect(result.isCorrect);
-    setAnswerSheetState('expanded');
+    setAnswerSheetState('default');
     setSavedLevelLabel(result.levelLabel ? `保存済み・${result.levelLabel}` : '保存済み');
     setCorrectCount((value) => value + (result.isCorrect ? 1 : 0));
     setWrongCount((value) => value + (result.isCorrect ? 0 : 1));
@@ -124,7 +125,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
     setCurrentIndex((value) => value + 1);
     setSelectedIndexes([]);
     setLastCorrect(null);
-    setAnswerSheetState('expanded');
+    setAnswerSheetState('default');
     setSavedLevelLabel('');
     setAnswerMessage('');
   };
@@ -149,11 +150,14 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
               {currentQuestion.category ? (
                 <div className="mb-1 truncate text-xs font-semibold text-[#4F3F2F]/75">{currentQuestion.category}</div>
               ) : null}
-              {isMultipleAnswer ? (
-                <div className="mb-1 text-xs font-bold text-[#4F3F2F]/80">正しいものをすべて選択</div>
+              {(instructionInfo.hasMultiple || instructionInfo.hasNegative) ? (
+                <div className="mb-2 flex flex-wrap justify-center gap-1.5">
+                  {instructionInfo.hasMultiple ? <span className="question-instruction-badge">{'\u8907\u6570\u9078\u629e'}</span> : null}
+                  {instructionInfo.hasNegative ? <span className="question-instruction-badge question-instruction-badge--negative">{'\u5426\u5b9a\u554f\u984c\uff1a\u8aa4\u308a\u3092\u9078\u3076'}</span> : null}
+                </div>
               ) : null}
-              <div className={`mx-auto max-h-[96px] overflow-y-auto whitespace-pre-wrap break-words font-semibold leading-[1.45] no-scrollbar ${questionTextClass}`}>
-                {currentQuestion.question}
+              <div className={['mx-auto max-h-[96px] overflow-y-auto whitespace-pre-wrap break-words font-semibold leading-[1.45] no-scrollbar', questionTextClass].join(' ')}>
+                <HighlightedQuestionText text={currentQuestion.question} phrases={instructionInfo.highlightPhrases} />
               </div>
             </div>
           </section>
@@ -216,8 +220,9 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
             isAmbiguous={progress?.isAmbiguous ?? false}
             isLast={currentIndex + 1 >= questions.length}
             state={answerSheetState}
-            onShow={() => setAnswerSheetState('expanded')}
-            onMinimize={() => setAnswerSheetState('minimized')}
+            onExpand={() => setAnswerSheetState('expanded')}
+            onDefault={() => setAnswerSheetState('default')}
+            onHide={() => setAnswerSheetState('hidden')}
             onToggleAmbiguous={handleAmbiguous}
             onNext={handleNext}
           />,
@@ -318,6 +323,79 @@ function QuizChoiceButton({
   );
 }
 
+const MULTIPLE_INSTRUCTION_PHRASES = [
+  '\u6b63\u3057\u3044\u3082\u306e\u3092\u3059\u3079\u3066\u9078\u3079',
+  '\u6b63\u3057\u3044\u3082\u306e\u3092\u5168\u3066\u9078\u3079',
+  '\u3059\u3079\u3066\u9078\u3079',
+  '\u5168\u3066\u9078\u3079',
+  '\u3059\u3079\u3066\u9078\u3073\u306a\u3055\u3044',
+  '\u5168\u3066\u9078\u3073\u306a\u3055\u3044',
+  '\u8a72\u5f53\u3059\u308b\u3082\u306e\u3092\u3059\u3079\u3066\u9078\u3079',
+  '\u3042\u3066\u306f\u307e\u308b\u3082\u306e\u3092\u3059\u3079\u3066\u9078\u3079',
+];
+
+const NEGATIVE_INSTRUCTION_PHRASES = [
+  '\u8aa4\u3063\u305f\u3082\u306e\u3092\u9078\u3079',
+  '\u8aa4\u3063\u3066\u3044\u308b\u3082\u306e\u3092\u9078\u3079',
+  '\u6b63\u3057\u304f\u306a\u3044\u3082\u306e\u3092\u9078\u3079',
+  '\u9069\u5207\u3067\u306a\u3044\u3082\u306e\u3092\u9078\u3079',
+  '\u4e0d\u9069\u5207\u306a\u3082\u306e\u3092\u9078\u3079',
+  '\u3042\u3066\u306f\u307e\u3089\u306a\u3044\u3082\u306e\u3092\u9078\u3079',
+  '\u8a72\u5f53\u3057\u306a\u3044\u3082\u306e\u3092\u9078\u3079',
+  '\u8aa4\u308a\u306f\u3069\u308c\u304b',
+  '\u6b63\u3057\u304f\u306a\u3044\u306e\u306f\u3069\u308c\u304b',
+  '\u9069\u5207\u3067\u306a\u3044\u306e\u306f\u3069\u308c\u304b',
+];
+
+function getQuestionInstructionInfo(question: Question | undefined) {
+  const text = question?.question ?? '';
+  const multiplePhrases = MULTIPLE_INSTRUCTION_PHRASES.filter((phrase) => text.includes(phrase));
+  const negativePhrases = NEGATIVE_INSTRUCTION_PHRASES.filter((phrase) => text.includes(phrase));
+  const hasMultipleAnswers = Array.isArray(question?.answerIndexes) && question.answerIndexes.length > 1;
+
+  return {
+    hasMultiple: hasMultipleAnswers || multiplePhrases.length > 0,
+    hasNegative: negativePhrases.length > 0,
+    highlightPhrases: Array.from(new Set([...multiplePhrases, ...negativePhrases])),
+  };
+}
+
+function HighlightedQuestionText({ text, phrases }: { text: string; phrases: string[] }) {
+  if (phrases.length === 0) return <>{text}</>;
+  return (
+    <>
+      {splitTextByPhrases(text, phrases).map((part, index) => (
+        part.highlight ? <span key={`${part.text}_${index}`} className="question-instruction-highlight">{part.text}</span> : part.text
+      ))}
+    </>
+  );
+}
+
+function splitTextByPhrases(text: string, phrases: string[]) {
+  const sortedPhrases = [...phrases].sort((a, b) => b.length - a.length);
+  const parts: { text: string; highlight: boolean }[] = [];
+  let buffer = '';
+  let index = 0;
+
+  while (index < text.length) {
+    const phrase = sortedPhrases.find((item) => text.startsWith(item, index));
+    if (phrase) {
+      if (buffer) {
+        parts.push({ text: buffer, highlight: false });
+        buffer = '';
+      }
+      parts.push({ text: phrase, highlight: true });
+      index += phrase.length;
+      continue;
+    }
+    buffer += text[index];
+    index += 1;
+  }
+
+  if (buffer) parts.push({ text: buffer, highlight: false });
+  return parts;
+}
+
 function AnswerPanel({
   isCorrect,
   answer,
@@ -327,8 +405,9 @@ function AnswerPanel({
   isAmbiguous,
   isLast,
   state,
-  onShow,
-  onMinimize,
+  onExpand,
+  onDefault,
+  onHide,
   onToggleAmbiguous,
   onNext,
 }: {
@@ -340,76 +419,93 @@ function AnswerPanel({
   isAmbiguous: boolean;
   isLast: boolean;
   state: AnswerSheetState;
-  onShow: () => void;
-  onMinimize: () => void;
+  onExpand: () => void;
+  onDefault: () => void;
+  onHide: () => void;
   onToggleAmbiguous: () => void;
   onNext: () => void;
 }) {
-  if (state === 'minimized') {
+  const [dragStartY, setDragStartY] = useState<number | null>(null);
+
+  const moveByDrag = (deltaY: number) => {
+    if (deltaY < -36) {
+      if (state === 'default') onExpand();
+      if (state === 'hidden') onDefault();
+      return;
+    }
+    if (deltaY > 36) {
+      if (state === 'expanded') onDefault();
+      if (state === 'default') onHide();
+    }
+  };
+
+  const handlePointerDown = (event: PointerEvent<HTMLElement>) => {
+    setDragStartY(event.clientY);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const handlePointerUp = (event: PointerEvent<HTMLElement>) => {
+    if (dragStartY === null) return;
+    moveByDrag(event.clientY - dragStartY);
+    setDragStartY(null);
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+  };
+
+  const dragProps = {
+    onPointerDown: handlePointerDown,
+    onPointerUp: handlePointerUp,
+    onPointerCancel: () => setDragStartY(null),
+  };
+
+  if (state === 'hidden') {
     return (
-      <section className="answer-minimized-bar transition-all duration-200 ease-out">
-        <div className="grid w-full grid-cols-[auto_1fr_auto] items-center gap-2">
-          <span className={`whitespace-nowrap text-sm font-bold ${isCorrect ? 'text-[#2F8F46]' : 'text-[#C94F4F]'}`}>{isCorrect ? '正解' : '不正解'}</span>
-          <button
-            type="button"
-            onClick={onShow}
-            className="h-10 min-w-0 rounded-[14px] bg-[#ECECEC] px-3 text-sm font-bold text-[#333333] active:scale-[0.98]"
-          >
-            解答解説を表示
-          </button>
-          <button
-            type="button"
-            onClick={onNext}
-            className="h-10 rounded-[14px] bg-[#5FA9DD] px-4 text-sm font-bold text-white active:scale-[0.98]"
-          >
-            {isLast ? '結果へ' : '次へ'}
-          </button>
+      <section className="answer-sheet answer-sheet--hidden">
+        <div className="answer-sheet__drag-area" {...dragProps}>
+          <div className="answer-sheet__drag-handle" />
         </div>
+        <button type="button" className="answer-sheet__hidden-main" onClick={onDefault}>
+          <span className={`answer-sheet__hidden-result ${isCorrect ? 'answer-sheet__hidden-result--correct' : 'answer-sheet__hidden-result--wrong'}`}>{isCorrect ? '\u6b63\u89e3' : '\u4e0d\u6b63\u89e3'}</span>
+          <strong>{'\u89e3\u7b54\u3092\u898b\u308b'}</strong>
+        </button>
+        <button type="button" className="answer-sheet__hidden-next" onClick={onNext}>
+          {isLast ? '\u7d50\u679c\u3078' : '\u6b21\u3078'}
+        </button>
       </section>
     );
   }
 
   return (
-    <section className="answer-panel answer-panel--expanded transition-opacity duration-150 ease-out">
-      <div className="answer-panel-header">
+    <section className={`answer-sheet answer-sheet--${state}`}>
+      <div className="answer-sheet__drag-area" {...dragProps}>
+        <div className="answer-sheet__drag-handle" />
+      </div>
+
+      <div className="answer-sheet__fixed">
         <div>
-          <div className={`answer-panel-result ${isCorrect ? 'answer-panel-result--correct' : 'answer-panel-result--wrong'}`}>{isCorrect ? '正解' : '不正解'}</div>
-          {savedLevelLabel ? <p className="answer-panel-saved">{savedLevelLabel}</p> : null}
+          <div className={`answer-sheet__result ${isCorrect ? 'answer-sheet__result--correct' : 'answer-sheet__result--wrong'}`}>{isCorrect ? '\u6b63\u89e3' : '\u4e0d\u6b63\u89e3'}</div>
+          {savedLevelLabel ? <p className="answer-sheet__saved">{savedLevelLabel}</p> : null}
         </div>
-        <button
-          type="button"
-          onClick={onMinimize}
-          className="answer-panel-minimize"
-        >
-          しまう
+        <button type="button" onClick={onHide} className="answer-sheet__hide-button">{'\u3057\u307e\u3046'}</button>
+      </div>
+
+      <div className="answer-sheet__scroll no-scrollbar">
+        <div className="answer-sheet__answer-box">
+          <p className="answer-sheet__label">{'\u6b63\u89e3'}</p>
+          <p className="answer-sheet__answer-text">{answer}</p>
+        </div>
+        <div className="answer-sheet__explanation-block">
+          <p className="answer-sheet__label">{'\u89e3\u8aac'}</p>
+          <div className="answer-sheet__explanation-text">{explanation}</div>
+          {sourcePage ? <p className="answer-sheet__source">{'\u53c2\u7167\uff1a'}{sourcePage}</p> : null}
+        </div>
+      </div>
+
+      <div className="answer-sheet__actions">
+        <button type="button" onClick={onToggleAmbiguous} className="answer-sheet__action answer-sheet__action--secondary">
+          {isAmbiguous ? '\u66d6\u6627\u3092\u89e3\u9664' : '\u66d6\u6627\u3068\u3057\u3066\u767b\u9332'}
         </button>
-      </div>
-
-      <div className="answer-correct-section">
-        <p className="answer-panel-label">正解</p>
-        <p className="answer-correct-text">{answer}</p>
-      </div>
-
-      <div className="answer-explanation-scroll no-scrollbar">
-        <p className="answer-panel-label">解説</p>
-        <div className="answer-explanation-text">{explanation}</div>
-        {sourcePage ? <p className="answer-source">参照：{sourcePage}</p> : null}
-      </div>
-
-      <div className="answer-panel-actions">
-        <button
-          type="button"
-          onClick={onToggleAmbiguous}
-          className="answer-panel-action answer-panel-action--secondary"
-        >
-          {isAmbiguous ? '曖昧を解除' : '曖昧として登録'}
-        </button>
-        <button
-          type="button"
-          onClick={onNext}
-          className="answer-panel-action answer-panel-action--primary"
-        >
-          {isLast ? '結果へ' : '次へ'}
+        <button type="button" onClick={onNext} className="answer-sheet__action answer-sheet__action--primary">
+          {isLast ? '\u7d50\u679c\u3078' : '\u6b21\u3078'}
         </button>
       </div>
     </section>
