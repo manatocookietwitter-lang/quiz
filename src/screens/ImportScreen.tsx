@@ -21,9 +21,9 @@ interface ImportFileItem {
   fileName: string;
   fallbackTitle: string;
   detectedSetTitle: string;
-  title: string;
-  titleEdited: boolean;
-  text: string;
+  editableSetTitle: string;
+  userEditedTitle: boolean;
+  rawText: string;
   readError?: string;
 }
 
@@ -77,15 +77,16 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
     const items = await Promise.all(files.map(async (file) => {
       const fallbackTitle = getFileBaseName(file.name);
       try {
-        const text = await file.text();
+        const rawText = normalizeJsonText(await file.text());
+        const detectedSetTitle = extractSetTitle(rawText);
         return {
           id: `${file.name}_${file.lastModified}_${file.size}`,
           fileName: file.name,
           fallbackTitle: fallbackTitle || '無題の問題セット',
-          detectedSetTitle: extractSetTitle(text),
-          title: extractSetTitle(text) || fallbackTitle || '無題の問題セット',
-          titleEdited: false,
-          text: normalizeJsonText(text),
+          detectedSetTitle,
+          editableSetTitle: detectedSetTitle || fallbackTitle || '無題の問題セット',
+          userEditedTitle: false,
+          rawText,
         };
       } catch (readError) {
         return {
@@ -93,9 +94,9 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
           fileName: file.name,
           fallbackTitle: fallbackTitle || '無題の問題セット',
           detectedSetTitle: '',
-          title: fallbackTitle || '無題の問題セット',
-          titleEdited: false,
-          text: '',
+          editableSetTitle: fallbackTitle || '無題の問題セット',
+          userEditedTitle: false,
+          rawText: '',
           readError: readError instanceof Error ? readError.message : 'ファイルの読み込みに失敗しました。',
         };
       }
@@ -103,7 +104,6 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
     setImportFiles(items);
     setIsPreparingFiles(false);
   };
-
   const handleJsonTextChange = (value: string) => {
     setJsonText(value);
     setImportResult(null);
@@ -120,7 +120,9 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
   };
 
   const handleFileTitleChange = (id: string, value: string) => {
-    setImportFiles((items) => items.map((item) => (item.id === id ? { ...item, title: value, titleEdited: true } : item)));
+    setImportFiles((items) => items.map((item) => (
+      item.id === id ? { ...item, editableSetTitle: value, userEditedTitle: true } : item
+    )));
   };
 
   const handleImport = async () => {
@@ -186,7 +188,7 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
         processedCount += 1;
         continue;
       }
-      const result = onImport(fileTitle, file.text, true);
+      const result = onImport(fileTitle, file.rawText, true);
       if (result) {
         failures.push({ fileName: file.fileName, error: result });
       } else {
@@ -268,7 +270,7 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
                   <div key={file.id} className="quiz-import__file-item">
                     <span>{index + 1}. {file.fileName}</span>
                     <input
-                      value={file.title}
+                      value={file.editableSetTitle}
                       onChange={(event) => handleFileTitleChange(file.id, event.target.value)}
                       className="quiz-import__file-title-input"
                       placeholder="問題セット名"
@@ -335,16 +337,10 @@ function extractSetTitle(text: string) {
 }
 
 function getFinalFileTitle(file: ImportFileItem) {
-  if (file.titleEdited) return file.title.trim();
-  return (
-    extractSetTitle(file.text) ||
-    file.detectedSetTitle.trim() ||
-    file.title.trim() ||
-    file.fallbackTitle.trim() ||
-    '無題の問題セット'
-  );
+  const editedTitle = file.editableSetTitle.trim();
+  if (file.userEditedTitle && editedTitle) return editedTitle;
+  return file.detectedSetTitle.trim() || extractSetTitle(file.rawText) || file.fallbackTitle.trim() || '無題の問題セット';
 }
-
 function readSetTitle(text: string): { parsed: boolean; title: string } {
   const normalizedText = normalizeJsonText(text);
   try {
