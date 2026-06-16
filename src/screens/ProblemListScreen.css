@@ -257,3 +257,18 @@
   background: rgba(18, 191, 192, 0.18);
   color: #67e8f9;
 }
+
+/* iPhone safe-area header adjustment */
+.quiz-list__header {
+  height: calc(100px + var(--safe-top));
+  flex-basis: calc(100px + var(--safe-top));
+}
+
+.quiz-list__title-wrap {
+  height: calc(100% - var(--safe-top));
+  margin-top: var(--safe-top);
+}
+
+.quiz-list__back-button {
+  top: calc(var(--safe-top) + 28px);
+}

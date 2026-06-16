@@ -25,6 +25,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
   const [currentIndex, setCurrentIndex] = useState(() => Math.min(Math.max(initialIndex, 0), Math.max(questions.length - 1, 0)));
   const [selectedIndexes, setSelectedIndexes] = useState<number[]>([]);
   const [lastCorrect, setLastCorrect] = useState<boolean | null>(null);
+  const [hasAnswered, setHasAnswered] = useState(false);
   const [correctCount, setCorrectCount] = useState(0);
   const [wrongCount, setWrongCount] = useState(0);
   const [addedReviewCount, setAddedReviewCount] = useState(0);
@@ -34,7 +35,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
 
   const currentQuestion = questions[currentIndex];
   const progress = currentQuestion ? getProgress(data, currentQuestion.id) : null;
-  const answered = lastCorrect !== null;
+  const answered = hasAnswered;
   const answerIndexes = useMemo(() => (currentQuestion ? getAnswerIndexes(currentQuestion) : []), [currentQuestion]);
   const answerText = useMemo(() => (currentQuestion ? getAnswerText(currentQuestion) : ''), [currentQuestion]);
   const isMultipleAnswer = answerIndexes.length > 1;
@@ -97,6 +98,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
     const result = onAnswer(currentQuestion, normalizedIndexes, mode === 'review');
     setSelectedIndexes(normalizedIndexes);
     setLastCorrect(result.isCorrect);
+    setHasAnswered(true);
     setAnswerSheetState('default');
     setSavedLevelLabel(result.levelLabel ? `保存済み・${result.levelLabel}` : '保存済み');
     setCorrectCount((value) => value + (result.isCorrect ? 1 : 0));
@@ -125,6 +127,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
     setCurrentIndex((value) => value + 1);
     setSelectedIndexes([]);
     setLastCorrect(null);
+    setHasAnswered(false);
     setAnswerSheetState('default');
     setSavedLevelLabel('');
     setAnswerMessage('');
@@ -235,7 +238,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
 
 function QuizHeader({ title, current, total, onBack }: { title: string; current?: number; total?: number; onBack: () => void }) {
   return (
-    <header className="flex h-[60px] shrink-0 items-center bg-[#F7F7F5] px-4">
+    <header className="quiz-runner__header flex shrink-0 items-center bg-[#F7F7F5] px-4">
       <BackButton onClick={onBack} />
       <h1 className="min-w-0 flex-1 truncate px-3 text-center text-[24px] font-bold leading-none text-[#5FA9DD]">{title}</h1>
       <div className="flex h-9 min-w-[72px] shrink-0 items-center justify-center rounded-full bg-[#F7F7F5] px-2 text-sm font-bold text-[#5FA9DD]">

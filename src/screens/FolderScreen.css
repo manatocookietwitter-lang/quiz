@@ -361,3 +361,22 @@
     gap: 4px 12px;
   }
 }
+
+/* iPhone safe-area header adjustment */
+.quiz-folder__header {
+  height: calc(100px + var(--safe-top));
+  flex-basis: calc(100px + var(--safe-top));
+}
+
+.quiz-folder__title {
+  height: calc(100% - var(--safe-top));
+  margin-top: var(--safe-top);
+}
+
+.quiz-folder__back-button {
+  top: calc(var(--safe-top) + 28px);
+}
+
+.quiz-folder__header-action {
+  top: calc(var(--safe-top) + 50px);
+}

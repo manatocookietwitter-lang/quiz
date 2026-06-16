@@ -384,3 +384,10 @@
   background: #2a2a2a;
   color: #777777;
 }
+
+/* iPhone safe-area header adjustment */
+.quiz-import__header {
+  height: calc(88px + var(--safe-top));
+  flex-basis: calc(88px + var(--safe-top));
+  padding-top: calc(16px + var(--safe-top));
+}
