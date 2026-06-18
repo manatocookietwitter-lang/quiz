@@ -166,7 +166,7 @@ export function recordAnswer(
   if (wasUnanswered) {
     nextProgress.isReview = true;
     nextProgress.isGraduated = false;
-    nextProgress.reviewLevel = 1;
+    nextProgress.reviewLevel = isCorrect ? 2 : 1;
   } else {
     if (isCorrect) {
       if (currentLevel >= 3) {

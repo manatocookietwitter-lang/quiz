@@ -429,6 +429,7 @@ function AnswerPanel({
   onNext: () => void;
 }) {
   const [dragStartY, setDragStartY] = useState<number | null>(null);
+  const isDragging = dragStartY !== null;
 
   const moveByDrag = (deltaY: number) => {
     if (deltaY < -36) {
@@ -447,6 +448,10 @@ function AnswerPanel({
     event.currentTarget.setPointerCapture?.(event.pointerId);
   };
 
+  const handlePointerMove = (event: PointerEvent<HTMLElement>) => {
+    if (dragStartY !== null) event.preventDefault();
+  };
+
   const handlePointerUp = (event: PointerEvent<HTMLElement>) => {
     if (dragStartY === null) return;
     moveByDrag(event.clientY - dragStartY);
@@ -456,29 +461,27 @@ function AnswerPanel({
 
   const dragProps = {
     onPointerDown: handlePointerDown,
+    onPointerMove: handlePointerMove,
     onPointerUp: handlePointerUp,
     onPointerCancel: () => setDragStartY(null),
   };
 
   if (state === 'hidden') {
     return (
-      <section className="answer-sheet answer-sheet--hidden">
-        <div className="answer-sheet__drag-area" {...dragProps}>
-          <div className="answer-sheet__drag-handle" />
-        </div>
-        <button type="button" className="answer-sheet__hidden-main" onClick={onDefault}>
+      <section className={`answer-sheet answer-sheet--hidden ${isDragging ? 'answer-sheet--dragging' : ''}`} {...dragProps}>
+        <div className="answer-sheet__hidden-handle" />
+        <div className="answer-sheet__hidden-bar">
           <span className={`answer-sheet__hidden-result ${isCorrect ? 'answer-sheet__hidden-result--correct' : 'answer-sheet__hidden-result--wrong'}`}>{isCorrect ? '\u6b63\u89e3' : '\u4e0d\u6b63\u89e3'}</span>
-          <strong>{'\u89e3\u7b54\u3092\u898b\u308b'}</strong>
-        </button>
-        <button type="button" className="answer-sheet__hidden-next" onClick={onNext}>
-          {isLast ? '\u7d50\u679c\u3078' : '\u6b21\u3078'}
-        </button>
+          <button type="button" className="answer-sheet__hidden-open" onClick={onDefault}>{'\u89e3\u7b54\u3092\u898b\u308b'}</button>
+          <button type="button" className="answer-sheet__hidden-next" onClick={onNext}>
+            {isLast ? '\u7d50\u679c\u3078' : '\u6b21\u3078'}
+          </button>
+        </div>
       </section>
     );
   }
-
   return (
-    <section className={`answer-sheet answer-sheet--${state}`}>
+    <section className={`answer-sheet answer-sheet--${state} ${isDragging ? 'answer-sheet--dragging' : ''}`}>
       <div className="answer-sheet__drag-area" {...dragProps}>
         <div className="answer-sheet__drag-handle" />
       </div>

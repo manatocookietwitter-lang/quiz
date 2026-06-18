@@ -656,3 +656,103 @@ button:disabled {
   font-size: 13px;
   font-weight: 900;
 }
+/* Answer sheet interaction refinements */
+.answer-sheet {
+  transition:
+    height 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 160ms ease,
+    border-radius 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: height, transform;
+}
+
+.answer-sheet--dragging {
+  transition: none;
+}
+
+.answer-sheet__drag-area {
+  position: relative;
+  min-height: 44px;
+  align-items: center;
+  padding: 12px 0 8px;
+}
+
+.answer-sheet__drag-area::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -8px;
+  bottom: -12px;
+}
+
+.answer-sheet--hidden {
+  height: 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border-radius: 18px;
+  padding: 5px 14px 8px;
+  touch-action: none;
+}
+
+.answer-sheet__hidden-handle {
+  width: 36px;
+  height: 4px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #c4c4c4;
+  margin: 0 auto 3px;
+}
+
+.answer-sheet__hidden-bar {
+  min-height: 0;
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.answer-sheet__hidden-open,
+.answer-sheet__hidden-next {
+  border: none;
+  outline: none;
+  font: inherit;
+}
+
+.answer-sheet__hidden-result {
+  justify-self: start;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.answer-sheet__hidden-open {
+  justify-self: center;
+  min-width: 104px;
+  height: 38px;
+  border-radius: 999px;
+  background: #ececec;
+  color: #333333;
+  padding: 0 12px;
+  font-size: 14px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.answer-sheet__hidden-next {
+  justify-self: end;
+  min-width: 66px;
+  height: 40px;
+  border-radius: 14px;
+  background: #5fa9dd;
+  padding: 0 12px;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 900;
+}
