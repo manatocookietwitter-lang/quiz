@@ -383,27 +383,27 @@ button:disabled {
   align-items: center;
   min-height: 22px;
   border-radius: 999px;
-  background: rgba(18, 191, 192, 0.2);
-  border: 1px solid rgba(18, 191, 192, 0.36);
-  padding: 4px 8px;
-  color: #0f5f60;
-  font-size: 11px;
-  font-weight: 900;
+  background: transparent;
+  border: 1px solid rgba(18, 191, 192, 0.55);
+  padding: 4px 9px;
+  color: #0f6f70;
+  font-size: 12px;
+  font-weight: 800;
   line-height: 1;
 }
 
 .question-instruction-badge--negative {
-  background: rgba(255, 112, 67, 0.22);
-  border-color: rgba(255, 112, 67, 0.38);
-  color: #7a2f18;
+  background: transparent;
+  border-color: rgba(255, 138, 101, 0.55);
+  color: #9b3f1f;
 }
 
 .question-instruction-highlight {
   display: inline;
-  border-radius: 7px;
-  background: rgba(255, 255, 255, 0.36);
-  padding: 1px 4px;
-  color: #111111;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  color: inherit;
   font-weight: 900;
 }
 
