@@ -1,7 +1,6 @@
 import type { QuizResult } from '../types';
-import { Header } from '../components/Header';
 import { Layout } from '../components/Layout';
-import { StatCard } from '../components/StatCard';
+import './ResultScreen.css';
 
 interface ResultScreenProps {
   result: QuizResult;
@@ -11,44 +10,52 @@ interface ResultScreenProps {
 
 export function ResultScreen({ result, onHome, onRetry }: ResultScreenProps) {
   const correctRate = result.answered === 0 ? 0 : Math.round((result.correct / result.answered) * 100);
+  const completionMessage = result.mode === 'review'
+    ? '\u5fa9\u7fd2\u304c\u5b8c\u4e86\u3057\u307e\u3057\u305f\u3002'
+    : '\u901a\u5e38\u5b66\u7fd2\u304c\u5b8c\u4e86\u3057\u307e\u3057\u305f\u3002';
 
   return (
     <Layout>
-      <Header title="結果" subtitle={result.title} />
+      <main className="result-screen">
+        <div className="result-screen__inner">
+          <header className="result-header">
+            <h1>{'\u7d50\u679c'}</h1>
+            <p>{result.title}</p>
+          </header>
 
-      <section className="mx-4 mt-4 rounded-[28px] bg-neutral-900 p-5 text-center ring-1 ring-white/10">
-        <div className="text-sm font-black text-cyan-300">今回の正答率</div>
-        <div className="mt-2 text-6xl font-black tracking-tight text-white">{correctRate}%</div>
-        <p className="mt-3 text-sm font-bold text-neutral-400">
-          {result.mode === 'review' ? '復習モードが完了しました。' : '通常学習が完了しました。'}
-        </p>
-      </section>
+          <section className="result-summary-card" aria-label="\u4eca\u56de\u306e\u6b63\u7b54\u7387">
+            <div className="result-rate-label">{'\u4eca\u56de\u306e\u6b63\u7b54\u7387'}</div>
+            <div className="result-rate-value">{correctRate}%</div>
+          </section>
 
-      <section className="mx-4 mt-3 grid grid-cols-2 gap-2">
-        <StatCard label="解いた問題数" value={result.answered} accent />
-        <StatCard label="正解数" value={result.correct} />
-        <StatCard label="不正解数" value={result.wrong} />
-        <StatCard label="復習に追加" value={result.addedReviewCount} />
-      </section>
+          <p className="result-message">{completionMessage}</p>
 
-      <div className="min-h-0 flex-1" />
+          <section className="result-stats-grid" aria-label="\u7d50\u679c\u8a73\u7d30">
+            <ResultStat label="\u89e3\u3044\u305f\u554f\u984c\u6570" value={result.answered} />
+            <ResultStat label="\u6b63\u89e3\u6570" value={result.correct} />
+            <ResultStat label="\u4e0d\u6b63\u89e3\u6570" value={result.wrong} />
+            <ResultStat label="\u5fa9\u7fd2\u306b\u8ffd\u52a0" value={result.addedReviewCount} />
+          </section>
+        </div>
 
-      <section className="grid shrink-0 grid-cols-2 gap-2 px-4 pt-3">
-        <button
-          type="button"
-          onClick={onHome}
-          className="min-h-[56px] rounded-2xl bg-neutral-900 px-4 text-sm font-black text-neutral-100 ring-1 ring-white/10 active:scale-[0.98]"
-        >
-          ホームに戻る
-        </button>
-        <button
-          type="button"
-          onClick={onRetry}
-          className="min-h-[56px] rounded-2xl bg-cyan-500 px-4 text-sm font-black text-neutral-950 active:scale-[0.98]"
-        >
-          もう一度解く
-        </button>
-      </section>
+        <section className="result-actions" aria-label="\u7d50\u679c\u64cd\u4f5c">
+          <button type="button" onClick={onHome} className="result-button result-button--secondary">
+            {'\u30db\u30fc\u30e0\u306b\u623b\u308b'}
+          </button>
+          <button type="button" onClick={onRetry} className="result-button result-button--primary">
+            {'\u3082\u3046\u4e00\u5ea6\u89e3\u304f'}
+          </button>
+        </section>
+      </main>
     </Layout>
+  );
+}
+
+function ResultStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="result-stat-card">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
   );
 }
