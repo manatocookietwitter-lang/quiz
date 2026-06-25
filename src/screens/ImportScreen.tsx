@@ -182,7 +182,7 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
         processedCount += 1;
         continue;
       }
-      const fileTitle = getFinalFileTitle(file);
+      const fileTitle = getFinalFileTitle(file, importFiles.length === 1 ? title.trim() : '');
       if (!fileTitle) {
         failures.push({ fileName: file.fileName, error: '問題セット名を入力してください。' });
         processedCount += 1;
@@ -336,8 +336,10 @@ function extractSetTitle(text: string) {
   return readSetTitle(text).title;
 }
 
-function getFinalFileTitle(file: ImportFileItem) {
+function getFinalFileTitle(file: ImportFileItem, globalTitle = '') {
   const editedTitle = file.editableSetTitle.trim();
+  const globalOverride = globalTitle.trim();
+  if (globalOverride) return globalOverride;
   if (file.userEditedTitle && editedTitle) return editedTitle;
   return file.detectedSetTitle.trim() || extractSetTitle(file.rawText) || file.fallbackTitle.trim() || '無題の問題セット';
 }
