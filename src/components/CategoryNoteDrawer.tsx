@@ -118,6 +118,8 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   const normalizedCategory = normalizeCategory(category);
   const noteKey = problemSetId ? getNoteKey(problemSetId, normalizedCategory) : '';
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const prevPageRef = useRef<HTMLDivElement | null>(null);
+  const nextPageRef = useRef<HTMLDivElement | null>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
   const drawingRef = useRef(false);
   const pendingResizeRef = useRef(false);
@@ -341,14 +343,48 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
     const shouldChangePage = Math.abs(deltaX) > 70 && Math.abs(deltaX) > Math.abs(deltaY) * 1.25;
     pageSwipeRef.current = null;
     setPageSwiping(false);
-    setPageTransform(0);
+    resetPageRail();
     event.currentTarget.releasePointerCapture?.(event.pointerId);
 
     if (!shouldChangePage) return;
-    if (deltaX < 0 && currentPageIndex < pages.length - 1) goToPage(currentPageIndex + 1);
-    if (deltaX > 0 && currentPageIndex > 0) goToPage(currentPageIndex - 1);
+    if (deltaX < 0 && currentPageIndex < pages.length - 1) {
+      animatePageCommit('next', () => goToPage(currentPageIndex + 1));
+      return;
+    }
+    if (deltaX > 0 && currentPageIndex > 0) {
+      animatePageCommit('prev', () => goToPage(currentPageIndex - 1));
+    }
   };
 
+  const resetPageRail = () => {
+    if (pageSwipeFrameRef.current !== null) {
+      cancelAnimationFrame(pageSwipeFrameRef.current);
+      pageSwipeFrameRef.current = null;
+    }
+    if (pageElementRef.current) {
+      pageElementRef.current.style.transform = 'translate3d(-100%, 0, 0)';
+      pageElementRef.current.style.opacity = '';
+    }
+    if (prevPageRef.current) prevPageRef.current.style.opacity = '';
+    if (nextPageRef.current) nextPageRef.current.style.opacity = '';
+  };
+  const animatePageCommit = (direction: 'prev' | 'next', onComplete: () => void) => {
+    const rail = pageElementRef.current;
+    if (!rail) {
+      onComplete();
+      return;
+    }
+    rail.style.transition = 'transform 180ms cubic-bezier(0.22, 1, 0.36, 1), opacity 160ms ease';
+    rail.style.transform = direction === 'next' ? 'translate3d(-200%, 0, 0)' : 'translate3d(0, 0, 0)';
+    window.setTimeout(() => {
+      rail.style.transition = '';
+      resetPageRail();
+      rail.style.opacity = '';
+      if (prevPageRef.current) prevPageRef.current.style.opacity = '';
+      if (nextPageRef.current) nextPageRef.current.style.opacity = '';
+      onComplete();
+    }, 180);
+  };
   const beginDraw = (event: PointerEvent<HTMLCanvasElement>) => {
     if (!canDraw(event)) {
       beginPageSwipe(event);
@@ -459,20 +495,36 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
       </header>
 
       <div className="category-note-canvas-area">
-        <div
-          ref={pageElementRef}
-          className={`category-note-page${pageSwiping ? ' category-note-page--swiping' : ''}`}
-          aria-label="A4 note page"
-        >
-          <canvas
-            ref={canvasRef}
-            className="category-note-canvas"
-            onPointerDown={beginDraw}
-            onPointerMove={moveDraw}
-            onPointerUp={endDraw}
-            onPointerCancel={endDraw}
-            onPointerLeave={endDraw}
-          />
+        <div className="category-note-page-viewport">
+          <div
+            ref={pageElementRef}
+            className={`category-note-page-rail${pageSwiping ? ' category-note-page-rail--swiping' : ''}`}
+            aria-label="A4 note page slider"
+          >
+            <div
+              ref={prevPageRef}
+              className="category-note-page category-note-page--preview"
+              style={{ backgroundImage: pages[currentPageIndex - 1]?.dataUrl ? `url(${pages[currentPageIndex - 1].dataUrl})` : undefined }}
+              aria-hidden="true"
+            />
+            <div className="category-note-page category-note-page--active">
+              <canvas
+                ref={canvasRef}
+                className="category-note-canvas"
+                onPointerDown={beginDraw}
+                onPointerMove={moveDraw}
+                onPointerUp={endDraw}
+                onPointerCancel={endDraw}
+                onPointerLeave={endDraw}
+              />
+            </div>
+            <div
+              ref={nextPageRef}
+              className="category-note-page category-note-page--preview"
+              style={{ backgroundImage: pages[currentPageIndex + 1]?.dataUrl ? `url(${pages[currentPageIndex + 1].dataUrl})` : undefined }}
+              aria-hidden="true"
+            />
+          </div>
         </div>
       </div>
 
@@ -629,6 +681,8 @@ function drawDataUrlToContext(context: CanvasRenderingContext2D, dataUrl: string
   image.onload = () => context.drawImage(image, 0, 0, width, height);
   image.src = dataUrl;
 }
+
+
 
 
 

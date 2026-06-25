@@ -21,6 +21,7 @@
     "@types/react-dom": "^19.2.3",
     "autoprefixer": "latest",
     "postcss": "latest",
+    "supabase": "^2.108.0",
     "tailwindcss": "latest"
   }
 }

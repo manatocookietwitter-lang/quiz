@@ -290,3 +290,43 @@
     font-weight: 900;
   }
 }
+
+@media (min-width: 900px) and (orientation: landscape) {
+  .category-note-page-viewport {
+    aspect-ratio: 210 / 297;
+    width: min(100%, calc((100dvh - var(--safe-top, 0px) - 112px) * 210 / 297));
+    max-height: 100%;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .category-note-page-rail {
+    width: 300%;
+    height: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    transform: translate3d(-100%, 0, 0);
+    will-change: transform, opacity;
+  }
+
+  .category-note-page-rail--swiping {
+    transition: none;
+  }
+
+  .category-note-page-rail > .category-note-page {
+    width: 100%;
+    height: 100%;
+  }
+
+  .category-note-page--preview {
+    background-color: #ffffff;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    opacity: 0;
+  }
+
+  .category-note-page--active {
+    opacity: 1;
+  }
+}
