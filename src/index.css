@@ -772,3 +772,14 @@ button:disabled {
     max-width: none;
   }
 }
+
+@media (min-width: 900px) and (orientation: landscape) {
+  .quiz-runner--note-open main,
+  .quiz-runner--note-open main *,
+  body.quiz-note-open .answer-sheet,
+  body.quiz-note-open .answer-sheet * {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
