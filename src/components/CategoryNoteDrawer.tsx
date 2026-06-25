@@ -1,4 +1,5 @@
 ﻿import { type PointerEvent, useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import './CategoryNoteDrawer.css';
 
 const UNCATEGORIZED = '\u672a\u5206\u985e';
@@ -347,12 +348,12 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
 
     if (shouldChangePage && deltaX < 0 && currentPageIndex < pages.length - 1) {
       setPageSwiping(false);
-      animatePageCommit('next', () => goToPage(currentPageIndex + 1));
+      animatePageCommit('next', currentPageIndex + 1);
       return;
     }
     if (shouldChangePage && deltaX > 0 && currentPageIndex > 0) {
       setPageSwiping(false);
-      animatePageCommit('prev', () => goToPage(currentPageIndex - 1));
+      animatePageCommit('prev', currentPageIndex - 1);
       return;
     }
 
@@ -372,22 +373,44 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
     if (prevPageRef.current) prevPageRef.current.style.opacity = '';
     if (nextPageRef.current) nextPageRef.current.style.opacity = '';
   };
-  const animatePageCommit = (direction: 'prev' | 'next', onComplete: () => void) => {
+  const animatePageCommit = (direction: 'prev' | 'next', targetIndex: number) => {
     const rail = pageElementRef.current;
     if (!rail) {
-      onComplete();
+      goToPage(targetIndex);
       return;
     }
-    rail.style.transition = 'transform 180ms cubic-bezier(0.22, 1, 0.36, 1), opacity 160ms ease';
-    rail.style.transform = direction === 'next' ? 'translate3d(-66.666667%, 0, 0)' : 'translate3d(0, 0, 0)';
-    window.setTimeout(() => {
+
+    const finishCommit = () => {
+      rail.removeEventListener('transitionend', finishCommit);
+      const dataUrl = snapshot();
+      const nextPages = [...pages];
+      if (dataUrl) {
+        nextPages[currentPageIndex] = { ...nextPages[currentPageIndex], dataUrl, updatedAt: new Date().toISOString() };
+      }
+      const nextNote: CategoryNote = {
+        problemSetId: problemSetId ?? '',
+        category: normalizedCategory,
+        pages: nextPages,
+        currentPageIndex: targetIndex,
+        updatedAt: new Date().toISOString(),
+      };
+
+      pageDataUrlRef.current = nextPages[targetIndex]?.dataUrl ?? '';
+      rail.style.transition = 'none';
+      rail.style.transform = 'translate3d(-33.333333%, 0, 0)';
+      flushSync(() => {
+        setNote(nextNote);
+        setPageIndex(targetIndex);
+        clearHistory();
+      });
+      persistNote(nextNote);
+      void rail.offsetHeight;
       rail.style.transition = '';
-      resetPageRail();
-      rail.style.opacity = '';
-      if (prevPageRef.current) prevPageRef.current.style.opacity = '';
-      if (nextPageRef.current) nextPageRef.current.style.opacity = '';
-      onComplete();
-    }, 180);
+    };
+
+    rail.addEventListener('transitionend', finishCommit, { once: true });
+    rail.style.transition = 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)';
+    rail.style.transform = direction === 'next' ? 'translate3d(-66.666667%, 0, 0)' : 'translate3d(0, 0, 0)';
   };
   const beginDraw = (event: PointerEvent<HTMLCanvasElement>) => {
     if (!canDraw(event)) {
@@ -685,6 +708,7 @@ function drawDataUrlToContext(context: CanvasRenderingContext2D, dataUrl: string
   image.onload = () => context.drawImage(image, 0, 0, width, height);
   image.src = dataUrl;
 }
+
 
 
 
