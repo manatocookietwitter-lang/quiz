@@ -11,6 +11,7 @@ import { QuizRunner } from './screens/QuizRunner';
 import { ReviewScreen } from './screens/ReviewScreen';
 import { ResultScreen } from './screens/ResultScreen';
 import { SyncScreen } from './screens/SyncScreen';
+import { AutoSyncController } from './components/AutoSyncController';
 import { createId } from './utils/id';
 import { formatBackupDate, nowIso } from './utils/date';
 import {
@@ -343,6 +344,7 @@ export default function App() {
 
   return (
     <>
+      <AutoSyncController />
       <div key={getScreenKey(screen)} className={`quiz-screen-transition quiz-screen-transition--${transitionDirection}`}>
         {content}
       </div>
@@ -385,7 +387,3 @@ function makeUniqueProblemSetTitle(data: AppData, folderId: string, rawTitle: st
   }
   return nextTitle;
 }
-
-
-
-

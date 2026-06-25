@@ -1,14 +1,18 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { BackButton } from '../components/BackButton';
 import {
   downloadSyncData,
   exportQuizMakeData,
   generateSyncId,
+  getAutoSyncSettings,
+  getLastSyncState,
   getStoredSyncId,
   importQuizMakeData,
   isSyncConfigured,
+  setAutoSyncEnabled,
   setStoredSyncId,
   uploadSyncData,
+  type LastSyncState,
 } from '../utils/syncService';
 import './SyncScreen.css';
 
@@ -19,16 +23,34 @@ interface SyncScreenProps {
 export function SyncScreen({ onBack }: SyncScreenProps) {
   const configured = useMemo(() => isSyncConfigured(), []);
   const [syncId, setSyncId] = useState(() => getStoredSyncId());
+  const [autoEnabled, setAutoEnabledState] = useState(() => getAutoSyncSettings().enabled);
+  const [lastState, setLastState] = useState<LastSyncState>(() => getLastSyncState());
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
   const normalizedSyncId = syncId.trim();
   const canRun = Boolean(normalizedSyncId) && !busy;
+  const autoCanRun = autoEnabled && configured && Boolean(normalizedSyncId);
+
+  useEffect(() => {
+    const refreshSyncState = () => {
+      setLastState(getLastSyncState());
+      setAutoEnabledState(getAutoSyncSettings().enabled);
+    };
+
+    window.addEventListener('quiz-make-sync-state-change', refreshSyncState);
+    window.addEventListener('quiz-make-sync-settings-change', refreshSyncState);
+    return () => {
+      window.removeEventListener('quiz-make-sync-state-change', refreshSyncState);
+      window.removeEventListener('quiz-make-sync-settings-change', refreshSyncState);
+    };
+  }, []);
 
   const updateSyncId = (value: string) => {
     setSyncId(value);
     setStoredSyncId(value);
+    setError('');
   };
 
   const handleGenerate = () => {
@@ -36,6 +58,21 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
     updateSyncId(nextId);
     setError('');
     setMessage('同期IDを生成しました。別端末にも同じIDを入力してください。');
+  };
+
+  const handleToggleAutoSync = () => {
+    setMessage('');
+    setError('');
+
+    const result = setAutoSyncEnabled(!autoEnabled);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+
+    setAutoEnabledState(result.value);
+    setLastState(getLastSyncState());
+    setMessage(result.value ? '自動同期をONにしました。' : '自動同期をOFFにしました。');
   };
 
   const handleUpload = async () => {
@@ -51,6 +88,7 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
     const payload = exportQuizMakeData();
     const result = await uploadSyncData(normalizedSyncId, payload);
     setBusy(false);
+    setLastState(getLastSyncState());
 
     if (!result.ok) {
       setMessage('');
@@ -73,6 +111,7 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
 
     const result = await downloadSyncData(normalizedSyncId);
     setBusy(false);
+    setLastState(getLastSyncState());
 
     if (!result.ok) {
       setMessage('');
@@ -93,6 +132,7 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
     }
 
     const importResult = importQuizMakeData(result.value.payload);
+    setLastState(getLastSyncState());
     if (!importResult.ok) {
       setMessage('');
       setError(importResult.error);
@@ -109,7 +149,7 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
         <BackButton onClick={onBack} label="戻る" className="sync-screen__back" />
         <div className="sync-screen__header-text">
           <h1>同期設定</h1>
-          <p>手動でクラウド保存・読み込み</p>
+          <p>手動同期と安全な自動反映</p>
         </div>
       </header>
 
@@ -122,7 +162,7 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
             </span>
           </div>
           <p className="sync-card__description">
-            同じ同期IDを使う端末同士で、Quiz makeのlocalStorageデータを手動で共有します。
+            同じ同期IDを使う端末同士で、Quiz makeのデータを共有します。同期IDは他人に知られない文字列にしてください。
           </p>
           <input
             className="sync-input"
@@ -138,6 +178,29 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
         </section>
 
         <section className="sync-card">
+          <div className="sync-card__title-row sync-card__title-row--center">
+            <div>
+              <h2>自動同期</h2>
+              <p className="sync-card__inline-note">ONのときだけ、約60秒ごとに変更をクラウドへ保存します。</p>
+            </div>
+            <button
+              type="button"
+              className={`sync-toggle__button${autoEnabled ? ' sync-toggle__button--active' : ''}`}
+              onClick={handleToggleAutoSync}
+              aria-pressed={autoEnabled}
+            >
+              {autoEnabled ? 'ON' : 'OFF'}
+            </button>
+          </div>
+          <p className="sync-card__description">
+            起動時やアプリ復帰時にクラウド側が新しい場合は、確認してからこの端末へ読み込みます。勝手に上書きはしません。
+          </p>
+          <div className={`sync-auto-state${autoCanRun ? ' sync-auto-state--ready' : ''}`}>
+            {autoCanRun ? '自動同期は有効です' : autoEnabled ? '同期IDまたはSupabase設定が不足しています' : '自動同期はOFFです'}
+          </div>
+        </section>
+
+        <section className="sync-card">
           <h2>手動同期</h2>
           <div className="sync-actions">
             <button type="button" className="sync-button sync-button--primary" onClick={handleUpload} disabled={!canRun}>
@@ -148,8 +211,27 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
             </button>
           </div>
           <p className="sync-card__note">
-            自動同期はまだ行いません。保存はクラウドを上書き、読み込みはこの端末を上書きします。
+            保存はクラウドを上書き、読み込みはこの端末を上書きします。読み込み前には確認を表示します。
           </p>
+        </section>
+
+        <section className="sync-card">
+          <h2>同期状態</h2>
+          <div className="sync-meta-grid">
+            <div className="sync-meta-item">
+              <span>最終同期</span>
+              <strong>{formatDateTime(lastState.lastSyncAt) || '未実行'}</strong>
+            </div>
+            <div className="sync-meta-item">
+              <span>クラウド更新</span>
+              <strong>{formatDateTime(lastState.lastRemoteUpdatedAt) || '未確認'}</strong>
+            </div>
+            <div className="sync-meta-item sync-meta-item--wide">
+              <span>状態</span>
+              <strong>{lastState.status || '待機中'}</strong>
+            </div>
+          </div>
+          {lastState.error ? <p className="sync-card__error-text">{lastState.error}</p> : null}
         </section>
 
         {!configured ? (
@@ -166,6 +248,7 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
 }
 
 function formatDateTime(value: string) {
+  if (!value) return '';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString('ja-JP', { dateStyle: 'short', timeStyle: 'short' });

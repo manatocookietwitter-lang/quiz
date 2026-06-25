@@ -100,6 +100,10 @@
   margin-bottom: 10px;
 }
 
+.sync-card__title-row--center {
+  align-items: center;
+}
+
 .sync-card h2 {
   margin: 0;
   font-size: 18px;
@@ -107,7 +111,8 @@
 }
 
 .sync-card__description,
-.sync-card__note {
+.sync-card__note,
+.sync-card__inline-note {
   margin: 0 0 14px;
   color: #a3a3a3;
   font-size: 13px;
@@ -115,8 +120,21 @@
   line-height: 1.55;
 }
 
+.sync-card__inline-note {
+  margin: 5px 0 0;
+  font-size: 12px;
+}
+
 .sync-card__note {
   margin: 12px 0 0;
+}
+
+.sync-card__error-text {
+  margin: 12px 0 0;
+  color: #fecdd3;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.45;
 }
 
 .sync-status {
@@ -157,10 +175,14 @@
   gap: 10px;
 }
 
-.sync-button {
+.sync-button,
+.sync-toggle__button {
   appearance: none;
   border: none;
   outline: none;
+}
+
+.sync-button {
   width: 100%;
   min-height: 52px;
   border-radius: 16px;
@@ -184,6 +206,78 @@
   background: #2a2a2a;
   color: #777777;
   border-color: #333333;
+}
+
+.sync-toggle__button {
+  flex: 0 0 auto;
+  min-width: 78px;
+  height: 42px;
+  border-radius: 999px;
+  background: #2b2b2b;
+  color: #bdbdbd;
+  border: 1px solid #3a3a3a;
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.sync-toggle__button--active {
+  background: #12bfc0;
+  color: #ffffff;
+  border-color: #12bfc0;
+  box-shadow: 0 0 0 3px rgba(18, 191, 192, 0.16);
+}
+
+.sync-auto-state {
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: #171717;
+  border: 1px solid #303030;
+  color: #cfcfcf;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.sync-auto-state--ready {
+  background: rgba(18, 191, 192, 0.12);
+  border-color: rgba(18, 191, 192, 0.35);
+  color: #d8ffff;
+}
+
+.sync-meta-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.sync-meta-item {
+  min-width: 0;
+  border-radius: 15px;
+  background: #171717;
+  border: 1px solid #303030;
+  padding: 12px;
+}
+
+.sync-meta-item--wide {
+  grid-column: 1 / -1;
+}
+
+.sync-meta-item span {
+  display: block;
+  color: #8f8f8f;
+  font-size: 11px;
+  font-weight: 850;
+  margin-bottom: 7px;
+}
+
+.sync-meta-item strong {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.35;
 }
 
 .sync-alert {

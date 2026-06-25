@@ -12,7 +12,32 @@ export type RemoteSyncRecord = {
   updatedAt: string;
 };
 
+export type RemoteSyncMeta = {
+  syncId: string;
+  updatedAt: string;
+};
+
+export type AutoSyncSettings = {
+  enabled: boolean;
+  syncId: string;
+  configured: boolean;
+};
+
+export type LastSyncState = {
+  lastSyncAt: string;
+  lastUploadHash: string;
+  lastRemoteUpdatedAt: string;
+  status: string;
+  error: string;
+};
+
 const SYNC_ID_STORAGE_KEY = 'quizMake:sync:id';
+const AUTO_SYNC_ENABLED_KEY = 'quizMake:sync:autoEnabled';
+const LAST_SYNC_AT_KEY = 'quizMake:sync:lastSyncAt';
+const LAST_UPLOAD_HASH_KEY = 'quizMake:sync:lastUploadHash';
+const LAST_REMOTE_UPDATED_AT_KEY = 'quizMake:sync:lastRemoteUpdatedAt';
+const LAST_SYNC_STATUS_KEY = 'quizMake:sync:lastStatus';
+const LAST_SYNC_ERROR_KEY = 'quizMake:sync:lastError';
 const SYNC_BACKUP_PREFIX = 'quizMake:sync:backup:';
 const SUPABASE_TABLE = 'quiz_sync_data';
 
@@ -29,11 +54,7 @@ export function getRemoteSyncConfig(): { url: string; anonKey: string } | null {
 }
 
 export function getStoredSyncId(): string {
-  try {
-    return localStorage.getItem(SYNC_ID_STORAGE_KEY) ?? '';
-  } catch {
-    return '';
-  }
+  return safeGetItem(SYNC_ID_STORAGE_KEY);
 }
 
 export function setStoredSyncId(syncId: string): void {
@@ -41,8 +62,58 @@ export function setStoredSyncId(syncId: string): void {
     const value = syncId.trim();
     if (value) localStorage.setItem(SYNC_ID_STORAGE_KEY, value);
     else localStorage.removeItem(SYNC_ID_STORAGE_KEY);
+    dispatchSyncSettingsChanged();
   } catch {
     // Sync ID persistence is convenient, not required for the app to work.
+  }
+}
+
+export function getAutoSyncSettings(): AutoSyncSettings {
+  return {
+    enabled: safeGetItem(AUTO_SYNC_ENABLED_KEY) === 'true',
+    syncId: getStoredSyncId(),
+    configured: isSyncConfigured(),
+  };
+}
+
+export function setAutoSyncEnabled(enabled: boolean): SyncResult<boolean> {
+  const syncId = getStoredSyncId().trim();
+  if (enabled && !syncId) return { ok: false, error: '同期IDを入力してください。' };
+  if (enabled && !isSyncConfigured()) return { ok: false, error: 'Supabaseの環境変数が未設定です。' };
+
+  try {
+    localStorage.setItem(AUTO_SYNC_ENABLED_KEY, enabled ? 'true' : 'false');
+    setLastSyncState({ status: enabled ? '自動同期ON' : '自動同期OFF', error: '' });
+    dispatchSyncSettingsChanged();
+    return { ok: true, value: enabled };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : '自動同期設定の保存に失敗しました。' };
+  }
+}
+
+export function getLastSyncState(): LastSyncState {
+  return {
+    lastSyncAt: safeGetItem(LAST_SYNC_AT_KEY),
+    lastUploadHash: safeGetItem(LAST_UPLOAD_HASH_KEY),
+    lastRemoteUpdatedAt: safeGetItem(LAST_REMOTE_UPDATED_AT_KEY),
+    status: safeGetItem(LAST_SYNC_STATUS_KEY),
+    error: safeGetItem(LAST_SYNC_ERROR_KEY),
+  };
+}
+
+export function setLastSyncState(state: Partial<LastSyncState>): void {
+  try {
+    if (state.lastSyncAt !== undefined) localStorage.setItem(LAST_SYNC_AT_KEY, state.lastSyncAt);
+    if (state.lastUploadHash !== undefined) localStorage.setItem(LAST_UPLOAD_HASH_KEY, state.lastUploadHash);
+    if (state.lastRemoteUpdatedAt !== undefined) localStorage.setItem(LAST_REMOTE_UPDATED_AT_KEY, state.lastRemoteUpdatedAt);
+    if (state.status !== undefined) localStorage.setItem(LAST_SYNC_STATUS_KEY, state.status);
+    if (state.error !== undefined) {
+      if (state.error) localStorage.setItem(LAST_SYNC_ERROR_KEY, state.error);
+      else localStorage.removeItem(LAST_SYNC_ERROR_KEY);
+    }
+    window.dispatchEvent(new CustomEvent('quiz-make-sync-state-change'));
+  } catch {
+    // Status is informational only.
   }
 }
 
@@ -61,13 +132,17 @@ export function generateSyncId(): string {
 
 export function exportQuizMakeData(updatedAt = new Date().toISOString()): SyncPayload {
   const localStorageData: Record<string, string> = {};
+  const keys: string[] = [];
 
   for (let index = 0; index < localStorage.length; index += 1) {
     const key = localStorage.key(index);
-    if (!key || !isQuizMakeStorageKey(key)) continue;
+    if (key && isQuizMakeStorageKey(key)) keys.push(key);
+  }
+
+  keys.sort().forEach((key) => {
     const value = localStorage.getItem(key);
     if (value !== null) localStorageData[key] = value;
-  }
+  });
 
   return {
     version: 1,
@@ -91,11 +166,19 @@ export function importQuizMakeData(payload: SyncPayload): SyncResult<number> {
     }
 
     keysToRemove.forEach((key) => localStorage.removeItem(key));
-    Object.entries(payload.localStorage).forEach(([key, value]) => {
+    Object.entries(validation.value.localStorage).forEach(([key, value]) => {
       if (isQuizMakeStorageKey(key)) localStorage.setItem(key, value);
     });
 
-    return { ok: true, value: Object.keys(payload.localStorage).length };
+    const now = new Date().toISOString();
+    setLastSyncState({
+      lastSyncAt: now,
+      lastUploadHash: computePayloadHash(validation.value),
+      status: 'クラウドから読み込みました',
+      error: '',
+    });
+
+    return { ok: true, value: Object.keys(validation.value.localStorage).length };
   } catch (error) {
     return {
       ok: false,
@@ -116,19 +199,28 @@ export async function uploadSyncData(syncId: string, payload: SyncPayload): Prom
 
   try {
     const updatedAt = new Date().toISOString();
+    const uploadPayload = { ...validation.value, updatedAt };
     const response = await fetch(`${config.url}/rest/v1/${SUPABASE_TABLE}?on_conflict=sync_id`, {
       method: 'POST',
       headers: createSupabaseHeaders(config.anonKey, { Prefer: 'resolution=merge-duplicates,return=representation' }),
-      body: JSON.stringify([{ sync_id: normalizedSyncId, data: payload, updated_at: updatedAt }]),
+      body: JSON.stringify([{ sync_id: normalizedSyncId, data: uploadPayload, updated_at: updatedAt }]),
     });
 
     if (!response.ok) return { ok: false, error: await responseError(response, 'クラウドへの保存に失敗しました。') };
 
     const rows = (await response.json()) as unknown;
     const first = Array.isArray(rows) ? rows[0] : null;
-    const record = parseRemoteRecord(first, normalizedSyncId, payload, updatedAt);
+    const record = parseRemoteRecord(first, normalizedSyncId, uploadPayload, updatedAt);
     if (!record.ok) return record;
+
     setStoredSyncId(normalizedSyncId);
+    setLastSyncState({
+      lastSyncAt: record.value.updatedAt,
+      lastUploadHash: computePayloadHash(uploadPayload),
+      lastRemoteUpdatedAt: record.value.updatedAt,
+      status: 'クラウドへ保存しました',
+      error: '',
+    });
     return record;
   } catch (error) {
     return {
@@ -160,6 +252,7 @@ export async function downloadSyncData(syncId: string): Promise<SyncResult<Remot
     const record = parseRemoteRecord(rows[0], normalizedSyncId);
     if (!record.ok) return record;
     setStoredSyncId(normalizedSyncId);
+    setLastSyncState({ lastRemoteUpdatedAt: record.value.updatedAt });
     return record;
   } catch (error) {
     return {
@@ -167,6 +260,43 @@ export async function downloadSyncData(syncId: string): Promise<SyncResult<Remot
       error: error instanceof Error ? `クラウドからの読み込みに失敗しました: ${error.message}` : 'クラウドからの読み込みに失敗しました。',
     };
   }
+}
+
+export async function getRemoteSyncMeta(syncId: string): Promise<SyncResult<RemoteSyncMeta | null>> {
+  const normalizedSyncId = syncId.trim();
+  if (!normalizedSyncId) return { ok: false, error: '同期IDを入力してください。' };
+
+  const config = getRemoteSyncConfig();
+  if (!config) return { ok: false, error: 'Supabaseの環境変数が未設定です。' };
+
+  try {
+    const encodedSyncId = encodeURIComponent(normalizedSyncId);
+    const response = await fetch(`${config.url}/rest/v1/${SUPABASE_TABLE}?sync_id=eq.${encodedSyncId}&select=sync_id,updated_at`, {
+      method: 'GET',
+      headers: createSupabaseHeaders(config.anonKey),
+    });
+
+    if (!response.ok) return { ok: false, error: await responseError(response, 'クラウドの更新確認に失敗しました。') };
+    const rows = (await response.json()) as unknown;
+    if (!Array.isArray(rows) || rows.length === 0) return { ok: true, value: null };
+    const row = rows[0];
+    if (!isRecord(row) || typeof row.updated_at !== 'string') return { ok: false, error: 'クラウドの更新情報の形式が正しくありません。' };
+    return { ok: true, value: { syncId: typeof row.sync_id === 'string' ? row.sync_id : normalizedSyncId, updatedAt: row.updated_at } };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? `クラウドの更新確認に失敗しました: ${error.message}` : 'クラウドの更新確認に失敗しました。',
+    };
+  }
+}
+
+export function computePayloadHash(payload: SyncPayload): string {
+  const text = JSON.stringify({ version: payload.version, localStorage: sortRecord(payload.localStorage) });
+  let hash = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    hash = (hash * 31 + text.charCodeAt(index)) | 0;
+  }
+  return String(hash);
 }
 
 export function validateSyncPayload(value: unknown): SyncResult<SyncPayload> {
@@ -178,7 +308,7 @@ export function validateSyncPayload(value: unknown): SyncResult<SyncPayload> {
   const invalidKey = Object.keys(value.localStorage).find((key) => !isQuizMakeStorageKey(key));
   if (invalidKey) return { ok: false, error: `Quiz make以外のキーが含まれています: ${invalidKey}` };
 
-  return { ok: true, value: value as SyncPayload };
+  return { ok: true, value: { version: 1, updatedAt: value.updatedAt, localStorage: sortRecord(value.localStorage) } };
 }
 
 function createSupabaseHeaders(anonKey: string, extra: Record<string, string> = {}) {
@@ -222,9 +352,28 @@ function parseRemoteRecord(value: unknown, fallbackSyncId: string, fallbackPaylo
 }
 
 function isQuizMakeStorageKey(key: string): boolean {
-  if (key === SYNC_ID_STORAGE_KEY) return false;
+  if (key.startsWith('quizMake:sync:')) return false;
   if (key.startsWith(SYNC_BACKUP_PREFIX)) return false;
   return key === 'quiz-make-app-data-v1' || key.startsWith('quizMake:') || key.startsWith('quiz-make:');
+}
+
+function sortRecord(record: Record<string, string>): Record<string, string> {
+  return Object.keys(record).sort().reduce<Record<string, string>>((result, key) => {
+    result[key] = record[key];
+    return result;
+  }, {});
+}
+
+function safeGetItem(key: string): string {
+  try {
+    return localStorage.getItem(key) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function dispatchSyncSettingsChanged() {
+  window.dispatchEvent(new CustomEvent('quiz-make-sync-settings-change'));
 }
 
 function isStringRecord(value: unknown): value is Record<string, string> {
