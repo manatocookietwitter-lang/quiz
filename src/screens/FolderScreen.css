@@ -55,7 +55,7 @@
   justify-content: center;
   overflow: hidden;
   color: #ffffff;
-  font-size: 24px;
+  font-size: 21px;
   font-weight: 700;
   line-height: 1;
   text-overflow: ellipsis;
@@ -76,20 +76,20 @@
   z-index: 2;
   transform: translateY(-50%);
   color: #15c7c7;
-  font-size: 34px;
+  font-size: 21px;
   font-weight: 700;
   line-height: 1;
 }
 
 .quiz-folder__actions {
-  height: 155px;
-  flex: 0 0 155px;
+  height: 108px;
+  flex: 0 0 108px;
   display: flex;
   justify-content: flex-end;
   align-items: flex-start;
-  gap: 40px;
-  padding-top: 20px;
-  padding-right: 56px;
+  gap: 24px;
+  padding-top: 14px;
+  padding-right: 34px;
   background: #000000;
 }
 
@@ -115,15 +115,15 @@
 .quiz-folder__delete-mode-bar button {
   min-width: 86px;
   height: 44px;
-  border-radius: 14px;
+  border-radius: 12px;
   background: #2b2b2b;
   color: #ffffff;
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 800;
 }
 
 .quiz-folder__action {
-  width: 88px;
+  width: 64px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -131,15 +131,15 @@
 }
 
 .quiz-folder__circle-button {
-  width: 78px;
-  height: 78px;
+  width: 56px;
+  height: 56px;
   border-radius: 50%;
   background: #12bfc0;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #ffffff;
-  font-size: 34px;
+  font-size: 21px;
   font-weight: 700;
   line-height: 1;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
@@ -150,9 +150,9 @@
 }
 
 .quiz-folder__action-label {
-  margin-top: 10px;
+  margin-top: 6px;
   color: #bdbdbd;
-  font-size: 18px;
+  font-size: 13px;
   font-weight: 500;
   line-height: 1.15;
   text-align: center;
@@ -175,11 +175,11 @@
 .quiz-folder__set-card {
   position: relative;
   width: 100%;
-  min-height: 126px;
-  margin-bottom: 14px;
+  min-height: 92px;
+  margin-bottom: 8px;
   padding: 0;
   border: none;
-  border-radius: 14px;
+  border-radius: 12px;
   background: #2b2b2b;
   color: #ffffff;
   box-shadow: none;
@@ -188,8 +188,8 @@
 
 .quiz-folder__set-main {
   width: 100%;
-  min-height: 126px;
-  padding: 22px 18px;
+  min-height: 92px;
+  padding: 13px 14px;
   display: flex;
   align-items: center;
   text-align: left;
@@ -200,23 +200,23 @@
 }
 
 .quiz-folder__set-icon {
-  width: 78px;
-  height: 78px;
+  width: 56px;
+  height: 56px;
   flex: 0 0 78px;
   margin-right: 24px;
-  border-radius: 14px;
+  border-radius: 12px;
   background: linear-gradient(180deg, #48d7df 0%, #159faa 100%);
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 8px;
-  padding: 16px 14px;
+  gap: 5px;
+  padding: 10px 9px;
   box-shadow: inset -8px 0 0 rgba(0, 0, 0, 0.12);
 }
 
 .quiz-folder__set-icon-line {
   width: 100%;
-  height: 5px;
+  height: 4px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.78);
 }
@@ -231,7 +231,7 @@
 .quiz-folder__set-name {
   overflow: hidden;
   color: #ffffff;
-  font-size: 28px;
+  font-size: 21px;
   font-weight: 600;
   line-height: 1.08;
   text-overflow: ellipsis;
@@ -239,10 +239,10 @@
 }
 
 .quiz-folder__set-source {
-  margin-top: 7px;
+  margin-top: 4px;
   overflow: hidden;
   color: #8a8a8a;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   line-height: 1.2;
   text-overflow: ellipsis;
@@ -250,12 +250,12 @@
 }
 
 .quiz-folder__set-stats {
-  margin-top: 10px;
+  margin-top: 4px;
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 18px;
+  gap: 3px 12px;
   color: #bdbdbd;
-  font-size: 17px;
+  font-size: 13px;
   font-weight: 500;
   line-height: 1.2;
 }
@@ -264,7 +264,7 @@
   margin-left: auto;
   padding-left: 12px;
   color: #777777;
-  font-size: 56px;
+  font-size: 38px;
   font-weight: 300;
   line-height: 1;
 }
@@ -278,7 +278,7 @@
   border-radius: 999px;
   background: rgba(244, 63, 94, 0.22);
   color: #fecdd3;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -303,7 +303,7 @@
 }
 
 .quiz-folder__start-title {
-  margin-bottom: 14px;
+  margin-bottom: 8px;
   overflow: hidden;
   color: #ffffff;
   font-size: 18px;
@@ -316,8 +316,8 @@
 .quiz-folder__start-button {
   width: 100%;
   min-height: 54px;
-  margin-top: 10px;
-  border-radius: 14px;
+  margin-top: 4px;
+  border-radius: 12px;
   background: #2b2b2b;
   color: #ffffff;
   font-size: 16px;
@@ -335,7 +335,7 @@
 
 @media (max-width: 390px) {
   .quiz-folder__actions {
-    gap: 30px;
+    gap: 24px;
     padding-right: 34px;
   }
 
@@ -353,11 +353,11 @@
   }
 
   .quiz-folder__set-name {
-    font-size: 24px;
+    font-size: 21px;
   }
 
   .quiz-folder__set-stats {
-    font-size: 15px;
+    font-size: 13px;
     gap: 4px 12px;
   }
 }

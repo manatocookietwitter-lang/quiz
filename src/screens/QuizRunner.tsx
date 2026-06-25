@@ -51,6 +51,12 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
   const isMultipleAnswer = answerIndexes.length > 1;
   const instructionInfo = useMemo(() => getQuestionInstructionInfo(currentQuestion), [currentQuestion]);
   const progressPercent = questions.length === 0 ? 0 : ((currentIndex + 1) / questions.length) * 100;
+  const registeredQuestionNumber = useMemo(() => {
+    if (!currentQuestion) return currentIndex + 1;
+    const sameSetQuestions = data.questions.filter((question) => question.setId === currentQuestion.setId);
+    const registeredIndex = sameSetQuestions.findIndex((question) => question.id === currentQuestion.id);
+    return registeredIndex >= 0 ? registeredIndex + 1 : currentIndex + 1;
+  }, [currentIndex, currentQuestion, data.questions]);
   const choiceLengthInfo = useMemo(() => {
     const maxLength = Math.max(0, ...(currentQuestion?.choices.map((choice) => choice.length) ?? []));
     return {
@@ -170,7 +176,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
                 </div>
               ) : null}
               <div className={['mx-auto max-h-[96px] overflow-y-auto whitespace-pre-wrap break-words font-semibold leading-[1.45] no-scrollbar', questionTextClass].join(' ')}>
-                <span className="font-black">{currentIndex + 1}. </span><HighlightedQuestionText text={currentQuestion.question} phrases={instructionInfo.highlightPhrases} />
+                <span className="font-black">{registeredQuestionNumber}. </span><HighlightedQuestionText text={currentQuestion.question} phrases={instructionInfo.highlightPhrases} />
               </div>
             </div>
           </section>
