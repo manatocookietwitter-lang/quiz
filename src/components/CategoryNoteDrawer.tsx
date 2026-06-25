@@ -332,7 +332,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
     pageSwipeFrameRef.current = requestAnimationFrame(() => {
       pageSwipeFrameRef.current = null;
       if (!pageElementRef.current) return;
-      pageElementRef.current.style.transform = offset === 0 ? '' : `translate3d(${offset}px, 0, 0)`;
+      pageElementRef.current.style.transform = offset === 0 ? '' : `translate3d(calc(-33.333333% + ${offset}px), 0, 0)`;
     });
   };
   const endPageSwipe = (event: PointerEvent<HTMLCanvasElement>) => {
@@ -681,6 +681,7 @@ function drawDataUrlToContext(context: CanvasRenderingContext2D, dataUrl: string
   image.onload = () => context.drawImage(image, 0, 0, width, height);
   image.src = dataUrl;
 }
+
 
 
 
