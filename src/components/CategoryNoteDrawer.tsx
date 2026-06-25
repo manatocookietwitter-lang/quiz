@@ -323,7 +323,8 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
     if (Math.abs(deltaX) < 8 && Math.abs(deltaY) < 8) return;
     if (Math.abs(deltaX) > Math.abs(deltaY)) {
       event.preventDefault();
-      setPageTransform(Math.max(-120, Math.min(120, deltaX)));
+      const limit = canvasRef.current?.clientWidth ?? 240;
+      setPageTransform(Math.max(-limit, Math.min(limit, deltaX)));
     }
   };
 
@@ -342,18 +343,21 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
     const deltaY = event.clientY - swipe.y;
     const shouldChangePage = Math.abs(deltaX) > 70 && Math.abs(deltaX) > Math.abs(deltaY) * 1.25;
     pageSwipeRef.current = null;
-    setPageSwiping(false);
-    resetPageRail();
     event.currentTarget.releasePointerCapture?.(event.pointerId);
 
-    if (!shouldChangePage) return;
-    if (deltaX < 0 && currentPageIndex < pages.length - 1) {
+    if (shouldChangePage && deltaX < 0 && currentPageIndex < pages.length - 1) {
+      setPageSwiping(false);
       animatePageCommit('next', () => goToPage(currentPageIndex + 1));
       return;
     }
-    if (deltaX > 0 && currentPageIndex > 0) {
+    if (shouldChangePage && deltaX > 0 && currentPageIndex > 0) {
+      setPageSwiping(false);
       animatePageCommit('prev', () => goToPage(currentPageIndex - 1));
+      return;
     }
+
+    setPageSwiping(false);
+    resetPageRail();
   };
 
   const resetPageRail = () => {
@@ -681,6 +685,7 @@ function drawDataUrlToContext(context: CanvasRenderingContext2D, dataUrl: string
   image.onload = () => context.drawImage(image, 0, 0, width, height);
   image.src = dataUrl;
 }
+
 
 
 
