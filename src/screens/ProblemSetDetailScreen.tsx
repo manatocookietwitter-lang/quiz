@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { AppData, ProblemSortMode, Question } from '../types';
 import { BackButton } from '../components/BackButton';
+import { CategoryNoteDrawer } from '../components/CategoryNoteDrawer';
 import { Layout } from '../components/Layout';
 import {
   getProgress,
@@ -54,6 +55,7 @@ export function ProblemSetDetailScreen({
   const questions = useMemo(() => getQuestionsBySet(data, setId), [data, setId]);
   const [startCategory, setStartCategory] = useState<CategoryFilter>('all');
   const [reviewFilter, setReviewFilter] = useState<ReviewLevelFilter>('all');
+  const [noteOpen, setNoteOpen] = useState(false);
 
   const categories = useMemo(() => buildProblemCategories(questions), [questions]);
   const startQuestions = useMemo(() => filterQuestionsByCategory(questions, startCategory), [questions, startCategory]);
@@ -78,6 +80,7 @@ export function ProblemSetDetailScreen({
   const correctRate = logs.length === 0 ? 0 : Math.round((correct / logs.length) * 100);
   const selectedLabel = getCategoryLabel(startCategory);
   const reviewFilterLabel = getReviewFilterLabel(reviewFilter);
+  const noteCategory = startCategory === 'all' ? normalizeProblemCategory(questions[0]?.category) : startCategory;
 
   const startOrdered = () => {
     const sessionQuestions = getStartQuestions({
@@ -184,12 +187,26 @@ export function ProblemSetDetailScreen({
         <section className="quiz-detail__body">
           <button type="button" className="quiz-detail__list-entry" onClick={onOpenProblemList}>
             <span>
-              <strong>問題一覧</strong>
-              <small>{questions.length}問 / 分野別に表示</small>
+              <strong>蝠城｡御ｸ隕ｧ</strong>
+              <small>{questions.length}蝠・/ 蛻・㍽蛻･縺ｫ陦ｨ遉ｺ</small>
+            </span>
+            <b aria-hidden="true">窶ｺ</b>
+          </button>
+          <button type="button" className="quiz-detail__note-entry" onClick={() => setNoteOpen(true)}>
+            <span>
+              <strong>{'\u30ce\u30fc\u30c8'}</strong>
+              <small>{getCategoryLabel(noteCategory)} {'\u306e\u624b\u66f8\u304d\u30ce\u30fc\u30c8'}</small>
             </span>
             <b aria-hidden="true">›</b>
           </button>
         </section>
+
+        <CategoryNoteDrawer
+          problemSetId={setId}
+          category={noteCategory}
+          open={noteOpen}
+          onOpenChange={setNoteOpen}
+        />
       </div>
     </Layout>
   );

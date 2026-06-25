@@ -1,7 +1,8 @@
-import { type PointerEvent, useMemo, useState } from 'react';
+import { type PointerEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { AppData, Question, QuizResult } from '../types';
 import { BackButton } from '../components/BackButton';
+import { CategoryNoteDrawer } from '../components/CategoryNoteDrawer';
 import { Layout } from '../components/Layout';
 import { getAnswerIndexes, getAnswerText, getChoiceLabel, getChoiceText, getProgress, getVirtualLevel, makeResult } from '../utils/quiz';
 
@@ -32,6 +33,12 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
   const [answerSheetState, setAnswerSheetState] = useState<AnswerSheetState>('default');
   const [savedLevelLabel, setSavedLevelLabel] = useState('');
   const [answerMessage, setAnswerMessage] = useState('');
+  const [noteOpen, setNoteOpen] = useState(false);
+
+  useEffect(() => {
+    document.body.classList.toggle('quiz-note-open', noteOpen);
+    return () => document.body.classList.remove('quiz-note-open');
+  }, [noteOpen]);
 
   const currentQuestion = questions[currentIndex];
   const progress = currentQuestion ? getProgress(data, currentQuestion.id) : null;
@@ -139,7 +146,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
 
   return (
     <Layout>
-      <div className="relative flex h-full flex-col overflow-hidden bg-[#E9E5D8] text-[#111111]">
+      <div className={`relative flex h-full flex-col overflow-hidden bg-[#E9E5D8] text-[#111111]${noteOpen ? ' quiz-runner--note-open' : ''}`}>
         <QuizHeader title={title} current={currentIndex + 1} total={questions.length} onBack={onBack} />
 
         <ProgressBand
@@ -212,6 +219,15 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
             </section>
           ) : null}
         </main>
+
+        {setId ? (
+          <CategoryNoteDrawer
+            problemSetId={setId}
+            category={currentQuestion.category}
+            open={noteOpen}
+            onOpenChange={setNoteOpen}
+          />
+        ) : null}
 
         {answered ? createPortal(
           <AnswerPanel
@@ -428,34 +444,69 @@ function AnswerPanel({
   onToggleAmbiguous: () => void;
   onNext: () => void;
 }) {
-  const [dragStartY, setDragStartY] = useState<number | null>(null);
-  const isDragging = dragStartY !== null;
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOffsetY, setDragOffsetY] = useState(0);
+  const dragStartYRef = useRef(0);
+  const dragStartTimeRef = useRef(0);
+  const startStateRef = useRef<AnswerSheetState>('default');
 
-  const moveByDrag = (deltaY: number) => {
-    if (deltaY < -36) {
-      if (state === 'default') onExpand();
-      if (state === 'hidden') onDefault();
+  const SNAP_THRESHOLD = 80;
+  const VELOCITY_THRESHOLD = 0.5;
+
+  const clampDragOffset = (deltaY: number) => {
+    if (startStateRef.current === 'expanded') return Math.max(0, Math.min(220, deltaY));
+    if (startStateRef.current === 'hidden') return Math.min(0, Math.max(-140, deltaY));
+    return Math.max(-180, Math.min(160, deltaY));
+  };
+
+  const snapByDrag = (deltaY: number, velocityY: number) => {
+    const fastUp = velocityY < -VELOCITY_THRESHOLD;
+    const fastDown = velocityY > VELOCITY_THRESHOLD;
+
+    if (startStateRef.current === 'default') {
+      if (deltaY < -SNAP_THRESHOLD || fastUp) onExpand();
+      else if (deltaY > SNAP_THRESHOLD || fastDown) onHide();
+      else onDefault();
       return;
     }
-    if (deltaY > 36) {
-      if (state === 'expanded') onDefault();
-      if (state === 'default') onHide();
+
+    if (startStateRef.current === 'expanded') {
+      if (deltaY > SNAP_THRESHOLD || fastDown) onDefault();
+      else onExpand();
+      return;
     }
+
+    if (deltaY < -SNAP_THRESHOLD || fastUp) onDefault();
+    else onHide();
+  };
+
+  const resetDrag = () => {
+    setIsDragging(false);
+    setDragOffsetY(0);
   };
 
   const handlePointerDown = (event: PointerEvent<HTMLElement>) => {
-    setDragStartY(event.clientY);
+    dragStartYRef.current = event.clientY;
+    dragStartTimeRef.current = performance.now();
+    startStateRef.current = state;
+    setIsDragging(true);
+    setDragOffsetY(0);
     event.currentTarget.setPointerCapture?.(event.pointerId);
   };
 
   const handlePointerMove = (event: PointerEvent<HTMLElement>) => {
-    if (dragStartY !== null) event.preventDefault();
+    if (!isDragging) return;
+    event.preventDefault();
+    const deltaY = event.clientY - dragStartYRef.current;
+    setDragOffsetY(clampDragOffset(deltaY));
   };
 
   const handlePointerUp = (event: PointerEvent<HTMLElement>) => {
-    if (dragStartY === null) return;
-    moveByDrag(event.clientY - dragStartY);
-    setDragStartY(null);
+    if (!isDragging) return;
+    const deltaY = event.clientY - dragStartYRef.current;
+    const elapsed = Math.max(1, performance.now() - dragStartTimeRef.current);
+    snapByDrag(deltaY, deltaY / elapsed);
+    resetDrag();
     event.currentTarget.releasePointerCapture?.(event.pointerId);
   };
 
@@ -463,12 +514,15 @@ function AnswerPanel({
     onPointerDown: handlePointerDown,
     onPointerMove: handlePointerMove,
     onPointerUp: handlePointerUp,
-    onPointerCancel: () => setDragStartY(null),
+    onPointerCancel: resetDrag,
   };
 
+  const sheetStyle = isDragging
+    ? { transform: `translateX(-50%) translateY(${dragOffsetY}px)` }
+    : undefined;
   if (state === 'hidden') {
     return (
-      <section className={`answer-sheet answer-sheet--hidden ${isDragging ? 'answer-sheet--dragging' : ''}`} {...dragProps}>
+      <section className={`answer-sheet answer-sheet--hidden ${isDragging ? 'answer-sheet--dragging' : ''}`} style={sheetStyle} {...dragProps}>
         <div className="answer-sheet__hidden-handle" />
         <div className="answer-sheet__hidden-bar">
           <span className={`answer-sheet__hidden-result ${isCorrect ? 'answer-sheet__hidden-result--correct' : 'answer-sheet__hidden-result--wrong'}`}>{isCorrect ? '\u6b63\u89e3' : '\u4e0d\u6b63\u89e3'}</span>
@@ -481,7 +535,7 @@ function AnswerPanel({
     );
   }
   return (
-    <section className={`answer-sheet answer-sheet--${state} ${isDragging ? 'answer-sheet--dragging' : ''}`}>
+    <section className={`answer-sheet answer-sheet--${state} ${isDragging ? 'answer-sheet--dragging' : ''}`} style={sheetStyle}>
       <div className="answer-sheet__drag-area" {...dragProps}>
         <div className="answer-sheet__drag-handle" />
       </div>
