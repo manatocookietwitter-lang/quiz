@@ -373,3 +373,38 @@
     line-height: 1;
   }
 }
+.quiz-detail__note-link {
+  display: none;
+}
+
+@media (min-width: 900px) and (orientation: landscape) {
+  .quiz-detail__segment-caption--top {
+    margin-top: 0;
+  }
+
+  .quiz-detail__note-link {
+    width: 100%;
+    min-height: 48px;
+    margin: 10px 0 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-radius: 14px;
+    background: #2b2b2b;
+    padding: 0 16px;
+    color: #ffffff;
+    font-size: 16px;
+    font-weight: 900;
+    text-align: left;
+  }
+
+  .quiz-detail__note-link:active {
+    background: #383838;
+  }
+
+  .quiz-detail__note-link span {
+    color: #12bfc0;
+    font-size: 28px;
+    line-height: 1;
+  }
+}

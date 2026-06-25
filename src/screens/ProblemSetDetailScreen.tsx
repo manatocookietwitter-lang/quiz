@@ -16,7 +16,9 @@ import './ProblemSetDetailScreen.css';
 
 type CategoryFilter = 'all' | string;
 
-const ENABLE_TABLET_NOTES = false;
+const ENABLE_TABLET_NOTES = true;
+const UNCATEGORIZED = '\u672a\u5206\u985e';
+const ALL_CATEGORIES = '\u3059\u3079\u3066';
 
 const REVIEW_FILTERS: { value: ReviewLevelFilter; label: string }[] = [
   { value: 'all', label: '\u5168Level' },
@@ -42,8 +44,6 @@ interface ProblemSetDetailScreenProps {
     setId: string;
   }) => void;
 }
-
-const UNCATEGORIZED = '未分類';
 
 export function ProblemSetDetailScreen({
   data,
@@ -119,6 +119,7 @@ export function ProblemSetDetailScreen({
       setId,
     });
   };
+
   return (
     <Layout>
       <div className="quiz-detail">
@@ -126,15 +127,15 @@ export function ProblemSetDetailScreen({
 
         <section className="quiz-detail__summary">
           <div className="quiz-detail__metric">
-            <span>問題数</span>
+            <span>{'\u554f\u984c\u6570'}</span>
             <strong>{questions.length}</strong>
           </div>
           <div className="quiz-detail__metric">
-            <span>復習</span>
+            <span>{'\u5fa9\u7fd2'}</span>
             <strong>{allReviewQuestions.length}</strong>
           </div>
           <div className="quiz-detail__metric">
-            <span>正答率</span>
+            <span>{'\u6b63\u7b54\u7387'}</span>
             <strong>{correctRate}%</strong>
           </div>
         </section>
@@ -144,7 +145,9 @@ export function ProblemSetDetailScreen({
             <h2>{'\u958b\u59cb'}</h2>
             <span>{filteredStartQuestions.length}{'\u554f'}</span>
           </div>
-          <div className="quiz-detail__segments" aria-label="開始対象">
+
+          <div className="quiz-detail__segment-caption quiz-detail__segment-caption--top">{'\u5206\u985e\u4e00\u89a7'}</div>
+          <div className="quiz-detail__segments" aria-label={'\\u5206\\u985e\\u4e00\\u89a7'}>
             {categories.map((item, index) => {
               const value = index === 0 ? 'all' : item;
               const active = startCategory === value || (startCategory === 'all' && index === 0);
@@ -160,8 +163,15 @@ export function ProblemSetDetailScreen({
               );
             })}
           </div>
+
+          {ENABLE_TABLET_NOTES ? (
+            <button type="button" className="quiz-detail__note-link" onClick={() => setNoteOpen(true)}>
+              {'\u30ce\u30fc\u30c8'}<span aria-hidden="true">{'\u203a'}</span>
+            </button>
+          ) : null}
+
           <div className="quiz-detail__segment-caption">Level</div>
-          <div className="quiz-detail__segments" aria-label="Level条件">
+          <div className="quiz-detail__segments" aria-label={'Level\\u6761\\u4ef6'}>
             {REVIEW_FILTERS.map((item) => (
               <button
                 key={item.value}
@@ -186,24 +196,17 @@ export function ProblemSetDetailScreen({
             </button>
           </div>
         </section>
+
         <section className="quiz-detail__body">
           <button type="button" className="quiz-detail__list-entry" onClick={onOpenProblemList}>
             <span>
-              <strong>蝠城｡御ｸ隕ｧ</strong>
-              <small>{questions.length}蝠・/ 蛻・㍽蛻･縺ｫ陦ｨ遉ｺ</small>
+              <strong>{'\u554f\u984c\u4e00\u89a7'}</strong>
+              <small>{questions.length}{'\u554f / \u5206\u91ce\u5225\u306b\u8868\u793a'}</small>
             </span>
-            <b aria-hidden="true">窶ｺ</b>
+            <b aria-hidden="true">{'\u203a'}</b>
           </button>
-          {ENABLE_TABLET_NOTES ? (
-            <button type="button" className="quiz-detail__note-entry" onClick={() => setNoteOpen(true)}>
-              <span>
-                <strong>{'\u30ce\u30fc\u30c8'}</strong>
-                <small>{getCategoryLabel(noteCategory)} {'\u306e\u624b\u66f8\u304d\u30ce\u30fc\u30c8'}</small>
-              </span>
-              <b aria-hidden="true">›</b>
-            </button>
-          ) : null}
         </section>
+
         {ENABLE_TABLET_NOTES ? (
           <CategoryNoteDrawer
             problemSetId={setId}
@@ -225,10 +228,10 @@ function DetailHeader({ title, onBack, onOpenImport }: { title: string; onBack: 
       <h1 className="quiz-detail__title">{title}</h1>
       {onOpenImport ? (
         <button type="button" className="quiz-detail__header-icon" aria-label="新規問題" onClick={onOpenImport}>
-          ＋
+          {'+'}
         </button>
       ) : (
-        <div className="quiz-detail__header-icon">≡</div>
+        <div className="quiz-detail__header-icon">⋯</div>
       )}
     </header>
   );
@@ -240,7 +243,7 @@ export function normalizeProblemCategory(category: string | null | undefined) {
 }
 
 export function filterQuestionsByCategory(questions: Question[], category: string) {
-  if (category === 'all' || category === 'すべて') return questions;
+  if (category === 'all' || category === ALL_CATEGORIES) return questions;
   return questions.filter((question) => normalizeProblemCategory(question.category) === category);
 }
 
@@ -298,11 +301,11 @@ export function buildProblemCategories(questions: Question[]) {
       names.add(value);
     }
   });
-  return ['すべて', ...Array.from(names), ...(hasUncategorized ? [UNCATEGORIZED] : [])];
+  return [ALL_CATEGORIES, ...Array.from(names), ...(hasUncategorized ? [UNCATEGORIZED] : [])];
 }
 
 function getCategoryLabel(category: string) {
-  return category === 'all' ? '\u3059\u3079\u3066' : category;
+  return category === 'all' ? ALL_CATEGORIES : category;
 }
 
 function getReviewFilterLabel(filter: ReviewLevelFilter) {

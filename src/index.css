@@ -758,14 +758,14 @@ button:disabled {
 }
 @media (min-width: 900px) and (orientation: landscape) {
   .quiz-runner--note-open main {
-    width: calc(100vw - min(34vw, 520px));
-    max-width: calc(100vw - min(34vw, 520px));
+    width: calc(100vw - min(42vw, 640px));
+    max-width: calc(100vw - min(42vw, 640px));
     transition: width 220ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   body.quiz-note-open .answer-sheet {
-    left: calc((100vw - min(34vw, 520px)) / 2);
-    width: min(calc(100vw - min(34vw, 520px) - 24px), 430px);
-    max-width: min(calc(100vw - min(34vw, 520px) - 24px), 430px);
+    left: calc((100vw - min(42vw, 640px)) / 2);
+    width: min(calc(100vw - min(42vw, 640px) - 24px), 430px);
+    max-width: min(calc(100vw - min(42vw, 640px) - 24px), 430px);
   }
 }

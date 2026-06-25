@@ -8,7 +8,7 @@ import { getAnswerIndexes, getAnswerText, getChoiceLabel, getChoiceText, getProg
 
 type AnswerSheetState = 'expanded' | 'default' | 'hidden';
 
-const ENABLE_TABLET_NOTES = false;
+const ENABLE_TABLET_NOTES = true;
 
 interface QuizRunnerProps {
   data: AppData;
@@ -223,7 +223,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
           ) : null}
         </main>
 
-        {setId ? (
+        {ENABLE_TABLET_NOTES && setId ? (
           <CategoryNoteDrawer
             problemSetId={setId}
             category={currentQuestion.category}
