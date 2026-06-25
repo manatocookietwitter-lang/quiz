@@ -512,6 +512,20 @@ function AnswerPanel({
     event.currentTarget.releasePointerCapture?.(event.pointerId);
   };
 
+  const getBaseSheetHeight = (targetState: AnswerSheetState) => {
+    if (targetState === 'hidden') return 64;
+    if (targetState === 'default') return 280;
+    const rootStyle = getComputedStyle(document.documentElement);
+    const safeTop = Number.parseFloat(rootStyle.getPropertyValue('--safe-top')) || 0;
+    const safeBottom = Number.parseFloat(rootStyle.getPropertyValue('--safe-bottom')) || 0;
+    return Math.max(320, Math.min(620, window.innerHeight - safeTop - safeBottom - 88));
+  };
+
+  const getDraggedSheetHeight = () => {
+    const baseHeight = getBaseSheetHeight(startStateRef.current);
+    const maxHeight = Math.max(320, window.innerHeight - 40);
+    return Math.max(64, Math.min(maxHeight, baseHeight - dragOffsetY));
+  };
   const dragProps = {
     onPointerDown: handlePointerDown,
     onPointerMove: handlePointerMove,
@@ -521,7 +535,7 @@ function AnswerPanel({
   };
 
   const sheetStyle = isDragging
-    ? ({ '--answer-sheet-drag-y': `${dragOffsetY}px` } as CSSProperties)
+    ? ({ height: `${getDraggedSheetHeight()}px` } as CSSProperties)
     : undefined;
   if (state === 'hidden') {
     return (

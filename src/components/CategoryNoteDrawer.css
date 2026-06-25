@@ -8,6 +8,15 @@
     --tablet-note-width: min(42vw, 640px);
   }
 
+  .category-note-tab,
+  .category-note-drawer,
+  .category-note-drawer *,
+  .category-note-panel,
+  .category-note-panel * {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
   .category-note-panel {
     min-height: 0;
     height: 100%;

@@ -409,7 +409,6 @@ button:disabled {
 
 .answer-sheet {
   --answer-sheet-x: translateX(-50%);
-  --answer-sheet-drag-y: 0px;
   position: fixed;
   left: 50%;
   right: auto;
@@ -417,7 +416,7 @@ button:disabled {
   z-index: 99999;
   width: calc(100% - 24px);
   max-width: 430px;
-  transform: var(--answer-sheet-x) translateY(var(--answer-sheet-drag-y));
+  transform: var(--answer-sheet-x);
   transform-origin: center bottom;
   box-sizing: border-box;
   display: flex;
