@@ -8,6 +8,15 @@
     --tablet-note-width: min(42vw, 640px);
   }
 
+  .category-note-panel {
+    min-height: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: #151515;
+    color: #ffffff;
+  }
+
   .category-note-tab {
     position: fixed;
     right: 0;
@@ -143,10 +152,11 @@
   .category-note-toolbar {
     flex: 0 0 auto;
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    padding: 12px 16px max(12px, var(--safe-bottom, 0px));
+    gap: 8px;
+    padding: 10px 12px max(10px, var(--safe-bottom, 0px));
     background: #1d1d1d;
     border-top: 1px solid #2a2a2a;
   }
@@ -154,7 +164,7 @@
   .category-note-tool-group {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     min-width: 0;
   }
 
@@ -173,7 +183,7 @@
     background: #252525;
     color: #ffffff;
     font: inherit;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 900;
   }
 

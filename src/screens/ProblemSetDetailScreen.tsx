@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { AppData, ProblemSortMode, Question } from '../types';
 import { BackButton } from '../components/BackButton';
-import { CategoryNoteDrawer } from '../components/CategoryNoteDrawer';
+import { CategoryNotePanel } from '../components/CategoryNoteDrawer';
 import { Layout } from '../components/Layout';
 import {
   getProgress,
@@ -125,6 +125,8 @@ export function ProblemSetDetailScreen({
       <div className="quiz-detail">
         <DetailHeader title={problemSet.title} onBack={onBack} onOpenImport={() => onOpenImport(problemSet.folderId)} />
 
+        <div className="quiz-detail__content-grid">
+          <div className="quiz-detail__main-column">
         <section className="quiz-detail__summary">
           <div className="quiz-detail__metric">
             <span>{'\u554f\u984c\u6570'}</span>
@@ -147,7 +149,7 @@ export function ProblemSetDetailScreen({
           </div>
 
           <div className="quiz-detail__segment-caption quiz-detail__segment-caption--top">{'\u5206\u985e\u4e00\u89a7'}</div>
-          <div className="quiz-detail__segments" aria-label={'\\u5206\\u985e\\u4e00\\u89a7'}>
+          <div className="quiz-detail__segments" aria-label={'\u5206\u985e\u4e00\u89a7'}>
             {categories.map((item, index) => {
               const value = index === 0 ? 'all' : item;
               const active = startCategory === value || (startCategory === 'all' && index === 0);
@@ -164,14 +166,8 @@ export function ProblemSetDetailScreen({
             })}
           </div>
 
-          {ENABLE_TABLET_NOTES ? (
-            <button type="button" className="quiz-detail__note-link" onClick={() => setNoteOpen(true)}>
-              {'\u30ce\u30fc\u30c8'}<span aria-hidden="true">{'\u203a'}</span>
-            </button>
-          ) : null}
-
           <div className="quiz-detail__segment-caption">Level</div>
-          <div className="quiz-detail__segments" aria-label={'Level\\u6761\\u4ef6'}>
+          <div className="quiz-detail__segments" aria-label={'Level\u6761\u4ef6'}>
             {REVIEW_FILTERS.map((item) => (
               <button
                 key={item.value}
@@ -207,14 +203,11 @@ export function ProblemSetDetailScreen({
           </button>
         </section>
 
-        {ENABLE_TABLET_NOTES ? (
-          <CategoryNoteDrawer
-            problemSetId={setId}
-            category={noteCategory}
-            open={noteOpen}
-            onOpenChange={setNoteOpen}
-          />
-        ) : null}
+          </div>
+          {ENABLE_TABLET_NOTES ? (
+            <CategoryNotePanel problemSetId={setId} category={noteCategory} className="quiz-detail__note-panel" />
+          ) : null}
+        </div>
       </div>
     </Layout>
   );
@@ -227,11 +220,9 @@ function DetailHeader({ title, onBack, onOpenImport }: { title: string; onBack: 
       <BackButton onClick={onBack} className="quiz-detail__back-button" />
       <h1 className="quiz-detail__title">{title}</h1>
       {onOpenImport ? (
-        <button type="button" className="quiz-detail__header-icon" aria-label="新規問題" onClick={onOpenImport}>
-          {'+'}
-        </button>
+        <button type="button" className="quiz-detail__header-icon" aria-label={'\u65b0\u898f\u554f\u984c'} onClick={onOpenImport}>`r`n          {'+'}`r`n        </button>
       ) : (
-        <div className="quiz-detail__header-icon">⋯</div>
+        <div className="quiz-detail__header-icon">{'\u22ef'}</div>
       )}
     </header>
   );
