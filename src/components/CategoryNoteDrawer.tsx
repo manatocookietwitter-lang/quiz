@@ -7,11 +7,13 @@ const NOTE_COLORS = {
   red: '#dc2626',
   black: '#111827',
 } as const;
-const NOTE_STROKE_WIDTHS = [1, 2] as const;
+const PEN_WIDTHS = [1, 2] as const;
+const ERASER_WIDTHS = [5, 10] as const;
 const MAX_HISTORY = 30;
 
 type NoteColorKey = keyof typeof NOTE_COLORS;
-type NoteSize = (typeof NOTE_STROKE_WIDTHS)[number];
+type PenSize = (typeof PEN_WIDTHS)[number];
+type EraserSize = (typeof ERASER_WIDTHS)[number];
 type NoteTool = 'pen' | 'eraser';
 
 type NotePage = {
@@ -121,7 +123,8 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   const [note, setNote] = useState<CategoryNote>(() => createEmptyNote(problemSetId ?? '', normalizedCategory));
   const [pageIndex, setPageIndex] = useState(0);
   const [colorKey, setColorKey] = useState<NoteColorKey>('blue');
-  const [size, setSize] = useState<NoteSize>(2);
+  const [penSize, setPenSize] = useState<PenSize>(2);
+  const [eraserSize, setEraserSize] = useState<EraserSize>(10);
   const [tool, setTool] = useState<NoteTool>('pen');
   const [history, setHistory] = useState<string[]>([]);
 
@@ -129,6 +132,8 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   const currentPageIndex = Math.min(pageIndex, pages.length - 1);
   const currentPage = pages[currentPageIndex] ?? pages[0];
   const color = NOTE_COLORS[colorKey];
+  const activeWidth = tool === 'eraser' ? eraserSize : penSize;
+  const activeWidths = tool === 'eraser' ? ERASER_WIDTHS : PEN_WIDTHS;
 
   useEffect(() => {
     if (!problemSetId || !noteKey) return;
@@ -144,7 +149,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
 
     const setupCanvas = () => {
       const rect = canvas.getBoundingClientRect();
-      if (rect.width === 0 || rect.height === 0) return;
+      if (drawingRef.current || rect.width === 0 || rect.height === 0) return;
       const ratio = window.devicePixelRatio || 1;
       canvas.width = Math.round(rect.width * ratio);
       canvas.height = Math.round(rect.height * ratio);
@@ -252,7 +257,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
     context.save();
     context.lineCap = 'round';
     context.lineJoin = 'round';
-    context.lineWidth = size;
+    context.lineWidth = activeWidth;
     context.strokeStyle = tool === 'eraser' ? '#ffffff' : color;
     context.beginPath();
     context.moveTo(lastPoint.x, lastPoint.y);
@@ -307,8 +312,16 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
       <div className="category-note-toolbar" aria-label="note tools">
         <div className="category-note-tool-group">
           <span>{'\u592a\u3055'}</span>
-          {NOTE_STROKE_WIDTHS.map((item) => (
-            <button key={item} type="button" className={size === item ? 'is-active' : ''} onClick={() => setSize(item)}>
+          {activeWidths.map((item) => (
+            <button
+              key={item}
+              type="button"
+              className={activeWidth === item ? 'is-active' : ''}
+              onClick={() => {
+                if (tool === 'eraser') setEraserSize(item as EraserSize);
+                else setPenSize(item as PenSize);
+              }}
+            >
               {item}
             </button>
           ))}
