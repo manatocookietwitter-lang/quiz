@@ -408,13 +408,14 @@ button:disabled {
 }
 
 .answer-sheet {
+  --answer-sheet-x: translateX(-50%);
   position: fixed;
   left: 50%;
   bottom: calc(var(--safe-bottom) + 10px);
   z-index: 99999;
   width: calc(100% - 24px);
   max-width: 430px;
-  transform: translateX(-50%);
+  transform: var(--answer-sheet-x);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -762,8 +763,10 @@ button:disabled {
 }
 @media (min-width: 900px) and (orientation: landscape) {
   body.quiz-note-open .answer-sheet {
-    left: calc((100vw - var(--tablet-note-width, min(42vw, 640px))) / 2);
-    width: min(calc(100vw - var(--tablet-note-width, min(42vw, 640px)) - 32px), 430px);
-    max-width: min(calc(100vw - var(--tablet-note-width, min(42vw, 640px)) - 32px), 430px);
+    --answer-sheet-x: translateY(0);
+    left: 16px;
+    right: calc(var(--tablet-note-width, min(42vw, 640px)) + 16px);
+    width: auto;
+    max-width: none;
   }
 }

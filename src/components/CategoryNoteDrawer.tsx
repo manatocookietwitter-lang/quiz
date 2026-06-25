@@ -118,52 +118,89 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   const normalizedCategory = normalizeCategory(category);
   const noteKey = problemSetId ? getNoteKey(problemSetId, normalizedCategory) : '';
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
   const drawingRef = useRef(false);
+  const pendingResizeRef = useRef(false);
   const lastPointRef = useRef<{ x: number; y: number } | null>(null);
+  const historyRef = useRef<string[]>([]);
+  const pageDataUrlRef = useRef('');
+  const toolRef = useRef<NoteTool>('pen');
+  const colorRef = useRef<string>(NOTE_COLORS.blue);
+  const widthRef = useRef<number>(2);
+
   const [note, setNote] = useState<CategoryNote>(() => createEmptyNote(problemSetId ?? '', normalizedCategory));
   const [pageIndex, setPageIndex] = useState(0);
   const [colorKey, setColorKey] = useState<NoteColorKey>('blue');
   const [penSize, setPenSize] = useState<PenSize>(2);
   const [eraserSize, setEraserSize] = useState<EraserSize>(10);
   const [tool, setTool] = useState<NoteTool>('pen');
-  const [history, setHistory] = useState<string[]>([]);
+  const [canUndo, setCanUndo] = useState(false);
 
   const pages = note.pages.length > 0 ? note.pages : [createBlankPage()];
   const currentPageIndex = Math.min(pageIndex, pages.length - 1);
   const currentPage = pages[currentPageIndex] ?? pages[0];
-  const color = NOTE_COLORS[colorKey];
   const activeWidth = tool === 'eraser' ? eraserSize : penSize;
   const activeWidths = tool === 'eraser' ? ERASER_WIDTHS : PEN_WIDTHS;
+
+  useEffect(() => {
+    toolRef.current = tool;
+  }, [tool]);
+
+  useEffect(() => {
+    colorRef.current = NOTE_COLORS[colorKey];
+  }, [colorKey]);
+
+  useEffect(() => {
+    widthRef.current = activeWidth;
+  }, [activeWidth]);
 
   useEffect(() => {
     if (!problemSetId || !noteKey) return;
     const loaded = loadNote(noteKey, problemSetId, normalizedCategory);
     setNote(loaded);
     setPageIndex(Math.min(loaded.currentPageIndex, Math.max(loaded.pages.length - 1, 0)));
-    setHistory([]);
+    clearHistory();
   }, [problemSetId, noteKey, normalizedCategory]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const setupCanvas = () => {
+    pageDataUrlRef.current = currentPage?.dataUrl ?? '';
+
+    const setupCanvas = (forceDraw = false) => {
       const rect = canvas.getBoundingClientRect();
-      if (drawingRef.current || rect.width === 0 || rect.height === 0) return;
+      if (rect.width === 0 || rect.height === 0) return;
+      if (drawingRef.current) {
+        pendingResizeRef.current = true;
+        return;
+      }
+
       const ratio = window.devicePixelRatio || 1;
-      canvas.width = Math.round(rect.width * ratio);
-      canvas.height = Math.round(rect.height * ratio);
+      const nextWidth = Math.round(rect.width * ratio);
+      const nextHeight = Math.round(rect.height * ratio);
+      const sizeChanged = canvas.width !== nextWidth || canvas.height !== nextHeight;
+
+      if (sizeChanged) {
+        canvas.width = nextWidth;
+        canvas.height = nextHeight;
+      }
+
       const context = canvas.getContext('2d');
       if (!context) return;
+      ctxRef.current = context;
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
-      drawDataUrlToContext(context, currentPage?.dataUrl ?? '', rect.width, rect.height);
+
+      if (sizeChanged || forceDraw) {
+        drawDataUrlToContext(context, pageDataUrlRef.current, rect.width, rect.height);
+      }
     };
 
-    setupCanvas();
-    const observer = new ResizeObserver(setupCanvas);
+    setupCanvas(true);
+    const observer = new ResizeObserver(() => setupCanvas(false));
     observer.observe(canvas);
     return () => observer.disconnect();
-  }, [currentPage?.id, currentPage?.dataUrl]);
+  }, [currentPage?.id, noteKey]);
 
   const snapshot = () => canvasRef.current?.toDataURL('image/png') ?? '';
 
@@ -187,22 +224,30 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
       currentPageIndex: nextIndex,
       updatedAt: new Date().toISOString(),
     };
+    pageDataUrlRef.current = dataUrl;
     setNote(nextNote);
     setPageIndex(nextIndex);
     persistNote(nextNote);
     return nextNote;
   };
 
+  function clearHistory() {
+    historyRef.current = [];
+    setCanUndo(false);
+  }
+
   const pushHistory = () => {
     const image = snapshot();
     if (!image) return;
-    setHistory((items) => [...items.slice(-(MAX_HISTORY - 1)), image]);
+    historyRef.current = [...historyRef.current.slice(-(MAX_HISTORY - 1)), image];
+    setCanUndo(historyRef.current.length > 0);
   };
 
   const undo = () => {
-    const previous = history[history.length - 1];
+    const previous = historyRef.current[historyRef.current.length - 1];
     if (!previous) return;
-    setHistory((items) => items.slice(0, -1));
+    historyRef.current = historyRef.current.slice(0, -1);
+    setCanUndo(historyRef.current.length > 0);
     drawDataUrlToCanvas(previous);
     updateCurrentPage(previous);
   };
@@ -218,9 +263,30 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
       currentPageIndex: nextIndex,
       updatedAt: new Date().toISOString(),
     };
+    pageDataUrlRef.current = '';
     setNote(nextNote);
     setPageIndex(nextIndex);
-    setHistory([]);
+    clearHistory();
+    persistNote(nextNote);
+  };
+
+  const deletePage = () => {
+    if (pages.length <= 1) return;
+    const confirmed = window.confirm('\u3053\u306e\u30da\u30fc\u30b8\u3092\u524a\u9664\u3057\u307e\u3059\u3002\u3053\u306e\u30da\u30fc\u30b8\u306b\u66f8\u3044\u305f\u30ce\u30fc\u30c8\u306f\u524a\u9664\u3055\u308c\u307e\u3059\u3002\u672c\u5f53\u306b\u524a\u9664\u3057\u307e\u3059\u304b\uff1f');
+    if (!confirmed) return;
+    const nextPages = pages.filter((_, index) => index !== currentPageIndex);
+    const nextIndex = Math.min(currentPageIndex, nextPages.length - 1);
+    const nextNote: CategoryNote = {
+      problemSetId: problemSetId ?? '',
+      category: normalizedCategory,
+      pages: nextPages,
+      currentPageIndex: nextIndex,
+      updatedAt: new Date().toISOString(),
+    };
+    pageDataUrlRef.current = nextPages[nextIndex]?.dataUrl ?? '';
+    setNote(nextNote);
+    setPageIndex(nextIndex);
+    clearHistory();
     persistNote(nextNote);
   };
 
@@ -228,9 +294,10 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
     if (nextIndex < 0 || nextIndex >= pages.length) return;
     const saved = updateCurrentPage();
     const nextNote = { ...saved, currentPageIndex: nextIndex, updatedAt: new Date().toISOString() };
+    pageDataUrlRef.current = nextNote.pages[nextIndex]?.dataUrl ?? '';
     setNote(nextNote);
     setPageIndex(nextIndex);
-    setHistory([]);
+    clearHistory();
     persistNote(nextNote);
   };
 
@@ -241,6 +308,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
     if (!canvas) return;
     pushHistory();
     drawingRef.current = true;
+    pendingResizeRef.current = false;
     lastPointRef.current = getCanvasPoint(canvas, event);
     canvas.setPointerCapture?.(event.pointerId);
   };
@@ -250,15 +318,17 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
     event.preventDefault();
     const canvas = canvasRef.current;
     const lastPoint = lastPointRef.current;
-    if (!canvas || !lastPoint) return;
+    const context = ctxRef.current ?? canvas?.getContext('2d');
+    if (!canvas || !lastPoint || !context) return;
+    ctxRef.current = context;
     const nextPoint = getCanvasPoint(canvas, event);
-    const context = canvas.getContext('2d');
-    if (!context) return;
+    const drawingTool = toolRef.current;
+
     context.save();
     context.lineCap = 'round';
     context.lineJoin = 'round';
-    context.lineWidth = activeWidth;
-    context.strokeStyle = tool === 'eraser' ? '#ffffff' : color;
+    context.lineWidth = widthRef.current;
+    context.strokeStyle = drawingTool === 'eraser' ? '#ffffff' : colorRef.current;
     context.beginPath();
     context.moveTo(lastPoint.x, lastPoint.y);
     context.lineTo(nextPoint.x, nextPoint.y);
@@ -272,7 +342,13 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
     drawingRef.current = false;
     lastPointRef.current = null;
     canvasRef.current?.releasePointerCapture?.(event.pointerId);
-    updateCurrentPage();
+    window.setTimeout(() => {
+      updateCurrentPage();
+      if (pendingResizeRef.current) {
+        pendingResizeRef.current = false;
+        redrawCanvasFromCurrentImage();
+      }
+    }, 0);
   };
 
   const drawDataUrlToCanvas = (dataUrl: string) => {
@@ -281,7 +357,32 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
     const rect = canvas.getBoundingClientRect();
     const context = canvas.getContext('2d');
     if (!context) return;
+    ctxRef.current = context;
     drawDataUrlToContext(context, dataUrl, rect.width, rect.height);
+  };
+
+  const redrawCanvasFromCurrentImage = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
+    const ratio = window.devicePixelRatio || 1;
+    const nextWidth = Math.round(rect.width * ratio);
+    const nextHeight = Math.round(rect.height * ratio);
+    if (canvas.width !== nextWidth || canvas.height !== nextHeight) {
+      canvas.width = nextWidth;
+      canvas.height = nextHeight;
+    }
+    const context = canvas.getContext('2d');
+    if (!context) return;
+    ctxRef.current = context;
+    context.setTransform(ratio, 0, 0, ratio, 0, 0);
+    drawDataUrlToContext(context, pageDataUrlRef.current, rect.width, rect.height);
+  };
+
+  const selectColor = (key: NoteColorKey) => {
+    setColorKey(key);
+    setTool('pen');
   };
 
   return (
@@ -334,22 +435,35 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
               type="button"
               className={`category-note-color category-note-color--${key}${colorKey === key && tool === 'pen' ? ' is-active' : ''}`}
               aria-label={key}
-              onClick={() => {
-                setColorKey(key);
-                setTool('pen');
-              }}
+              title={key}
+              onClick={() => selectColor(key)}
             />
           ))}
+          <button
+            type="button"
+            className={`category-note-icon-button${tool === 'eraser' ? ' is-active' : ''}`}
+            aria-label="\u6d88\u3057\u30b4\u30e0"
+            title="\u6d88\u3057\u30b4\u30e0"
+            onClick={() => setTool('eraser')}
+          >
+            {'\u232b'}
+          </button>
         </div>
         <div className="category-note-tool-group">
-          <button type="button" className={tool === 'pen' ? 'is-active' : ''} onClick={() => setTool('pen')}>{'\u30da\u30f3'}</button>
-          <button type="button" className={tool === 'eraser' ? 'is-active' : ''} onClick={() => setTool('eraser')}>{'\u6d88\u3057\u30b4\u30e0'}</button>
-          <button type="button" disabled={history.length === 0} onClick={undo}>{'\u623b\u3059'}</button>
-        </div>
-        <div className="category-note-tool-group">
+          <button
+            type="button"
+            className="category-note-icon-button"
+            aria-label="\u623b\u3059"
+            title="\u623b\u3059"
+            disabled={!canUndo}
+            onClick={undo}
+          >
+            {'\u21b6'}
+          </button>
           <button type="button" disabled={currentPageIndex <= 0} onClick={() => goToPage(currentPageIndex - 1)}>{'\u524d\u3078'}</button>
           <button type="button" disabled={currentPageIndex >= pages.length - 1} onClick={() => goToPage(currentPageIndex + 1)}>{'\u6b21\u3078'}</button>
           <button type="button" onClick={addPage}>{'\u30da\u30fc\u30b8\u8ffd\u52a0'}</button>
+          <button type="button" disabled={pages.length <= 1} onClick={deletePage}>{'\u30da\u30fc\u30b8\u524a\u9664'}</button>
         </div>
       </div>
     </section>
@@ -436,3 +550,4 @@ function drawDataUrlToContext(context: CanvasRenderingContext2D, dataUrl: string
   image.onload = () => context.drawImage(image, 0, 0, width, height);
   image.src = dataUrl;
 }
+

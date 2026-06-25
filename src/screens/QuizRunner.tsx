@@ -73,13 +73,13 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
           <QuizHeader title={title} onBack={onBack} />
           <div className="flex min-h-0 flex-1 items-center justify-center px-5">
             <div className="w-full rounded-[20px] bg-[#F7F7F5] p-6 text-center">
-              <p className="text-base font-bold text-[#6D5A45]">このモードで出題できる問題がありません。</p>
+              <p className="text-base font-bold text-[#6D5A45]">{'\u3053\u306e\u30e2\u30fc\u30c9\u3067\u51fa\u984c\u3067\u304d\u308b\u554f\u984c\u304c\u3042\u308a\u307e\u305b\u3093\u3002'}</p>
               <button
                 type="button"
                 onClick={onBack}
                 className="mt-5 h-14 w-full rounded-[14px] bg-[#5FA9DD] text-base font-bold text-white active:scale-[0.98]"
               >
-                戻る
+                {'\u623b\u308b'}
               </button>
             </div>
           </div>
@@ -110,7 +110,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
     setLastCorrect(result.isCorrect);
     setHasAnswered(true);
     setAnswerSheetState('default');
-    setSavedLevelLabel(result.levelLabel ? `保存済み・${result.levelLabel}` : '保存済み');
+    setSavedLevelLabel(result.levelLabel ? `\u4fdd\u5b58\u6e08\u307f\u30fb${result.levelLabel}` : '\u4fdd\u5b58\u6e08\u307f');
     setCorrectCount((value) => value + (result.isCorrect ? 1 : 0));
     setWrongCount((value) => value + (result.isCorrect ? 0 : 1));
     setAddedReviewCount((value) => value + (result.addedToReview ? 1 : 0));
@@ -118,7 +118,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
 
   const handleSubmitAnswer = () => {
     if (selectedIndexes.length === 0) {
-      setAnswerMessage('選択してください');
+      setAnswerMessage('\u9078\u629e\u3057\u3066\u304f\u3060\u3055\u3044');
       return;
     }
     submitAnswer(selectedIndexes);
@@ -153,7 +153,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
         <QuizHeader title={title} current={currentIndex + 1} total={questions.length} onBack={onBack} />
 
         <ProgressBand
-          label={mode === 'review' ? `復習 Level ${getVirtualLevel(progress ?? undefined)}` : subtitle ?? '登録順'}
+          label={mode === 'review' ? `\u5fa9\u7fd2 Level ${getVirtualLevel(progress ?? undefined)}` : subtitle ?? '\u767b\u9332\u9806'}
           percent={progressPercent}
         />
 
@@ -204,7 +204,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
                 onClick={handleUnknown}
                 className="flex h-[52px] items-center justify-center rounded-full border border-[#D0D0D0] bg-[#F4F4F4] text-base font-bold text-[#8A8A8A] active:scale-[0.98]"
               >
-                わからない
+                {'\u308f\u304b\u3089\u306a\u3044'}
               </button>
               <button
                 type="button"
@@ -216,7 +216,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
                     : 'bg-[#CFCFCF] text-[#777777]'
                 }`}
               >
-                解答
+                {'\u89e3\u7b54'}
               </button>
               </div>
             </section>
@@ -527,7 +527,7 @@ function AnswerPanel({
   };
 
   const sheetStyle = isDragging
-    ? { transform: `translateX(-50%) translateY(${dragOffsetY}px)` }
+    ? { transform: `var(--answer-sheet-x, translateX(-50%)) translateY(${dragOffsetY}px)` }
     : undefined;
   if (state === 'hidden') {
     return (
@@ -580,3 +580,5 @@ function AnswerPanel({
     </section>
   );
 }
+
+
