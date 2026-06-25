@@ -275,3 +275,18 @@
     width: min(100%, calc((100dvh - var(--safe-top, 0px) - 112px) * 210 / 297));
   }
 }
+
+@media (min-width: 900px) and (orientation: landscape) {
+  .category-note-drawer__header-actions {
+    gap: 8px;
+  }
+
+  .category-note-drawer__header-actions button {
+    min-width: 58px;
+    min-height: 40px;
+    padding: 0 12px;
+    border-radius: 12px;
+    font-size: 13px;
+    font-weight: 900;
+  }
+}

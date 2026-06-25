@@ -124,6 +124,8 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   const lastPointRef = useRef<{ x: number; y: number } | null>(null);
   const historyRef = useRef<string[]>([]);
   const pageSwipeRef = useRef<{ x: number; y: number; pointerId: number } | null>(null);
+  const pageElementRef = useRef<HTMLDivElement | null>(null);
+  const pageSwipeFrameRef = useRef<number | null>(null);
   const pageDataUrlRef = useRef('');
   const toolRef = useRef<NoteTool>('pen');
   const colorRef = useRef<string>(NOTE_COLORS.blue);
@@ -136,7 +138,6 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   const [eraserSize, setEraserSize] = useState<EraserSize>(10);
   const [tool, setTool] = useState<NoteTool>('pen');
   const [canUndo, setCanUndo] = useState(false);
-  const [pageSwipeOffset, setPageSwipeOffset] = useState(0);
   const [pageSwiping, setPageSwiping] = useState(false);
 
   const pages = note.pages.length > 0 ? note.pages : [createBlankPage()];
@@ -308,7 +309,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
     if (event.pointerType !== 'touch') return;
     pageSwipeRef.current = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
     setPageSwiping(true);
-    setPageSwipeOffset(0);
+    setPageTransform(0);
     event.currentTarget.setPointerCapture?.(event.pointerId);
   };
 
@@ -320,10 +321,18 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
     if (Math.abs(deltaX) < 8 && Math.abs(deltaY) < 8) return;
     if (Math.abs(deltaX) > Math.abs(deltaY)) {
       event.preventDefault();
-      setPageSwipeOffset(Math.max(-120, Math.min(120, deltaX)));
+      setPageTransform(Math.max(-120, Math.min(120, deltaX)));
     }
   };
 
+  const setPageTransform = (offset: number) => {
+    if (pageSwipeFrameRef.current !== null) cancelAnimationFrame(pageSwipeFrameRef.current);
+    pageSwipeFrameRef.current = requestAnimationFrame(() => {
+      pageSwipeFrameRef.current = null;
+      if (!pageElementRef.current) return;
+      pageElementRef.current.style.transform = offset === 0 ? '' : `translate3d(${offset}px, 0, 0)`;
+    });
+  };
   const endPageSwipe = (event: PointerEvent<HTMLCanvasElement>) => {
     const swipe = pageSwipeRef.current;
     if (!swipe || swipe.pointerId !== event.pointerId) return;
@@ -332,7 +341,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
     const shouldChangePage = Math.abs(deltaX) > 70 && Math.abs(deltaX) > Math.abs(deltaY) * 1.25;
     pageSwipeRef.current = null;
     setPageSwiping(false);
-    setPageSwipeOffset(0);
+    setPageTransform(0);
     event.currentTarget.releasePointerCapture?.(event.pointerId);
 
     if (!shouldChangePage) return;
@@ -451,9 +460,9 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
 
       <div className="category-note-canvas-area">
         <div
+          ref={pageElementRef}
           className={`category-note-page${pageSwiping ? ' category-note-page--swiping' : ''}`}
           aria-label="A4 note page"
-          style={pageSwipeOffset ? { transform: `translateX(${pageSwipeOffset}px)` } : undefined}
         >
           <canvas
             ref={canvasRef}
@@ -620,6 +629,7 @@ function drawDataUrlToContext(context: CanvasRenderingContext2D, dataUrl: string
   image.onload = () => context.drawImage(image, 0, 0, width, height);
   image.src = dataUrl;
 }
+
 
 
 
