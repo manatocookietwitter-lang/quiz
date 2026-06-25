@@ -16,6 +16,8 @@ import './ProblemSetDetailScreen.css';
 
 type CategoryFilter = 'all' | string;
 
+const ENABLE_TABLET_NOTES = false;
+
 const REVIEW_FILTERS: { value: ReviewLevelFilter; label: string }[] = [
   { value: 'all', label: '\u5168Level' },
   { value: 'level0', label: 'Level 0' },
@@ -192,21 +194,24 @@ export function ProblemSetDetailScreen({
             </span>
             <b aria-hidden="true">窶ｺ</b>
           </button>
-          <button type="button" className="quiz-detail__note-entry" onClick={() => setNoteOpen(true)}>
-            <span>
-              <strong>{'\u30ce\u30fc\u30c8'}</strong>
-              <small>{getCategoryLabel(noteCategory)} {'\u306e\u624b\u66f8\u304d\u30ce\u30fc\u30c8'}</small>
-            </span>
-            <b aria-hidden="true">›</b>
-          </button>
+          {ENABLE_TABLET_NOTES ? (
+            <button type="button" className="quiz-detail__note-entry" onClick={() => setNoteOpen(true)}>
+              <span>
+                <strong>{'\u30ce\u30fc\u30c8'}</strong>
+                <small>{getCategoryLabel(noteCategory)} {'\u306e\u624b\u66f8\u304d\u30ce\u30fc\u30c8'}</small>
+              </span>
+              <b aria-hidden="true">›</b>
+            </button>
+          ) : null}
         </section>
-
-        <CategoryNoteDrawer
-          problemSetId={setId}
-          category={noteCategory}
-          open={noteOpen}
-          onOpenChange={setNoteOpen}
-        />
+        {ENABLE_TABLET_NOTES ? (
+          <CategoryNoteDrawer
+            problemSetId={setId}
+            category={noteCategory}
+            open={noteOpen}
+            onOpenChange={setNoteOpen}
+          />
+        ) : null}
       </div>
     </Layout>
   );

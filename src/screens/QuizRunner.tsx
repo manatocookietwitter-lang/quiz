@@ -8,6 +8,8 @@ import { getAnswerIndexes, getAnswerText, getChoiceLabel, getChoiceText, getProg
 
 type AnswerSheetState = 'expanded' | 'default' | 'hidden';
 
+const ENABLE_TABLET_NOTES = false;
+
 interface QuizRunnerProps {
   data: AppData;
   title: string;
@@ -34,11 +36,12 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
   const [savedLevelLabel, setSavedLevelLabel] = useState('');
   const [answerMessage, setAnswerMessage] = useState('');
   const [noteOpen, setNoteOpen] = useState(false);
+  const noteAreaOpen = ENABLE_TABLET_NOTES && noteOpen;
 
   useEffect(() => {
-    document.body.classList.toggle('quiz-note-open', noteOpen);
+    document.body.classList.toggle('quiz-note-open', noteAreaOpen);
     return () => document.body.classList.remove('quiz-note-open');
-  }, [noteOpen]);
+  }, [noteAreaOpen]);
 
   const currentQuestion = questions[currentIndex];
   const progress = currentQuestion ? getProgress(data, currentQuestion.id) : null;
@@ -146,7 +149,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
 
   return (
     <Layout>
-      <div className={`relative flex h-full flex-col overflow-hidden bg-[#E9E5D8] text-[#111111]${noteOpen ? ' quiz-runner--note-open' : ''}`}>
+      <div className={`relative flex h-full flex-col overflow-hidden bg-[#E9E5D8] text-[#111111]${noteAreaOpen ? ' quiz-runner--note-open' : ''}`}>
         <QuizHeader title={title} current={currentIndex + 1} total={questions.length} onBack={onBack} />
 
         <ProgressBand
@@ -485,6 +488,11 @@ function AnswerPanel({
     setDragOffsetY(0);
   };
 
+  const cancelDrag = (event: PointerEvent<HTMLElement>) => {
+    resetDrag();
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+  };
+
   const handlePointerDown = (event: PointerEvent<HTMLElement>) => {
     dragStartYRef.current = event.clientY;
     dragStartTimeRef.current = performance.now();
@@ -514,7 +522,8 @@ function AnswerPanel({
     onPointerDown: handlePointerDown,
     onPointerMove: handlePointerMove,
     onPointerUp: handlePointerUp,
-    onPointerCancel: resetDrag,
+    onPointerCancel: cancelDrag,
+    onPointerLeave: cancelDrag,
   };
 
   const sheetStyle = isDragging
