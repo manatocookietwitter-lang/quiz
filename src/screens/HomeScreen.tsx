@@ -14,6 +14,7 @@ interface HomeScreenProps {
   onExport: () => void;
   onImportBackup: (file: File) => Promise<string | null>;
   onClearAll: () => void;
+  onOpenSync: () => void;
 }
 
 export function HomeScreen({
@@ -24,6 +25,7 @@ export function HomeScreen({
   onExport,
   onImportBackup,
   onClearAll,
+  onOpenSync,
 }: HomeScreenProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [folderName, setFolderName] = useState('');
@@ -124,6 +126,10 @@ export function HomeScreen({
               fileInputRef.current?.click();
             }}
             onCopyTemplate={handleCopyTemplate}
+            onOpenSync={() => {
+              setMenuOpen(false);
+              onOpenSync();
+            }}
             onClearAll={() => {
               setMenuOpen(false);
               setClearConfirmOpen(true);
@@ -134,7 +140,7 @@ export function HomeScreen({
         <ConfirmDialog
           open={deleteTarget !== null}
           title="削除しますか？"
-          message="このフォルダ内の問題セット、問題、学習記録、復習レベルもすべて削除されます。"
+          message="このフォルダ内の問題セット、問題、学習記録、復習Levelもすべて削除されます。"
           confirmLabel="削除"
           onCancel={() => setDeleteTarget(null)}
           onConfirm={() => {
@@ -146,8 +152,8 @@ export function HomeScreen({
         <ConfirmDialog
           open={clearConfirmOpen}
           title="削除しますか？"
-          message="フォルダ、問題セット、問題、回答記録、復習レベル、曖昧登録をすべて削除します。"
-          confirmLabel="全削除"
+          message="フォルダ、問題セット、問題、回答記録、復習Level、曖昧登録をすべて削除します。"
+          confirmLabel="全データ削除"
           onCancel={() => setClearConfirmOpen(false)}
           onConfirm={() => {
             onClearAll();
@@ -196,10 +202,10 @@ function QuizHomeFolderItem({
         <span className="quiz-home__folder-body">
           <span className="quiz-home__folder-name">{folder.name}</span>
           <span className="quiz-home__folder-stats">
-            <span>📁 {setCount}</span>
-            <span>🏷 {questionCount}</span>
-            <span>🔖 {reviewCount}</span>
-            <span>✅ {correctRate}%</span>
+            <span>セット {setCount}</span>
+            <span>問題 {questionCount}</span>
+            <span>復習 {reviewCount}</span>
+            <span>正答 {correctRate}%</span>
           </span>
           <span className="quiz-home__folder-date">更新 {formatDisplayDate(folder.updatedAt)}</span>
         </span>
@@ -257,6 +263,7 @@ function HomeMenu({
   onExport,
   onImport,
   onCopyTemplate,
+  onOpenSync,
   onClearAll,
 }: {
   copied: boolean;
@@ -265,6 +272,7 @@ function HomeMenu({
   onExport: () => void;
   onImport: () => void;
   onCopyTemplate: () => void;
+  onOpenSync: () => void;
   onClearAll: () => void;
 }) {
   return (
@@ -280,12 +288,15 @@ function HomeMenu({
           JSONインポート
         </button>
         <button type="button" className="quiz-home__menu-item" onClick={onCopyTemplate}>
-          {copied ? 'コピーしました' : 'ChatGPTテンプレートコピー'}
+          {copied ? 'コピーしました' : 'ChatGPTテンプレートをコピー'}
+        </button>
+        <button type="button" className="quiz-home__menu-item" onClick={onOpenSync}>
+          同期設定
         </button>
         <button type="button" className="quiz-home__menu-item quiz-home__menu-item--danger" onClick={onClearAll}>
           全データ削除
         </button>
-        {copied ? <div className="quiz-home__menu-notice">テンプレートをクリップボードにコピーしました</div> : null}
+        {copied ? <div className="quiz-home__menu-notice">テンプレートをクリップボードにコピーしました。</div> : null}
         {importError ? <div className="quiz-home__menu-error">{importError}</div> : null}
       </div>
     </div>

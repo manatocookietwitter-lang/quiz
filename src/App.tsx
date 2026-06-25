@@ -10,6 +10,7 @@ import { QuizScreen } from './screens/QuizScreen';
 import { QuizRunner } from './screens/QuizRunner';
 import { ReviewScreen } from './screens/ReviewScreen';
 import { ResultScreen } from './screens/ResultScreen';
+import { SyncScreen } from './screens/SyncScreen';
 import { createId } from './utils/id';
 import { formatBackupDate, nowIso } from './utils/date';
 import {
@@ -323,6 +324,8 @@ export default function App() {
         onRetry={() => handleRetry(screen.result)}
       />
     );
+  } else if (screen.name === 'sync') {
+    content = <SyncScreen onBack={goHome} />;
   } else {
     content = (
     <HomeScreen
@@ -333,6 +336,7 @@ export default function App() {
       onExport={handleExport}
       onImportBackup={handleImportBackup}
       onClearAll={handleClearAll}
+      onOpenSync={() => navigate({ name: 'sync' })}
     />
   );
   }
@@ -381,3 +385,7 @@ function makeUniqueProblemSetTitle(data: AppData, folderId: string, rawTitle: st
   }
   return nextTitle;
 }
+
+
+
+

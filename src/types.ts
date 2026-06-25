@@ -124,6 +124,7 @@ export interface QuizSession {
 
 export type AppScreen =
   | { name: 'home' }
+  | { name: 'sync' }
   | { name: 'folder'; folderId: string }
   | { name: 'problemSetDetail'; setId: string }
   | { name: 'problemList'; setId: string; sortMode?: ProblemSortMode }
@@ -132,3 +133,4 @@ export type AppScreen =
   | { name: 'quizSession'; session: QuizSession }
   | { name: 'review' }
   | { name: 'result'; result: QuizResult };
+

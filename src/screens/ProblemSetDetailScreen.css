@@ -466,3 +466,13 @@
     box-shadow: -10px 0 28px rgba(0, 0, 0, 0.2);
   }
 }
+@media (min-width: 900px) and (orientation: landscape) {
+  .quiz-detail__main-column,
+  .quiz-detail__main-column *,
+  .quiz-detail__header,
+  .quiz-detail__header * {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}

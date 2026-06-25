@@ -1,4 +1,4 @@
-import { type PointerEvent, useEffect, useRef, useState } from 'react';
+﻿import { type PointerEvent, useEffect, useRef, useState } from 'react';
 import './CategoryNoteDrawer.css';
 
 const UNCATEGORIZED = '\u672a\u5206\u985e';
@@ -123,6 +123,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   const pendingResizeRef = useRef(false);
   const lastPointRef = useRef<{ x: number; y: number } | null>(null);
   const historyRef = useRef<string[]>([]);
+  const pageSwipeRef = useRef<{ x: number; y: number; pointerId: number } | null>(null);
   const pageDataUrlRef = useRef('');
   const toolRef = useRef<NoteTool>('pen');
   const colorRef = useRef<string>(NOTE_COLORS.blue);
@@ -135,6 +136,8 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   const [eraserSize, setEraserSize] = useState<EraserSize>(10);
   const [tool, setTool] = useState<NoteTool>('pen');
   const [canUndo, setCanUndo] = useState(false);
+  const [pageSwipeOffset, setPageSwipeOffset] = useState(0);
+  const [pageSwiping, setPageSwiping] = useState(false);
 
   const pages = note.pages.length > 0 ? note.pages : [createBlankPage()];
   const currentPageIndex = Math.min(pageIndex, pages.length - 1);
@@ -301,8 +304,47 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
     persistNote(nextNote);
   };
 
+  const beginPageSwipe = (event: PointerEvent<HTMLCanvasElement>) => {
+    if (event.pointerType !== 'touch') return;
+    pageSwipeRef.current = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
+    setPageSwiping(true);
+    setPageSwipeOffset(0);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const movePageSwipe = (event: PointerEvent<HTMLCanvasElement>) => {
+    const swipe = pageSwipeRef.current;
+    if (!swipe || swipe.pointerId !== event.pointerId) return;
+    const deltaX = event.clientX - swipe.x;
+    const deltaY = event.clientY - swipe.y;
+    if (Math.abs(deltaX) < 8 && Math.abs(deltaY) < 8) return;
+    if (Math.abs(deltaX) > Math.abs(deltaY)) {
+      event.preventDefault();
+      setPageSwipeOffset(Math.max(-120, Math.min(120, deltaX)));
+    }
+  };
+
+  const endPageSwipe = (event: PointerEvent<HTMLCanvasElement>) => {
+    const swipe = pageSwipeRef.current;
+    if (!swipe || swipe.pointerId !== event.pointerId) return;
+    const deltaX = event.clientX - swipe.x;
+    const deltaY = event.clientY - swipe.y;
+    const shouldChangePage = Math.abs(deltaX) > 70 && Math.abs(deltaX) > Math.abs(deltaY) * 1.25;
+    pageSwipeRef.current = null;
+    setPageSwiping(false);
+    setPageSwipeOffset(0);
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+
+    if (!shouldChangePage) return;
+    if (deltaX < 0 && currentPageIndex < pages.length - 1) goToPage(currentPageIndex + 1);
+    if (deltaX > 0 && currentPageIndex > 0) goToPage(currentPageIndex - 1);
+  };
+
   const beginDraw = (event: PointerEvent<HTMLCanvasElement>) => {
-    if (!canDraw(event)) return;
+    if (!canDraw(event)) {
+      beginPageSwipe(event);
+      return;
+    }
     event.preventDefault();
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -314,7 +356,10 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   };
 
   const moveDraw = (event: PointerEvent<HTMLCanvasElement>) => {
-    if (!drawingRef.current || !canDraw(event)) return;
+    if (!drawingRef.current || !canDraw(event)) {
+      movePageSwipe(event);
+      return;
+    }
     event.preventDefault();
     const canvas = canvasRef.current;
     const lastPoint = lastPointRef.current;
@@ -338,6 +383,10 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   };
 
   const endDraw = (event: PointerEvent<HTMLCanvasElement>) => {
+    if (pageSwipeRef.current) {
+      endPageSwipe(event);
+      return;
+    }
     if (!drawingRef.current) return;
     drawingRef.current = false;
     lastPointRef.current = null;
@@ -388,16 +437,24 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   return (
     <section className={`category-note-panel ${className}`.trim()}>
       <header className="category-note-drawer__header">
-        <div>
+        <div className="category-note-drawer__title-block">
           <p>{'\u30ce\u30fc\u30c8'}</p>
           <h2>{normalizedCategory}</h2>
           <span>{'\u30da\u30fc\u30b8'} {currentPageIndex + 1} / {pages.length}</span>
         </div>
-        {onClose ? <button type="button" onClick={onClose}>{'\u9589\u3058\u308b'}</button> : null}
+        <div className="category-note-drawer__header-actions">
+          <button type="button" onClick={addPage}>{'\u8ffd\u52a0'}</button>
+          <button type="button" className="category-note-drawer__danger-button" disabled={pages.length <= 1} onClick={deletePage}>{'\u524a\u9664'}</button>
+          {onClose ? <button type="button" onClick={onClose}>{'\u9589\u3058\u308b'}</button> : null}
+        </div>
       </header>
 
       <div className="category-note-canvas-area">
-        <div className="category-note-page" aria-label="A4 note page">
+        <div
+          className={`category-note-page${pageSwiping ? ' category-note-page--swiping' : ''}`}
+          aria-label="A4 note page"
+          style={pageSwipeOffset ? { transform: `translateX(${pageSwipeOffset}px)` } : undefined}
+        >
           <canvas
             ref={canvasRef}
             className="category-note-canvas"
@@ -427,7 +484,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
             </button>
           ))}
         </div>
-        <div className="category-note-tool-group">
+        <div className="category-note-tool-group category-note-tool-group--tools">
           <span>{'\u8272'}</span>
           {(Object.keys(NOTE_COLORS) as NoteColorKey[]).map((key) => (
             <button
@@ -448,8 +505,6 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
           >
             <EraserIcon />
           </button>
-        </div>
-        <div className="category-note-tool-group">
           <button
             type="button"
             className="category-note-icon-button"
@@ -460,10 +515,6 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
           >
             <UndoIcon />
           </button>
-          <button type="button" disabled={currentPageIndex <= 0} onClick={() => goToPage(currentPageIndex - 1)}>{'\u524d\u3078'}</button>
-          <button type="button" disabled={currentPageIndex >= pages.length - 1} onClick={() => goToPage(currentPageIndex + 1)}>{'\u6b21\u3078'}</button>
-          <button type="button" onClick={addPage}>{'\u30da\u30fc\u30b8\u8ffd\u52a0'}</button>
-          <button type="button" disabled={pages.length <= 1} onClick={deletePage}>{'\u30da\u30fc\u30b8\u524a\u9664'}</button>
         </div>
       </div>
     </section>
@@ -569,4 +620,7 @@ function drawDataUrlToContext(context: CanvasRenderingContext2D, dataUrl: string
   image.onload = () => context.drawImage(image, 0, 0, width, height);
   image.src = dataUrl;
 }
+
+
+
 
