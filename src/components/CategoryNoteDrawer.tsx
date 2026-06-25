@@ -362,7 +362,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
       pageSwipeFrameRef.current = null;
     }
     if (pageElementRef.current) {
-      pageElementRef.current.style.transform = 'translate3d(-100%, 0, 0)';
+      pageElementRef.current.style.transform = 'translate3d(-33.333333%, 0, 0)';
       pageElementRef.current.style.opacity = '';
     }
     if (prevPageRef.current) prevPageRef.current.style.opacity = '';
@@ -375,7 +375,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
       return;
     }
     rail.style.transition = 'transform 180ms cubic-bezier(0.22, 1, 0.36, 1), opacity 160ms ease';
-    rail.style.transform = direction === 'next' ? 'translate3d(-200%, 0, 0)' : 'translate3d(0, 0, 0)';
+    rail.style.transform = direction === 'next' ? 'translate3d(-66.666667%, 0, 0)' : 'translate3d(0, 0, 0)';
     window.setTimeout(() => {
       rail.style.transition = '';
       resetPageRail();
@@ -681,6 +681,7 @@ function drawDataUrlToContext(context: CanvasRenderingContext2D, dataUrl: string
   image.onload = () => context.drawImage(image, 0, 0, width, height);
   image.src = dataUrl;
 }
+
 
 
 

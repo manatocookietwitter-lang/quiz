@@ -305,7 +305,7 @@
     height: 100%;
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    transform: translate3d(-100%, 0, 0);
+    transform: translate3d(-33.333333%, 0, 0);
     will-change: transform, opacity;
   }
 
@@ -330,3 +330,4 @@
     opacity: 1;
   }
 }
+
