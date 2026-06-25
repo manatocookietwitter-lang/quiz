@@ -7,8 +7,8 @@ const NOTE_COLORS = {
   red: '#dc2626',
   black: '#111827',
 } as const;
-const PEN_WIDTHS = [1, 2] as const;
-const ERASER_WIDTHS = [5, 10] as const;
+const PEN_WIDTHS = [1, 2, 3] as const;
+const ERASER_WIDTHS = [5, 10, 15] as const;
 const MAX_HISTORY = 30;
 
 type NoteColorKey = keyof typeof NOTE_COLORS;
@@ -446,7 +446,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
             title="\u6d88\u3057\u30b4\u30e0"
             onClick={() => setTool('eraser')}
           >
-            {'\u232b'}
+            <EraserIcon />
           </button>
         </div>
         <div className="category-note-tool-group">
@@ -458,7 +458,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
             disabled={!canUndo}
             onClick={undo}
           >
-            {'\u21b6'}
+            <UndoIcon />
           </button>
           <button type="button" disabled={currentPageIndex <= 0} onClick={() => goToPage(currentPageIndex - 1)}>{'\u524d\u3078'}</button>
           <button type="button" disabled={currentPageIndex >= pages.length - 1} onClick={() => goToPage(currentPageIndex + 1)}>{'\u6b21\u3078'}</button>
@@ -467,6 +467,25 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
         </div>
       </div>
     </section>
+  );
+}
+
+function EraserIcon() {
+  return (
+    <svg className="category-note-svg-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M4.7 14.2 13.2 5.7a2.2 2.2 0 0 1 3.1 0l2 2a2.2 2.2 0 0 1 0 3.1l-7.1 7.1H6.4l-1.7-1.7a1.4 1.4 0 0 1 0-2Z" />
+      <path d="M10.2 18h9" />
+      <path d="m9.2 9.7 5.1 5.1" />
+    </svg>
+  );
+}
+
+function UndoIcon() {
+  return (
+    <svg className="category-note-svg-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M9 7H5v4" />
+      <path d="M5.7 10.3A7 7 0 1 0 12 6h-1.8" />
+    </svg>
   );
 }
 

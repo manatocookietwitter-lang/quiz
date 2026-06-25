@@ -1,4 +1,4 @@
-import { type PointerEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, type PointerEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { AppData, Question, QuizResult } from '../types';
 import { BackButton } from '../components/BackButton';
@@ -170,7 +170,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
                 </div>
               ) : null}
               <div className={['mx-auto max-h-[96px] overflow-y-auto whitespace-pre-wrap break-words font-semibold leading-[1.45] no-scrollbar', questionTextClass].join(' ')}>
-                <HighlightedQuestionText text={currentQuestion.question} phrases={instructionInfo.highlightPhrases} />
+                <span className="font-black">{currentIndex + 1}. </span><HighlightedQuestionText text={currentQuestion.question} phrases={instructionInfo.highlightPhrases} />
               </div>
             </div>
           </section>
@@ -331,14 +331,8 @@ function QuizChoiceButton({
       onClick={onClick}
       className={`mx-auto flex w-full flex-1 items-center justify-start gap-3 rounded-2xl border px-[14px] py-2.5 text-left font-semibold leading-snug shadow-sm transition active:scale-[0.99] ${sizeClass} ${textSizeClass} ${stateClass}`}
     >
-      <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-black ${
-        answered && isCorrectChoice
-          ? 'bg-[#72C486] text-white'
-          : isSelected
-            ? 'bg-[#5FA9DD] text-white'
-            : 'bg-[#E4E4E4] text-[#555555]'
-      }`}>
-        {label}
+      <span className="shrink-0 self-start pt-[2px] text-[0.9em] font-black leading-snug text-[#333333]">
+        ({label})
       </span>
       <span className={`${textMaxClass} min-w-0 flex-1 overflow-y-auto break-words leading-[1.38] no-scrollbar`}>{text}</span>
     </button>
@@ -527,7 +521,7 @@ function AnswerPanel({
   };
 
   const sheetStyle = isDragging
-    ? { transform: `var(--answer-sheet-x, translateX(-50%)) translateY(${dragOffsetY}px)` }
+    ? ({ '--answer-sheet-drag-y': `${dragOffsetY}px` } as CSSProperties)
     : undefined;
   if (state === 'hidden') {
     return (
