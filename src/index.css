@@ -659,11 +659,15 @@ button:disabled {
 /* Answer sheet interaction refinements */
 .answer-sheet {
   transition:
+    left 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    right 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    width 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    max-width 220ms cubic-bezier(0.22, 1, 0.36, 1),
     height 220ms cubic-bezier(0.22, 1, 0.36, 1),
     transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
     opacity 160ms ease,
     border-radius 220ms cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: height, transform;
+  will-change: left, right, width, max-width, height, transform;
 }
 
 .answer-sheet--dragging {
@@ -757,15 +761,9 @@ button:disabled {
   font-weight: 900;
 }
 @media (min-width: 900px) and (orientation: landscape) {
-  .quiz-runner--note-open main {
-    width: calc(100vw - min(42vw, 640px));
-    max-width: calc(100vw - min(42vw, 640px));
-    transition: width 220ms cubic-bezier(0.22, 1, 0.36, 1);
-  }
-
   body.quiz-note-open .answer-sheet {
-    left: calc((100vw - min(42vw, 640px)) / 2);
-    width: min(calc(100vw - min(42vw, 640px) - 24px), 430px);
-    max-width: min(calc(100vw - min(42vw, 640px) - 24px), 430px);
+    left: calc((100vw - var(--tablet-note-width, min(42vw, 640px))) / 2);
+    width: min(calc(100vw - var(--tablet-note-width, min(42vw, 640px)) - 32px), 430px);
+    max-width: min(calc(100vw - var(--tablet-note-width, min(42vw, 640px)) - 32px), 430px);
   }
 }
