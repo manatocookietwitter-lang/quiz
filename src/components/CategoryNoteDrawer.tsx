@@ -127,6 +127,8 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   const lastPointRef = useRef<{ x: number; y: number } | null>(null);
   const historyRef = useRef<string[]>([]);
   const pageSwipeRef = useRef<{ x: number; y: number; pointerId: number } | null>(null);
+  const touchPointsRef = useRef(new Map<number, { x: number; y: number }>());
+  const pinchRef = useRef<{ startDistance: number; startScale: number } | null>(null);
   const pageElementRef = useRef<HTMLDivElement | null>(null);
   const pageSwipeFrameRef = useRef<number | null>(null);
   const pageDataUrlRef = useRef('');
@@ -142,6 +144,8 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   const [tool, setTool] = useState<NoteTool>('pen');
   const [canUndo, setCanUndo] = useState(false);
   const [pageSwiping, setPageSwiping] = useState(false);
+  const [pageScale, setPageScale] = useState(1);
+  const [pagePinching, setPagePinching] = useState(false);
 
   const pages = note.pages.length > 0 ? note.pages : [createBlankPage()];
   const currentPageIndex = Math.min(pageIndex, pages.length - 1);
@@ -310,13 +314,35 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
 
   const beginPageSwipe = (event: PointerEvent<HTMLCanvasElement>) => {
     if (event.pointerType !== 'touch') return;
+    touchPointsRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+
+    if (touchPointsRef.current.size >= 2) {
+      pageSwipeRef.current = null;
+      setPageSwiping(false);
+      const points = Array.from(touchPointsRef.current.values()).slice(0, 2);
+      pinchRef.current = { startDistance: getPointDistance(points[0], points[1]), startScale: pageScale };
+      setPagePinching(true);
+      return;
+    }
+
     pageSwipeRef.current = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
     setPageSwiping(true);
     setPageTransform(0);
-    event.currentTarget.setPointerCapture?.(event.pointerId);
   };
 
   const movePageSwipe = (event: PointerEvent<HTMLCanvasElement>) => {
+    if (event.pointerType === 'touch' && touchPointsRef.current.has(event.pointerId)) {
+      touchPointsRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (pinchRef.current && touchPointsRef.current.size >= 2) {
+        event.preventDefault();
+        const points = Array.from(touchPointsRef.current.values()).slice(0, 2);
+        const nextDistance = getPointDistance(points[0], points[1]);
+        const nextScale = pinchRef.current.startScale * (nextDistance / Math.max(pinchRef.current.startDistance, 1));
+        setPageScale(Math.max(0.92, Math.min(2.5, nextScale)));
+        return;
+      }
+    }
     const swipe = pageSwipeRef.current;
     if (!swipe || swipe.pointerId !== event.pointerId) return;
     const deltaX = event.clientX - swipe.x;
@@ -338,6 +364,18 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
     });
   };
   const endPageSwipe = (event: PointerEvent<HTMLCanvasElement>) => {
+    if (event.pointerType === 'touch') {
+      touchPointsRef.current.delete(event.pointerId);
+      if (pinchRef.current) {
+        if (pageScale < 1) setPageScale(1);
+        if (touchPointsRef.current.size < 2) {
+          pinchRef.current = null;
+          setPagePinching(false);
+        }
+        event.currentTarget.releasePointerCapture?.(event.pointerId);
+        return;
+      }
+    }
     const swipe = pageSwipeRef.current;
     if (!swipe || swipe.pointerId !== event.pointerId) return;
     const deltaX = event.clientX - swipe.x;
@@ -396,12 +434,17 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
       };
 
       pageDataUrlRef.current = nextPages[targetIndex]?.dataUrl ?? '';
+      touchPointsRef.current.clear();
+      pinchRef.current = null;
+      setPagePinching(false);
+      setPageScale(1);
       rail.style.transition = 'none';
       rail.style.transform = 'translate3d(-33.333333%, 0, 0)';
       flushSync(() => {
         setNote(nextNote);
         setPageIndex(targetIndex);
         clearHistory();
+        setPageScale(1);
       });
       persistNote(nextNote);
       void rail.offsetHeight;
@@ -530,11 +573,14 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
           >
             <div
               ref={prevPageRef}
-              className="category-note-page category-note-page--preview"
+              className={`category-note-page category-note-page--preview${currentPageIndex <= 0 ? ' category-note-page--missing' : ''}`}
               style={{ backgroundImage: pages[currentPageIndex - 1]?.dataUrl ? `url(${pages[currentPageIndex - 1].dataUrl})` : undefined }}
               aria-hidden="true"
             />
-            <div className="category-note-page category-note-page--active">
+            <div
+              className={`category-note-page category-note-page--active${pagePinching ? ' category-note-page--pinching' : ''}`}
+              style={{ transform: pageScale === 1 ? undefined : `scale(${pageScale})` }}
+            >
               <canvas
                 ref={canvasRef}
                 className="category-note-canvas"
@@ -547,7 +593,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
             </div>
             <div
               ref={nextPageRef}
-              className="category-note-page category-note-page--preview"
+              className={`category-note-page category-note-page--preview${currentPageIndex >= pages.length - 1 ? ' category-note-page--missing' : ''}`}
               style={{ backgroundImage: pages[currentPageIndex + 1]?.dataUrl ? `url(${pages[currentPageIndex + 1].dataUrl})` : undefined }}
               aria-hidden="true"
             />
@@ -694,10 +740,16 @@ function canDraw(event: PointerEvent<HTMLCanvasElement>) {
 
 function getCanvasPoint(canvas: HTMLCanvasElement, event: PointerEvent<HTMLCanvasElement>) {
   const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.offsetWidth > 0 ? canvas.offsetWidth / rect.width : 1;
+  const scaleY = canvas.offsetHeight > 0 ? canvas.offsetHeight / rect.height : 1;
   return {
-    x: event.clientX - rect.left,
-    y: event.clientY - rect.top,
+    x: (event.clientX - rect.left) * scaleX,
+    y: (event.clientY - rect.top) * scaleY,
   };
+}
+
+function getPointDistance(a: { x: number; y: number }, b: { x: number; y: number }) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
 function drawDataUrlToContext(context: CanvasRenderingContext2D, dataUrl: string, width: number, height: number) {
@@ -708,6 +760,10 @@ function drawDataUrlToContext(context: CanvasRenderingContext2D, dataUrl: string
   image.onload = () => context.drawImage(image, 0, 0, width, height);
   image.src = dataUrl;
 }
+
+
+
+
 
 
 
