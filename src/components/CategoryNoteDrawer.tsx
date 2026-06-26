@@ -130,6 +130,8 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   const pageSwipeRef = useRef<{ x: number; y: number; pointerId: number } | null>(null);
   const touchPointsRef = useRef(new Map<number, { x: number; y: number }>());
   const pinchRef = useRef<{ startDistance: number; startScale: number } | null>(null);
+  const pageScaleRef = useRef(1);
+  const pagePinchingRef = useRef(false);
   const pageElementRef = useRef<HTMLDivElement | null>(null);
   const pageSwipeFrameRef = useRef<number | null>(null);
   const pageDataUrlRef = useRef('');
@@ -145,8 +147,26 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   const [tool, setTool] = useState<NoteTool>('pen');
   const [canUndo, setCanUndo] = useState(false);
   const [pageSwiping, setPageSwiping] = useState(false);
-  const [pageScale, setPageScale] = useState(1);
-  const [pagePinching, setPagePinching] = useState(false);
+  const [pageScale, setPageScaleState] = useState(1);
+  const [pagePinching, setPagePinchingState] = useState(false);
+
+  const setPageScaleValue = (nextScale: number) => {
+    pageScaleRef.current = nextScale;
+    setPageScaleState(nextScale);
+  };
+
+  const setPagePinchingValue = (nextPinching: boolean) => {
+    pagePinchingRef.current = nextPinching;
+    setPagePinchingState(nextPinching);
+  };
+
+  const resetTouchGesture = () => {
+    touchPointsRef.current.clear();
+    pageSwipeRef.current = null;
+    pinchRef.current = null;
+    setPagePinchingValue(false);
+    if (pageScaleRef.current < 1) setPageScaleValue(1);
+  };
 
   const pages = note.pages.length > 0 ? note.pages : [createBlankPage()];
   const currentPageIndex = Math.min(pageIndex, pages.length - 1);
@@ -326,8 +346,8 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
       pageSwipeRef.current = null;
       setPageSwiping(false);
       const points = Array.from(touchPointsRef.current.values()).slice(0, 2);
-      pinchRef.current = { startDistance: getPointDistance(points[0], points[1]), startScale: pageScale };
-      setPagePinching(true);
+      pinchRef.current = { startDistance: getPointDistance(points[0], points[1]), startScale: pageScaleRef.current };
+      setPagePinchingValue(true);
       return;
     }
 
@@ -339,12 +359,19 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   const movePageSwipe = (event: PointerEvent<HTMLCanvasElement>) => {
     if (event.pointerType === 'touch' && touchPointsRef.current.has(event.pointerId)) {
       touchPointsRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (touchPointsRef.current.size >= 2 && !pinchRef.current) {
+        pageSwipeRef.current = null;
+        setPageSwiping(false);
+        const startPoints = Array.from(touchPointsRef.current.values()).slice(0, 2);
+        pinchRef.current = { startDistance: getPointDistance(startPoints[0], startPoints[1]), startScale: pageScaleRef.current };
+        setPagePinchingValue(true);
+      }
       if (pinchRef.current && touchPointsRef.current.size >= 2) {
         event.preventDefault();
         const points = Array.from(touchPointsRef.current.values()).slice(0, 2);
         const nextDistance = getPointDistance(points[0], points[1]);
         const nextScale = pinchRef.current.startScale * (nextDistance / Math.max(pinchRef.current.startDistance, 1));
-        setPageScale(Math.max(0.92, Math.min(2.5, nextScale)));
+        setPageScaleValue(Math.max(0.92, Math.min(2.5, nextScale)));
         return;
       }
     }
@@ -371,11 +398,11 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   const endPageSwipe = (event: PointerEvent<HTMLCanvasElement>) => {
     if (event.pointerType === 'touch') {
       touchPointsRef.current.delete(event.pointerId);
-      if (pinchRef.current || pagePinching) {
-        if (pageScale < 1) setPageScale(1);
+      if (pinchRef.current || pagePinchingRef.current) {
+        if (pageScaleRef.current < 1) setPageScaleValue(1);
         if (touchPointsRef.current.size < 2) {
           pinchRef.current = null;
-          setPagePinching(false);
+          setPagePinchingValue(false);
         }
         event.currentTarget.releasePointerCapture?.(event.pointerId);
         return;
@@ -444,17 +471,14 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
       };
 
       pageDataUrlRef.current = nextPages[targetIndex]?.dataUrl ?? '';
-      touchPointsRef.current.clear();
-      pinchRef.current = null;
-      setPagePinching(false);
-      setPageScale(1);
+      resetTouchGesture();
+      setPageScaleValue(1);
       rail.style.transition = 'none';
       rail.style.transform = 'translate3d(-33.333333%, 0, 0)';
       flushSync(() => {
         setNote(nextNote);
         setPageIndex(targetIndex);
         clearHistory();
-        setPageScale(1);
       });
       drawDataUrlToCanvas(pageDataUrlRef.current);
       persistNote(nextNote);
@@ -788,6 +812,9 @@ function drawDataUrlToContext(context: CanvasRenderingContext2D, dataUrl: string
     noteImageCache.set(dataUrl, image);
   }
 }
+
+
+
 
 
 
