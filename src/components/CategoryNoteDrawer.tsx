@@ -11,6 +11,7 @@ const NOTE_COLORS = {
 const PEN_WIDTHS = [1, 2, 3] as const;
 const ERASER_WIDTHS = [5, 10, 15] as const;
 const MAX_HISTORY = 30;
+const noteImageCache = new Map<string, HTMLImageElement>();
 
 type NoteColorKey = keyof typeof NOTE_COLORS;
 type PenSize = (typeof PEN_WIDTHS)[number];
@@ -172,6 +173,10 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
     setPageIndex(Math.min(loaded.currentPageIndex, Math.max(loaded.pages.length - 1, 0)));
     clearHistory();
   }, [problemSetId, noteKey, normalizedCategory]);
+
+  useEffect(() => {
+    [pages[currentPageIndex - 1]?.dataUrl, currentPage?.dataUrl, pages[currentPageIndex + 1]?.dataUrl].forEach(preloadNoteImage);
+  }, [currentPage?.dataUrl, currentPageIndex, pages]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -366,7 +371,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   const endPageSwipe = (event: PointerEvent<HTMLCanvasElement>) => {
     if (event.pointerType === 'touch') {
       touchPointsRef.current.delete(event.pointerId);
-      if (pinchRef.current) {
+      if (pinchRef.current || pagePinching) {
         if (pageScale < 1) setPageScale(1);
         if (touchPointsRef.current.size < 2) {
           pinchRef.current = null;
@@ -377,7 +382,10 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
       }
     }
     const swipe = pageSwipeRef.current;
-    if (!swipe || swipe.pointerId !== event.pointerId) return;
+    if (!swipe || swipe.pointerId !== event.pointerId) {
+      event.currentTarget.releasePointerCapture?.(event.pointerId);
+      return;
+    }
     const deltaX = event.clientX - swipe.x;
     const deltaY = event.clientY - swipe.y;
     const shouldChangePage = Math.abs(deltaX) > 70 && Math.abs(deltaX) > Math.abs(deltaY) * 1.25;
@@ -418,6 +426,8 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
       return;
     }
 
+    preloadNoteImage(pages[targetIndex]?.dataUrl ?? '');
+
     const finishCommit = () => {
       rail.removeEventListener('transitionend', finishCommit);
       const dataUrl = snapshot();
@@ -446,6 +456,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
         clearHistory();
         setPageScale(1);
       });
+      drawDataUrlToCanvas(pageDataUrlRef.current);
       persistNote(nextNote);
       void rail.offsetHeight;
       rail.style.transition = '';
@@ -752,14 +763,34 @@ function getPointDistance(a: { x: number; y: number }, b: { x: number; y: number
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
+function preloadNoteImage(dataUrl: string | undefined) {
+  if (!dataUrl || noteImageCache.has(dataUrl)) return;
+  const image = new Image();
+  image.src = dataUrl;
+  noteImageCache.set(dataUrl, image);
+}
+
 function drawDataUrlToContext(context: CanvasRenderingContext2D, dataUrl: string, width: number, height: number) {
   context.fillStyle = '#ffffff';
   context.fillRect(0, 0, width, height);
   if (!dataUrl) return;
-  const image = new Image();
+
+  const cached = noteImageCache.get(dataUrl);
+  if (cached?.complete) {
+    context.drawImage(cached, 0, 0, width, height);
+    return;
+  }
+
+  const image = cached ?? new Image();
   image.onload = () => context.drawImage(image, 0, 0, width, height);
-  image.src = dataUrl;
+  if (!cached) {
+    image.src = dataUrl;
+    noteImageCache.set(dataUrl, image);
+  }
 }
+
+
+
 
 
 
