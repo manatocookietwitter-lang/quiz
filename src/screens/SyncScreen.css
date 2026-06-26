@@ -1,4 +1,4 @@
-﻿.sync-screen,
+.sync-screen,
 .sync-screen * {
   box-sizing: border-box;
 }
@@ -433,5 +433,252 @@
 
   .sync-card {
     padding: 12px;
+  }
+}
+
+.sync-diagnostic {
+  margin-top: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.sync-diagnostic__summary {
+  border-radius: 14px;
+  padding: 11px 12px;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.sync-diagnostic__summary--ok {
+  background: rgba(18, 191, 192, 0.14);
+  color: #d8ffff;
+  border: 1px solid rgba(18, 191, 192, 0.35);
+}
+
+.sync-diagnostic__summary--ng {
+  background: rgba(244, 63, 94, 0.16);
+  color: #fecdd3;
+  border: 1px solid rgba(244, 63, 94, 0.35);
+}
+
+.sync-diagnostic__steps {
+  display: grid;
+  gap: 8px;
+}
+
+.sync-diagnostic__step {
+  border-radius: 14px;
+  padding: 11px 12px;
+  background: #171717;
+  border: 1px solid #303030;
+}
+
+.sync-diagnostic__step--ok {
+  border-color: rgba(18, 191, 192, 0.24);
+}
+
+.sync-diagnostic__step--ng {
+  border-color: rgba(244, 63, 94, 0.36);
+}
+
+.sync-diagnostic__step-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sync-diagnostic__step-head span,
+.sync-diagnostic__step-head strong {
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.sync-diagnostic__step--ok .sync-diagnostic__step-head strong {
+  color: #12bfc0;
+}
+
+.sync-diagnostic__step--ng .sync-diagnostic__step-head strong {
+  color: #ff6b6b;
+}
+
+.sync-diagnostic__step p {
+  margin: 7px 0 0;
+  color: #bdbdbd;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.sync-diagnostic__step .sync-diagnostic__suggestion {
+  color: #ffd7a8;
+}
+/* Stronger compact layout for phone-sized screens. */
+@media (max-width: 430px) {
+  .sync-screen {
+    height: 100dvh;
+    max-height: 100dvh;
+  }
+
+  .sync-screen__header {
+    min-height: calc(58px + var(--safe-top, 0px));
+    padding: calc(var(--safe-top, 0px) + 8px) 12px 8px;
+    gap: 8px;
+  }
+
+  .sync-screen__header-text {
+    padding-right: 44px;
+  }
+
+  .sync-screen__header h1 {
+    font-size: 18px;
+  }
+
+  .sync-screen__header p {
+    display: none;
+  }
+
+  .sync-screen__body {
+    padding: 8px 10px calc(var(--safe-bottom, 0px) + 12px);
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .sync-card,
+  .sync-alert {
+    margin-bottom: 8px;
+  }
+
+  .sync-card {
+    padding: 10px;
+    border-radius: 14px;
+  }
+
+  .sync-card__title-row {
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+
+  .sync-card h2 {
+    font-size: 14px;
+  }
+
+  .sync-status {
+    padding: 4px 7px;
+    font-size: 10px;
+  }
+
+  .sync-card__description,
+  .sync-card__note,
+  .sync-card__inline-note {
+    display: none;
+  }
+
+  .sync-input {
+    min-height: 40px;
+    margin-bottom: 8px;
+    border-radius: 12px;
+    padding: 0 11px;
+    font-size: 13px;
+  }
+
+  .sync-button {
+    min-height: 40px;
+    border-radius: 12px;
+    padding: 0 8px;
+    font-size: 12px;
+    line-height: 1.15;
+    white-space: normal;
+  }
+
+  .sync-actions {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 7px;
+  }
+
+  .sync-toggle__button {
+    min-width: 56px;
+    height: 32px;
+    font-size: 12px;
+  }
+
+  .sync-auto-state {
+    padding: 8px 10px;
+    border-radius: 11px;
+    font-size: 11px;
+    line-height: 1.35;
+  }
+
+  .sync-meta-grid {
+    gap: 7px;
+    margin-top: 7px;
+  }
+
+  .sync-meta-item {
+    padding: 8px;
+    border-radius: 11px;
+  }
+
+  .sync-meta-item span {
+    margin-bottom: 4px;
+    font-size: 9px;
+  }
+
+  .sync-meta-item strong {
+    font-size: 11px;
+    line-height: 1.25;
+  }
+
+  .sync-alert {
+    padding: 9px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+
+  .sync-diagnostic {
+    margin-top: 8px;
+    gap: 7px;
+  }
+
+  .sync-diagnostic__summary {
+    padding: 8px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+  }
+
+  .sync-diagnostic__steps {
+    gap: 6px;
+  }
+
+  .sync-diagnostic__step {
+    padding: 8px 9px;
+    border-radius: 12px;
+  }
+
+  .sync-diagnostic__step-head span,
+  .sync-diagnostic__step-head strong {
+    font-size: 11px;
+  }
+
+  .sync-diagnostic__step p {
+    margin-top: 5px;
+    font-size: 10px;
+    line-height: 1.35;
+  }
+}
+
+@media (max-width: 360px) {
+  .sync-screen__body {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .sync-card {
+    padding: 9px;
+  }
+
+  .sync-button {
+    font-size: 11px;
   }
 }

@@ -1,4 +1,4 @@
-﻿import { type PointerEvent, useEffect, useRef, useState } from 'react';
+import { type PointerEvent, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import './CategoryNoteDrawer.css';
 
@@ -134,16 +134,17 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   const pagePinchingRef = useRef(false);
   const pageElementRef = useRef<HTMLDivElement | null>(null);
   const pageSwipeFrameRef = useRef<number | null>(null);
+  const pageSwipeOffsetRef = useRef(0);
   const pageDataUrlRef = useRef('');
   const toolRef = useRef<NoteTool>('pen');
-  const colorRef = useRef<string>(NOTE_COLORS.blue);
-  const widthRef = useRef<number>(2);
+  const colorRef = useRef<string>(NOTE_COLORS.black);
+  const widthRef = useRef<number>(1);
 
   const [note, setNote] = useState<CategoryNote>(() => createEmptyNote(problemSetId ?? '', normalizedCategory));
   const [pageIndex, setPageIndex] = useState(0);
-  const [colorKey, setColorKey] = useState<NoteColorKey>('blue');
-  const [penSize, setPenSize] = useState<PenSize>(2);
-  const [eraserSize, setEraserSize] = useState<EraserSize>(10);
+  const [colorKey, setColorKey] = useState<NoteColorKey>('black');
+  const [penSize, setPenSize] = useState<PenSize>(1);
+  const [eraserSize, setEraserSize] = useState<EraserSize>(5);
   const [tool, setTool] = useState<NoteTool>('pen');
   const [canUndo, setCanUndo] = useState(false);
   const [pageSwiping, setPageSwiping] = useState(false);
@@ -388,11 +389,12 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   };
 
   const setPageTransform = (offset: number) => {
+    pageSwipeOffsetRef.current = offset;
     if (pageSwipeFrameRef.current !== null) cancelAnimationFrame(pageSwipeFrameRef.current);
     pageSwipeFrameRef.current = requestAnimationFrame(() => {
       pageSwipeFrameRef.current = null;
       if (!pageElementRef.current) return;
-      pageElementRef.current.style.transform = offset === 0 ? '' : `translate3d(calc(-33.333333% + ${offset}px), 0, 0)`;
+      pageElementRef.current.style.transform = offset === 0 ? 'translate3d(-33.333333%, 0, 0)' : `translate3d(calc(-33.333333% + ${offset}px), 0, 0)`;
     });
   };
   const endPageSwipe = (event: PointerEvent<HTMLCanvasElement>) => {
@@ -420,12 +422,10 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
     event.currentTarget.releasePointerCapture?.(event.pointerId);
 
     if (shouldChangePage && deltaX < 0 && currentPageIndex < pages.length - 1) {
-      setPageSwiping(false);
       animatePageCommit('next', currentPageIndex + 1);
       return;
     }
     if (shouldChangePage && deltaX > 0 && currentPageIndex > 0) {
-      setPageSwiping(false);
       animatePageCommit('prev', currentPageIndex - 1);
       return;
     }
@@ -435,13 +435,18 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   };
 
   const resetPageRail = () => {
+    pageSwipeOffsetRef.current = 0;
     if (pageSwipeFrameRef.current !== null) {
       cancelAnimationFrame(pageSwipeFrameRef.current);
       pageSwipeFrameRef.current = null;
     }
     if (pageElementRef.current) {
+      pageElementRef.current.style.transition = 'transform 180ms cubic-bezier(0.22, 1, 0.36, 1)';
       pageElementRef.current.style.transform = 'translate3d(-33.333333%, 0, 0)';
       pageElementRef.current.style.opacity = '';
+      window.setTimeout(() => {
+        if (pageElementRef.current) pageElementRef.current.style.transition = '';
+      }, 190);
     }
     if (prevPageRef.current) prevPageRef.current.style.opacity = '';
     if (nextPageRef.current) nextPageRef.current.style.opacity = '';
@@ -485,9 +490,22 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
       rail.style.transition = '';
     };
 
+    if (pageSwipeFrameRef.current !== null) {
+      cancelAnimationFrame(pageSwipeFrameRef.current);
+      pageSwipeFrameRef.current = null;
+    }
+
+    const currentOffset = pageSwipeOffsetRef.current;
+    rail.style.transition = 'none';
+    rail.style.transform = currentOffset === 0 ? 'translate3d(-33.333333%, 0, 0)' : `translate3d(calc(-33.333333% + ${currentOffset}px), 0, 0)`;
+    void rail.offsetHeight;
+
     rail.addEventListener('transitionend', finishCommit, { once: true });
-    rail.style.transition = 'transform 260ms cubic-bezier(0.22, 1, 0.36, 1)';
-    rail.style.transform = direction === 'next' ? 'translate3d(-66.666667%, 0, 0)' : 'translate3d(0, 0, 0)';
+    setPageSwiping(false);
+    rail.style.transition = 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)';
+    requestAnimationFrame(() => {
+      rail.style.transform = direction === 'next' ? 'translate3d(-66.666667%, 0, 0)' : 'translate3d(0, 0, 0)';
+    });
   };
   const beginDraw = (event: PointerEvent<HTMLCanvasElement>) => {
     if (!canDraw(event)) {

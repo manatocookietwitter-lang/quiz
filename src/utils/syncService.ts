@@ -31,6 +31,28 @@ export type LastSyncState = {
   error: string;
 };
 
+export type SyncDiagnosticStep = {
+  name: string;
+  ok: boolean;
+  message?: string;
+  errorCode?: string;
+  errorDetails?: string;
+  errorHint?: string;
+  suggestion?: string;
+};
+
+export type SyncDiagnosticResult = {
+  ok: boolean;
+  steps: SyncDiagnosticStep[];
+};
+
+export type SyncEnvironmentStatus = {
+  hasUrl: boolean;
+  hasAnonKey: boolean;
+  configured: boolean;
+  urlHost: string;
+};
+
 const SYNC_ID_STORAGE_KEY = 'quizMake:sync:id';
 const AUTO_SYNC_ENABLED_KEY = 'quizMake:sync:autoEnabled';
 const LAST_SYNC_AT_KEY = 'quizMake:sync:lastSyncAt';
@@ -43,6 +65,26 @@ const SUPABASE_TABLE = 'quiz_sync_data';
 
 export function isSyncConfigured(): boolean {
   return Boolean(getRemoteSyncConfig());
+}
+
+export function getSyncEnvironmentStatus(): SyncEnvironmentStatus {
+  const env = import.meta.env as Record<string, string | undefined>;
+  const rawUrl = env.VITE_SUPABASE_URL ?? env.VITE_QUIZ_SYNC_SUPABASE_URL ?? '';
+  const anonKey = env.VITE_SUPABASE_ANON_KEY ?? env.VITE_QUIZ_SYNC_SUPABASE_ANON_KEY ?? '';
+  let urlHost = '';
+
+  try {
+    urlHost = rawUrl ? new URL(rawUrl).host : '';
+  } catch {
+    urlHost = 'URL形式が不正です';
+  }
+
+  return {
+    hasUrl: Boolean(rawUrl),
+    hasAnonKey: Boolean(anonKey),
+    configured: Boolean(rawUrl && anonKey),
+    urlHost,
+  };
 }
 
 export function getRemoteSyncConfig(): { url: string; anonKey: string } | null {
@@ -290,6 +332,101 @@ export async function getRemoteSyncMeta(syncId: string): Promise<SyncResult<Remo
   }
 }
 
+
+export async function runSyncDiagnostic(syncId: string): Promise<SyncDiagnosticResult> {
+  const steps: SyncDiagnosticStep[] = [];
+  const envStatus = getSyncEnvironmentStatus();
+  const normalizedSyncId = syncId.trim();
+
+  const addStep = (step: SyncDiagnosticStep) => steps.push(step);
+
+  addStep({
+    name: 'Supabase URL',
+    ok: envStatus.hasUrl,
+    message: envStatus.hasUrl ? `設定済み${envStatus.urlHost ? ` (${envStatus.urlHost})` : ''}` : '未設定',
+  });
+  addStep({ name: 'anon key', ok: envStatus.hasAnonKey, message: envStatus.hasAnonKey ? '設定済み' : '未設定' });
+  addStep({ name: '同期ID', ok: Boolean(normalizedSyncId), message: normalizedSyncId ? '入力済み' : '未入力' });
+
+  let exportedPayload: SyncPayload | null = null;
+  try {
+    exportedPayload = exportQuizMakeData();
+    addStep({ name: 'localStorage export', ok: true, message: `${Object.keys(exportedPayload.localStorage).length}件のキーをexportできます` });
+  } catch (error) {
+    addStep({
+      name: 'localStorage export',
+      ok: false,
+      message: '端末データのexportに失敗しました',
+      errorDetails: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  const config = getRemoteSyncConfig();
+  if (!config || !normalizedSyncId || !exportedPayload) {
+    addStep({
+      name: 'テーブル接続',
+      ok: false,
+      message: 'Supabase設定、同期ID、またはexport結果が不足しているため中止しました',
+    });
+    return { ok: steps.every((step) => step.ok), steps };
+  }
+
+  const diagnosticId = `__diagnostic__${normalizedSyncId}`;
+  const diagnosticPayload = {
+    version: 1,
+    app: 'quiz-make',
+    diagnostic: true,
+    exportedAt: new Date().toISOString(),
+    localStorage: {},
+  };
+
+  try {
+    const selectResponse = await fetch(`${config.url}/rest/v1/${SUPABASE_TABLE}?select=sync_id,updated_at&limit=1`, {
+      method: 'GET',
+      headers: createSupabaseHeaders(config.anonKey),
+    });
+    addStep(await responseToDiagnosticStep(selectResponse, 'テーブル接続', 'quiz_sync_data へselectできます'));
+    if (!selectResponse.ok) return { ok: false, steps };
+  } catch (error) {
+    addStep(exceptionToDiagnosticStep('テーブル接続', error));
+    return { ok: false, steps };
+  }
+
+  try {
+    const updatedAt = new Date().toISOString();
+    const upsertResponse = await fetch(`${config.url}/rest/v1/${SUPABASE_TABLE}?on_conflict=sync_id`, {
+      method: 'POST',
+      headers: createSupabaseHeaders(config.anonKey, { Prefer: 'resolution=merge-duplicates,return=representation' }),
+      body: JSON.stringify([{ sync_id: diagnosticId, data: diagnosticPayload, updated_at: updatedAt }]),
+    });
+    addStep(await responseToDiagnosticStep(upsertResponse, '診断用upsert', '診断用データを保存できます'));
+    if (!upsertResponse.ok) return { ok: false, steps };
+  } catch (error) {
+    addStep(exceptionToDiagnosticStep('診断用upsert', error));
+    return { ok: false, steps };
+  }
+
+  try {
+    const encodedId = encodeURIComponent(diagnosticId);
+    const readResponse = await fetch(`${config.url}/rest/v1/${SUPABASE_TABLE}?sync_id=eq.${encodedId}&select=sync_id,data,updated_at`, {
+      method: 'GET',
+      headers: createSupabaseHeaders(config.anonKey),
+    });
+    const readStep = await responseToDiagnosticStep(readResponse, '診断用select読み戻し', '診断用データを読み戻せます');
+    if (readResponse.ok) {
+      const rows = await readResponse.json() as unknown;
+      const found = Array.isArray(rows) && rows.length > 0;
+      addStep(found ? readStep : { name: '診断用select読み戻し', ok: false, message: 'upsertした診断用データが見つかりません' });
+    } else {
+      addStep(readStep);
+    }
+  } catch (error) {
+    addStep(exceptionToDiagnosticStep('診断用select読み戻し', error));
+  }
+
+  return { ok: steps.every((step) => step.ok), steps };
+}
+
 export function computePayloadHash(payload: SyncPayload): string {
   const text = JSON.stringify({ version: payload.version, localStorage: sortRecord(payload.localStorage) });
   let hash = 0;
@@ -309,6 +446,71 @@ export function validateSyncPayload(value: unknown): SyncResult<SyncPayload> {
   if (invalidKey) return { ok: false, error: `Quiz make以外のキーが含まれています: ${invalidKey}` };
 
   return { ok: true, value: { version: 1, updatedAt: value.updatedAt, localStorage: sortRecord(value.localStorage) } };
+}
+
+
+async function responseToDiagnosticStep(response: Response, name: string, successMessage: string): Promise<SyncDiagnosticStep> {
+  if (response.ok) return { name, ok: true, message: successMessage };
+
+  const details = await readSupabaseError(response);
+  const combined = [details.message, details.code, details.details, details.hint].filter(Boolean).join(' ');
+  return {
+    name,
+    ok: false,
+    message: details.message || `HTTP ${response.status}`,
+    errorCode: details.code || String(response.status),
+    errorDetails: details.details,
+    errorHint: details.hint,
+    suggestion: getDiagnosticSuggestion(combined),
+  };
+}
+
+function exceptionToDiagnosticStep(name: string, error: unknown): SyncDiagnosticStep {
+  const message = error instanceof Error ? error.message : String(error);
+  return {
+    name,
+    ok: false,
+    message,
+    errorDetails: message,
+    suggestion: getDiagnosticSuggestion(message),
+  };
+}
+
+async function readSupabaseError(response: Response): Promise<{ message: string; code?: string; details?: string; hint?: string }> {
+  try {
+    const text = await response.text();
+    if (!text) return { message: `HTTP ${response.status}` };
+    try {
+      const parsed = JSON.parse(text) as Record<string, unknown>;
+      return {
+        message: typeof parsed.message === 'string' ? parsed.message : text,
+        code: typeof parsed.code === 'string' ? parsed.code : undefined,
+        details: typeof parsed.details === 'string' ? parsed.details : undefined,
+        hint: typeof parsed.hint === 'string' ? parsed.hint : undefined,
+      };
+    } catch {
+      return { message: text };
+    }
+  } catch {
+    return { message: `HTTP ${response.status}` };
+  }
+}
+
+function getDiagnosticSuggestion(errorText: string): string | undefined {
+  const value = errorText.toLowerCase();
+  if (value.includes('invalid api key') || value.includes('jwt')) {
+    return 'anon key が間違っている、空、またはURLと別プロジェクトのkeyの可能性があります。GitHub Secrets の VITE_SUPABASE_ANON_KEY を確認してください。';
+  }
+  if (value.includes('relation') && value.includes('quiz_sync_data') && value.includes('does not exist')) {
+    return 'Supabase側に quiz_sync_data テーブルがまだ作成されていません。';
+  }
+  if (value.includes('permission denied') || value.includes('row-level security') || value.includes('rls')) {
+    return 'テーブル権限またはRLS設定でブロックされている可能性があります。';
+  }
+  if (value.includes('failed to fetch') || value.includes('networkerror') || value.includes('load failed')) {
+    return 'Supabase URLが間違っている、ネットワーク接続、CORS、またはプロジェクト停止の可能性があります。';
+  }
+  return undefined;
 }
 
 function createSupabaseHeaders(anonKey: string, extra: Record<string, string> = {}) {

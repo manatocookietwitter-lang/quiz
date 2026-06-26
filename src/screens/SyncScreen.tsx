@@ -9,10 +9,12 @@ import {
   getStoredSyncId,
   importQuizMakeData,
   isSyncConfigured,
+  runSyncDiagnostic,
   setAutoSyncEnabled,
   setStoredSyncId,
   uploadSyncData,
   type LastSyncState,
+  type SyncDiagnosticResult,
 } from '../utils/syncService';
 import './SyncScreen.css';
 
@@ -26,6 +28,8 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
   const [autoEnabled, setAutoEnabledState] = useState(() => getAutoSyncSettings().enabled);
   const [lastState, setLastState] = useState<LastSyncState>(() => getLastSyncState());
   const [busy, setBusy] = useState(false);
+  const [diagnosticBusy, setDiagnosticBusy] = useState(false);
+  const [diagnosticResult, setDiagnosticResult] = useState<SyncDiagnosticResult | null>(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
@@ -99,6 +103,28 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
     setMessage(`クラウドへ保存しました。更新: ${formatDateTime(result.value.updatedAt)}`);
   };
 
+
+  const handleDiagnostic = async () => {
+    setDiagnosticBusy(true);
+    setMessage('接続診断を実行しています...');
+    setError('');
+
+    try {
+      const result = await runSyncDiagnostic(normalizedSyncId);
+      setDiagnosticResult(result);
+      setMessage(result.ok ? '接続診断が完了しました。すべてOKです。' : '接続診断が完了しました。NG項目を確認してください。');
+    } catch (caughtError) {
+      const detail = caughtError instanceof Error ? caughtError.message : String(caughtError);
+      setDiagnosticResult({
+        ok: false,
+        steps: [{ name: '接続診断', ok: false, message: '診断処理中にエラーが発生しました', errorDetails: detail }],
+      });
+      setMessage('');
+      setError(`接続診断に失敗しました: ${detail}`);
+    } finally {
+      setDiagnosticBusy(false);
+    }
+  };
   const handleDownload = async () => {
     if (!normalizedSyncId) {
       setError('同期IDを入力してください。');
@@ -213,6 +239,40 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
           <p className="sync-card__note">
             保存はクラウドを上書き、読み込みはこの端末を上書きします。読み込み前には確認を表示します。
           </p>
+        </section>
+
+        <section className="sync-card">
+          <div className="sync-card__title-row sync-card__title-row--center">
+            <div>
+              <h2>接続診断</h2>
+              <p className="sync-card__inline-note">Supabase設定、テーブル接続、診断用保存と読み戻しを確認します。</p>
+            </div>
+          </div>
+          <button type="button" className="sync-button sync-button--secondary" onClick={handleDiagnostic} disabled={diagnosticBusy}>
+            {diagnosticBusy ? '診断中...' : '接続診断'}
+          </button>
+          {diagnosticResult ? (
+            <div className="sync-diagnostic" aria-live="polite">
+              <div className={`sync-diagnostic__summary${diagnosticResult.ok ? ' sync-diagnostic__summary--ok' : ' sync-diagnostic__summary--ng'}`}>
+                同期診断結果：{diagnosticResult.ok ? 'OK' : 'NG'}
+              </div>
+              <div className="sync-diagnostic__steps">
+                {diagnosticResult.steps.map((step) => (
+                  <div key={step.name} className={`sync-diagnostic__step${step.ok ? ' sync-diagnostic__step--ok' : ' sync-diagnostic__step--ng'}`}>
+                    <div className="sync-diagnostic__step-head">
+                      <span>{step.name}</span>
+                      <strong>{step.ok ? 'OK' : 'NG'}</strong>
+                    </div>
+                    {step.message ? <p>{step.message}</p> : null}
+                    {step.errorCode ? <p>code: {step.errorCode}</p> : null}
+                    {step.errorDetails ? <p>details: {step.errorDetails}</p> : null}
+                    {step.errorHint ? <p>hint: {step.errorHint}</p> : null}
+                    {step.suggestion ? <p className="sync-diagnostic__suggestion">{step.suggestion}</p> : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </section>
 
         <section className="sync-card">
