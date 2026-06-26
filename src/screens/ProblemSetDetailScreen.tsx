@@ -194,20 +194,33 @@ export function ProblemSetDetailScreen({
         </section>
 
         <section className="quiz-detail__body">
-          <button type="button" className="quiz-detail__list-entry" onClick={onOpenProblemList}>
-            <span>
-              <strong>{'\u554f\u984c\u4e00\u89a7'}</strong>
-              <small>{questions.length}{'\u554f / \u5206\u91ce\u5225\u306b\u8868\u793a'}</small>
-            </span>
-            <b aria-hidden="true">{'\u203a'}</b>
-          </button>
+          <div className="quiz-detail__entry-grid">
+            <button type="button" className="quiz-detail__list-entry" onClick={onOpenProblemList}>
+              <span>
+                <strong>{'\u554f\u984c\u4e00\u89a7'}</strong>
+                <small>{questions.length}{'\u554f / \u5206\u91ce\u5225\u306b\u8868\u793a'}</small>
+              </span>
+              <b aria-hidden="true">{'\u203a'}</b>
+            </button>
+            {ENABLE_TABLET_NOTES ? (
+              <button type="button" className="quiz-detail__list-entry quiz-detail__note-list-entry" onClick={() => setNoteOpen(true)}>
+                <span>
+                  <strong>{'\u30ce\u30fc\u30c8\u4e00\u89a7'}</strong>
+                  <small>{selectedLabel}{' / \u5206\u985e\u5225\u30ce\u30fc\u30c8'}</small>
+                </span>
+                <b aria-hidden="true">{'\u203a'}</b>
+              </button>
+            ) : null}
+          </div>
         </section>
 
           </div>
-          {ENABLE_TABLET_NOTES ? (
-            <CategoryNotePanel problemSetId={setId} category={noteCategory} className="quiz-detail__note-panel" />
-          ) : null}
         </div>
+        {ENABLE_TABLET_NOTES && noteOpen ? (
+          <div className="quiz-detail__note-overlay" role="dialog" aria-label="\u30ce\u30fc\u30c8\u4e00\u89a7">
+            <CategoryNotePanel problemSetId={setId} category={noteCategory} className="quiz-detail__note-panel" onClose={() => setNoteOpen(false)} />
+          </div>
+        ) : null}
       </div>
     </Layout>
   );

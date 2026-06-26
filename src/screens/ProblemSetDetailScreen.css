@@ -476,3 +476,130 @@
     user-select: none;
   }
 }
+/* Note access is a card entry, not a permanently visible detail column. */
+.quiz-detail__entry-grid {
+  display: block;
+}
+
+.quiz-detail__note-list-entry,
+.quiz-detail__note-overlay {
+  display: none;
+}
+
+@media (min-width: 900px) and (orientation: landscape) {
+  .quiz-detail__content-grid {
+    display: flex;
+    flex-direction: column;
+    padding: 12px;
+  }
+
+  .quiz-detail__main-column {
+    width: 100%;
+  }
+
+  .quiz-detail__entry-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    margin-top: 12px;
+  }
+
+  .quiz-detail__entry-grid .quiz-detail__list-entry {
+    width: 100%;
+    min-height: 86px;
+    margin: 0;
+  }
+
+  .quiz-detail__note-list-entry {
+    display: flex;
+  }
+
+  .quiz-detail__note-overlay {
+    position: fixed;
+    top: calc(var(--safe-top, 0px) + 112px);
+    right: 12px;
+    bottom: 12px;
+    z-index: 80;
+    width: var(--tablet-note-width, min(42vw, 640px));
+    max-width: calc(100vw - 36px);
+    display: flex;
+  }
+
+  .quiz-detail__note-overlay .quiz-detail__note-panel {
+    width: 100%;
+    min-height: 0;
+    height: 100%;
+    display: flex;
+    border-radius: 18px;
+    overflow: hidden;
+    box-shadow: -10px 0 28px rgba(0, 0, 0, 0.28);
+  }
+}
+/* Cleaner layout for the problem/note entry cards. */
+.quiz-detail__entry-grid {
+  padding: 0 12px;
+}
+
+.quiz-detail__entry-grid .quiz-detail__list-entry {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid #3a3a3a;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18);
+}
+
+.quiz-detail__entry-grid .quiz-detail__list-entry::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 14px;
+  bottom: 14px;
+  width: 4px;
+  border-radius: 0 999px 999px 0;
+  background: #12bfc0;
+  opacity: 0.9;
+}
+
+.quiz-detail__note-list-entry::before {
+  background: #8b5cf6 !important;
+}
+
+@media (min-width: 900px) and (orientation: landscape) {
+  .quiz-detail__entry-grid {
+    padding: 0;
+    gap: 12px;
+    margin-top: 12px;
+  }
+
+  .quiz-detail__entry-grid .quiz-detail__list-entry {
+    min-height: 74px;
+    border-radius: 16px;
+    padding: 14px 14px 14px 18px;
+    background: #242424;
+  }
+
+  .quiz-detail__entry-grid .quiz-detail__list-entry span {
+    gap: 4px;
+  }
+
+  .quiz-detail__entry-grid .quiz-detail__list-entry strong {
+    font-size: 17px;
+    font-weight: 900;
+  }
+
+  .quiz-detail__entry-grid .quiz-detail__list-entry small {
+    font-size: 12px;
+    line-height: 1.35;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .quiz-detail__entry-grid .quiz-detail__list-entry b {
+    font-size: 30px;
+    color: #9f9f9f;
+  }
+
+  .quiz-detail__entry-grid .quiz-detail__list-entry:active {
+    background: #303030;
+  }
+}
