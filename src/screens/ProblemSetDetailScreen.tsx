@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { AppData, ProblemSortMode, Question } from '../types';
 import { BackButton } from '../components/BackButton';
-import { CategoryNotePanel } from '../components/CategoryNoteDrawer';
 import { Layout } from '../components/Layout';
 import {
   getProgress,
@@ -35,6 +34,7 @@ interface ProblemSetDetailScreenProps {
   onBack: () => void;
   onOpenImport: (folderId: string) => void;
   onOpenProblemList: () => void;
+  onOpenNoteList: () => void;
   onStartSession: (params: {
     questions: Question[];
     mode: 'quiz' | 'review';
@@ -51,13 +51,13 @@ export function ProblemSetDetailScreen({
   onBack,
   onOpenImport,
   onOpenProblemList,
+  onOpenNoteList,
   onStartSession,
 }: ProblemSetDetailScreenProps) {
   const problemSet = data.problemSets.find((set) => set.id === setId);
   const questions = useMemo(() => getQuestionsBySet(data, setId), [data, setId]);
   const [startCategory, setStartCategory] = useState<CategoryFilter>('all');
   const [reviewFilter, setReviewFilter] = useState<ReviewLevelFilter>('all');
-  const [noteOpen, setNoteOpen] = useState(false);
 
   const categories = useMemo(() => buildProblemCategories(questions), [questions]);
   const startQuestions = useMemo(() => filterQuestionsByCategory(questions, startCategory), [questions, startCategory]);
@@ -82,7 +82,6 @@ export function ProblemSetDetailScreen({
   const correctRate = logs.length === 0 ? 0 : Math.round((correct / logs.length) * 100);
   const selectedLabel = getCategoryLabel(startCategory);
   const reviewFilterLabel = getReviewFilterLabel(reviewFilter);
-  const noteCategory = startCategory === 'all' ? normalizeProblemCategory(questions[0]?.category) : startCategory;
 
   const startOrdered = () => {
     const sessionQuestions = getStartQuestions({
@@ -203,7 +202,7 @@ export function ProblemSetDetailScreen({
               <b aria-hidden="true">{'\u203a'}</b>
             </button>
             {ENABLE_TABLET_NOTES ? (
-              <button type="button" className="quiz-detail__list-entry quiz-detail__note-list-entry" onClick={() => setNoteOpen(true)}>
+              <button type="button" className="quiz-detail__list-entry quiz-detail__note-list-entry" onClick={onOpenNoteList}>
                 <span>
                   <strong>{'\u30ce\u30fc\u30c8\u4e00\u89a7'}</strong>
                   <small>{selectedLabel}{' / \u5206\u985e\u5225\u30ce\u30fc\u30c8'}</small>
@@ -216,11 +215,6 @@ export function ProblemSetDetailScreen({
 
           </div>
         </div>
-        {ENABLE_TABLET_NOTES && noteOpen ? (
-          <div className="quiz-detail__note-overlay" role="dialog" aria-label="\u30ce\u30fc\u30c8\u4e00\u89a7">
-            <CategoryNotePanel problemSetId={setId} category={noteCategory} className="quiz-detail__note-panel" onClose={() => setNoteOpen(false)} />
-          </div>
-        ) : null}
       </div>
     </Layout>
   );

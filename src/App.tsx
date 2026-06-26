@@ -5,6 +5,7 @@ import { HomeScreen } from './screens/HomeScreen';
 import { FolderScreen } from './screens/FolderScreen';
 import { ProblemSetDetailScreen } from './screens/ProblemSetDetailScreen';
 import { ProblemListScreen } from './screens/ProblemListScreen';
+import { NoteListScreen } from './screens/NoteListScreen';
 import { ImportScreen } from './screens/ImportScreen';
 import { QuizScreen } from './screens/QuizScreen';
 import { QuizRunner } from './screens/QuizRunner';
@@ -236,6 +237,7 @@ export default function App() {
         onBack={() => goBackTo({ name: 'folder', folderId: problemSet?.folderId ?? '' })}
         onOpenImport={(folderId) => navigate({ name: 'import', folderId, backScreen: { name: 'problemSetDetail', setId: screen.setId } })}
         onOpenProblemList={() => navigate({ name: 'problemList', setId: screen.setId })}
+        onOpenNoteList={() => navigate({ name: 'noteList', setId: screen.setId })}
         onStartSession={({ questions, mode, initialIndex, title, subtitle, setId }) => handleStartQuizSession({
           title,
           subtitle,
@@ -263,6 +265,14 @@ export default function App() {
           initialIndex,
           backScreen: { name: 'problemList', setId: screen.setId, sortMode },
         })}
+      />
+    );
+  } else if (screen.name === 'noteList') {
+    content = (
+      <NoteListScreen
+        data={data}
+        setId={screen.setId}
+        onBack={() => goBackTo({ name: 'problemSetDetail', setId: screen.setId })}
       />
     );
   } else if (screen.name === 'import') {
