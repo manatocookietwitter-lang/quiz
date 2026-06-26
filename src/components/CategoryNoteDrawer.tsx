@@ -453,23 +453,22 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
       return;
     }
 
-    preloadNoteImage(pages[targetIndex]?.dataUrl ?? '');
+    const dataUrl = snapshot();
+    const nextPages = [...pages];
+    if (dataUrl) {
+      nextPages[currentPageIndex] = { ...nextPages[currentPageIndex], dataUrl, updatedAt: new Date().toISOString() };
+    }
+    const nextNote: CategoryNote = {
+      problemSetId: problemSetId ?? '',
+      category: normalizedCategory,
+      pages: nextPages,
+      currentPageIndex: targetIndex,
+      updatedAt: new Date().toISOString(),
+    };
+    preloadNoteImage(nextPages[targetIndex]?.dataUrl ?? '');
 
     const finishCommit = () => {
       rail.removeEventListener('transitionend', finishCommit);
-      const dataUrl = snapshot();
-      const nextPages = [...pages];
-      if (dataUrl) {
-        nextPages[currentPageIndex] = { ...nextPages[currentPageIndex], dataUrl, updatedAt: new Date().toISOString() };
-      }
-      const nextNote: CategoryNote = {
-        problemSetId: problemSetId ?? '',
-        category: normalizedCategory,
-        pages: nextPages,
-        currentPageIndex: targetIndex,
-        updatedAt: new Date().toISOString(),
-      };
-
       pageDataUrlRef.current = nextPages[targetIndex]?.dataUrl ?? '';
       resetTouchGesture();
       setPageScaleValue(1);
@@ -487,7 +486,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
     };
 
     rail.addEventListener('transitionend', finishCommit, { once: true });
-    rail.style.transition = 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)';
+    rail.style.transition = 'transform 260ms cubic-bezier(0.22, 1, 0.36, 1)';
     rail.style.transform = direction === 'next' ? 'translate3d(-66.666667%, 0, 0)' : 'translate3d(0, 0, 0)';
   };
   const beginDraw = (event: PointerEvent<HTMLCanvasElement>) => {
@@ -533,7 +532,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   };
 
   const endDraw = (event: PointerEvent<HTMLCanvasElement>) => {
-    if (pageSwipeRef.current) {
+    if (pageSwipeRef.current || pinchRef.current || pagePinchingRef.current || touchPointsRef.current.has(event.pointerId)) {
       endPageSwipe(event);
       return;
     }
@@ -812,6 +811,7 @@ function drawDataUrlToContext(context: CanvasRenderingContext2D, dataUrl: string
     noteImageCache.set(dataUrl, image);
   }
 }
+
 
 
 
