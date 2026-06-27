@@ -129,6 +129,15 @@
   margin: 12px 0 0;
 }
 
+.sync-card__compact-note {
+  margin: 10px 0 0;
+  color: #a3a3a3;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.45;
+}
+
+
 .sync-card__error-text {
   margin: 12px 0 0;
   color: #fecdd3;

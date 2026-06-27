@@ -70,7 +70,7 @@ const LAST_UPLOAD_HASH_KEY = 'quizMake:sync:lastUploadHash';
 const LAST_REMOTE_UPDATED_AT_KEY = 'quizMake:sync:lastRemoteUpdatedAt';
 const LAST_SYNC_STATUS_KEY = 'quizMake:sync:lastStatus';
 const LAST_SYNC_ERROR_KEY = 'quizMake:sync:lastError';
-const SYNC_BACKUP_PREFIX = 'quizMake:sync:backup:';
+export const SYNC_BACKUP_PREFIX = 'quizMake:sync:backup:';
 const SUPABASE_TABLE = 'quiz_sync_data';
 
 export function isSyncConfigured(): boolean {
@@ -103,6 +103,25 @@ export function getRemoteSyncConfig(): { url: string; anonKey: string } | null {
   const anonKey = env.VITE_SUPABASE_ANON_KEY ?? env.VITE_QUIZ_SYNC_SUPABASE_ANON_KEY;
   if (!url || !anonKey) return null;
   return { url: url.replace(/\/+$/, ''), anonKey };
+}
+
+
+export function clearSyncLocalBackups(): number {
+  const keys: string[] = [];
+  try {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (key?.startsWith(SYNC_BACKUP_PREFIX)) keys.push(key);
+    }
+    keys.forEach((key) => localStorage.removeItem(key));
+    return keys.length;
+  } catch {
+    return 0;
+  }
+}
+
+export function cleanupLegacySyncBackups(): void {
+  clearSyncLocalBackups();
 }
 
 export function getStoredSyncId(): string {
@@ -208,9 +227,6 @@ export function importQuizMakeData(payload: SyncPayload): SyncResult<number> {
   if (!validation.ok) return validation;
 
   try {
-    const backup = exportQuizMakeData();
-    localStorage.setItem(`${SYNC_BACKUP_PREFIX}${new Date().toISOString()}`, JSON.stringify(backup));
-
     const keysToRemove: string[] = [];
     for (let index = 0; index < localStorage.length; index += 1) {
       const key = localStorage.key(index);
@@ -234,7 +250,11 @@ export function importQuizMakeData(payload: SyncPayload): SyncResult<number> {
   } catch (error) {
     return {
       ok: false,
-      error: error instanceof Error ? `同期データの読み込みに失敗しました: ${error.message}` : '同期データの読み込みに失敗しました。',
+      error: isQuotaExceededError(error)
+        ? '端末内の保存容量がいっぱいです。同期バックアップを整理するか、不要なノートデータを減らしてください。'
+        : error instanceof Error
+          ? '同期データの読み込みに失敗しました: ' + error.message
+          : '同期データの読み込みに失敗しました。',
     };
   }
 }
@@ -604,6 +624,14 @@ function isQuizMakeStorageKey(key: string): boolean {
   if (key.startsWith('quizMake:sync:')) return false;
   if (key.startsWith(SYNC_BACKUP_PREFIX)) return false;
   return key === 'quiz-make-app-data-v1' || key.startsWith('quizMake:') || key.startsWith('quiz-make:');
+}
+
+function isQuotaExceededError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return error.name === 'QuotaExceededError'
+    || error.name === 'NS_ERROR_DOM_QUOTA_REACHED'
+    || error.message.toLowerCase().includes('quota')
+    || error.message.includes('exceeded the quota');
 }
 
 function sortRecord(record: Record<string, string>): Record<string, string> {

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import {
+  cleanupLegacySyncBackups,
   computePayloadHash,
   downloadSyncData,
   exportQuizMakeData,
@@ -21,6 +22,7 @@ export function AutoSyncController() {
   const promptedRemoteUpdatedAtRef = useRef('');
 
   useEffect(() => {
+    cleanupLegacySyncBackups();
     const uploadIfChanged = async () => {
       const settings = getAutoSyncSettings();
       if (!settings.enabled || !settings.syncId || !settings.configured) return;
@@ -90,7 +92,7 @@ export function AutoSyncController() {
 
         promptedRemoteUpdatedAtRef.current = meta.value.updatedAt;
         setLastSyncState({ status: 'クラウドに新しいデータがあります', error: '' });
-        const ok = window.confirm('クラウドに新しいデータがあります。この端末のデータをクラウドの内容で更新しますか？');
+        const ok = window.confirm('クラウドに新しいデータがあります。\n\nこの端末のデータをクラウドの内容で上書きします。必要な場合は同期設定画面の「現在データをJSONバックアップ」で先に保存してください。\n\n実行しますか？');
         if (!ok) {
           setLastSyncState({ status: 'クラウド読み込みを保留しました', error: '' });
           return;
