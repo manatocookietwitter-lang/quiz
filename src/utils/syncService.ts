@@ -17,6 +17,16 @@ export type RemoteSyncMeta = {
   updatedAt: string;
 };
 
+export type SyncPayloadSummary = {
+  keyCount: number;
+  byteSize: number;
+  folderCount: number;
+  problemSetCount: number;
+  questionCount: number;
+  progressCount: number;
+  noteCount: number;
+};
+
 export type AutoSyncSettings = {
   enabled: boolean;
   syncId: string;
@@ -434,6 +444,43 @@ export function computePayloadHash(payload: SyncPayload): string {
     hash = (hash * 31 + text.charCodeAt(index)) | 0;
   }
   return String(hash);
+}
+
+
+export function summarizeSyncPayload(payload: SyncPayload): SyncPayloadSummary {
+  const appDataRaw = payload.localStorage['quiz-make-app-data-v1'];
+  let folderCount = 0;
+  let problemSetCount = 0;
+  let questionCount = 0;
+  let progressCount = 0;
+
+  if (appDataRaw) {
+    try {
+      const parsed = JSON.parse(appDataRaw) as Record<string, unknown>;
+      folderCount = Array.isArray(parsed.folders) ? parsed.folders.length : 0;
+      problemSetCount = Array.isArray(parsed.problemSets) ? parsed.problemSets.length : 0;
+      questionCount = Array.isArray(parsed.questions) ? parsed.questions.length : 0;
+      progressCount = Array.isArray(parsed.progress) ? parsed.progress.length : 0;
+    } catch {
+      // Summary only. Invalid app data is handled by the normal app loader/import path.
+    }
+  }
+
+  const noteCount = Object.keys(payload.localStorage).filter((key) => key.startsWith('quizMake:notes:')).length;
+  const text = JSON.stringify(payload.localStorage);
+  const byteSize = typeof TextEncoder !== 'undefined'
+    ? new TextEncoder().encode(text).length
+    : text.length;
+
+  return {
+    keyCount: Object.keys(payload.localStorage).length,
+    byteSize,
+    folderCount,
+    problemSetCount,
+    questionCount,
+    progressCount,
+    noteCount,
+  };
 }
 
 export function validateSyncPayload(value: unknown): SyncResult<SyncPayload> {

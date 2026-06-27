@@ -200,7 +200,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
           </section>
 
           {!answered ? (
-            <section className="shrink-0 px-5 pb-[max(14px,env(safe-area-inset-bottom))]">
+            <section className="quiz-runner__answer-actions shrink-0 px-5 pb-[max(14px,env(safe-area-inset-bottom))]">
               {answerMessage ? (
                 <p className="mb-2 text-center text-sm font-bold text-[#C94F4F]">{answerMessage}</p>
               ) : null}

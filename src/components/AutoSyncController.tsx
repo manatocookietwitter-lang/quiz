@@ -31,6 +31,11 @@ export function AutoSyncController() {
         const payload = exportQuizMakeData();
         const hash = computePayloadHash(payload);
         const lastState = getLastSyncState();
+        if (!lastState.lastSyncAt && !lastState.lastUploadHash) {
+          setLastSyncState({ status: '自動同期: 初回は手動保存または読み込みをしてください', error: '' });
+          return;
+        }
+        if (remoteCheckRunningRef.current) return;
         if (hash === lastState.lastUploadHash) {
           setLastSyncState({ status: '自動同期: 待機中', error: '' });
           return;
@@ -123,7 +128,6 @@ export function AutoSyncController() {
     };
     const handleSettingsChange = () => {
       void checkRemote(true);
-      void uploadIfChanged();
     };
 
     window.addEventListener('focus', handleFocus);

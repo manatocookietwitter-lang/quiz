@@ -350,21 +350,21 @@ button:disabled {
 }
 
 .quiz-screen-transition--forward {
-  animation: quizScreenForwardIn 190ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: quizScreenForwardIn 270ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .quiz-screen-transition--back {
-  animation: quizScreenBackIn 190ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: quizScreenBackIn 270ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .quiz-screen-transition--replace {
-  animation: quizScreenReplaceIn 90ms ease-out both;
+  animation: quizScreenReplaceIn 130ms ease-out both;
 }
 
 @keyframes quizScreenForwardIn {
   from {
     opacity: 0.96;
-    transform: translate3d(-28px, 0, 0);
+    transform: translate3d(-38px, 0, 0);
   }
   to {
     opacity: 1;
@@ -375,7 +375,7 @@ button:disabled {
 @keyframes quizScreenBackIn {
   from {
     opacity: 0.96;
-    transform: translate3d(28px, 0, 0);
+    transform: translate3d(38px, 0, 0);
   }
   to {
     opacity: 1;
@@ -788,6 +788,13 @@ button:disabled {
   color: #ffffff;
   font-size: 13px;
   font-weight: 900;
+}
+
+@media (min-width: 900px) and (orientation: landscape) {
+  body.quiz-note-open .quiz-runner__answer-actions {
+    padding-right: calc(var(--tablet-note-width, min(50vw, 820px)) + 16px);
+    transition: padding-right 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
 }
 @media (min-width: 900px) and (orientation: landscape) {
   body.quiz-note-open .answer-sheet {

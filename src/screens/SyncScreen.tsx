@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { BackButton } from '../components/BackButton';
 import {
+  computePayloadHash,
   downloadSyncData,
   exportQuizMakeData,
   generateSyncId,
@@ -12,6 +13,7 @@ import {
   runSyncDiagnostic,
   setAutoSyncEnabled,
   setStoredSyncId,
+  summarizeSyncPayload,
   uploadSyncData,
   type LastSyncState,
   type SyncDiagnosticResult,
@@ -90,17 +92,42 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
     setMessage('クラウドへ保存しています...');
 
     const payload = exportQuizMakeData();
+    const localHash = computePayloadHash(payload);
+    const localSummary = summarizeSyncPayload(payload);
     const result = await uploadSyncData(normalizedSyncId, payload);
-    setBusy(false);
-    setLastState(getLastSyncState());
 
     if (!result.ok) {
+      setBusy(false);
+      setLastState(getLastSyncState());
       setMessage('');
       setError(result.error);
       return;
     }
 
-    setMessage(`クラウドへ保存しました。更新: ${formatDateTime(result.value.updatedAt)}`);
+    const verify = await downloadSyncData(normalizedSyncId);
+    setBusy(false);
+    setLastState(getLastSyncState());
+
+    if (!verify.ok) {
+      setMessage('');
+      setError(`保存後の読み戻し確認に失敗しました: ${verify.error}`);
+      return;
+    }
+    if (!verify.value) {
+      setMessage('');
+      setError('保存後にクラウドデータを読み戻せませんでした。同じ同期IDのデータが見つかりません。');
+      return;
+    }
+
+    const remoteHash = computePayloadHash(verify.value.payload);
+    const remoteSummary = summarizeSyncPayload(verify.value.payload);
+    if (remoteHash !== localHash) {
+      setMessage('');
+      setError(`保存後の読み戻し内容が一致しません。ローカル: ${formatSyncSummary(localSummary)} / クラウド: ${formatSyncSummary(remoteSummary)}`);
+      return;
+    }
+
+    setMessage(`クラウドへ保存しました。更新: ${formatDateTime(verify.value.updatedAt)} / ${formatSyncSummary(remoteSummary)}`);
   };
 
 
@@ -151,7 +178,8 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
       return;
     }
 
-    const ok = window.confirm('クラウドのデータでこの端末のデータを上書きします。現在の端末データは置き換わります。実行しますか？');
+    const remoteSummary = summarizeSyncPayload(result.value.payload);
+    const ok = window.confirm(`クラウドのデータでこの端末のデータを上書きします。\nクラウド内容: ${formatSyncSummary(remoteSummary)}\n現在の端末データは置き換わります。実行しますか？`);
     if (!ok) {
       setMessage('読み込みをキャンセルしました。');
       return;
@@ -165,7 +193,7 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
       return;
     }
 
-    setMessage('クラウドから読み込みました。アプリを再読み込みします...');
+    setMessage(`クラウドから読み込みました。${formatSyncSummary(remoteSummary)} / アプリを再読み込みします...`);
     window.setTimeout(() => window.location.reload(), 800);
   };
 
@@ -312,4 +340,11 @@ function formatDateTime(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString('ja-JP', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function formatSyncSummary(summary: ReturnType<typeof summarizeSyncPayload>) {
+  const size = summary.byteSize >= 1024 * 1024
+    ? `${(summary.byteSize / 1024 / 1024).toFixed(1)}MB`
+    : `${Math.max(1, Math.round(summary.byteSize / 1024))}KB`;
+  return `フォルダ${summary.folderCount} / セット${summary.problemSetCount} / 問題${summary.questionCount} / 進捗${summary.progressCount} / ノート${summary.noteCount} / ${size}`;
 }
