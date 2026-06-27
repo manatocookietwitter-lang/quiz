@@ -343,7 +343,7 @@
     box-sizing: border-box;
     overflow: visible;
     background: #f3f4f6;
-    padding: 8px clamp(76px, 18%, 116px) 16px;
+    padding: 8px clamp(56px, 14%, 92px) 16px;
   }
 
   .category-note-page-slot > .category-note-page {
