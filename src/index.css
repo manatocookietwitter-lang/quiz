@@ -392,6 +392,22 @@ button:disabled {
   }
 }
 
+
+.quiz-runner,
+.quiz-runner *,
+.answer-sheet,
+.answer-sheet * {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.quiz-runner img,
+.answer-sheet img {
+  -webkit-user-drag: none;
+  user-drag: none;
+}
 .quiz-runner__header {
   height: calc(60px + var(--safe-top));
   padding-top: var(--safe-top);

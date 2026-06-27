@@ -155,7 +155,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
 
   return (
     <Layout>
-      <div className={`relative flex h-full flex-col overflow-hidden bg-[#E9E5D8] text-[#111111]${noteAreaOpen ? ' quiz-runner--note-open' : ''}`}>
+      <div className={`quiz-runner relative flex h-full flex-col overflow-hidden bg-[#E9E5D8] text-[#111111]${noteAreaOpen ? ' quiz-runner--note-open' : ''}`}>
         <QuizHeader title={title} current={currentIndex + 1} total={questions.length} onBack={onBack} />
 
         <ProgressBand
