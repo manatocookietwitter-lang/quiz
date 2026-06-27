@@ -661,8 +661,10 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
       <header className="category-note-drawer__header">
         <div className="category-note-drawer__title-block">
           <p>{'\u30ce\u30fc\u30c8'}</p>
-          <h2>{normalizedCategory}</h2>
-          <span>{'\u30da\u30fc\u30b8'} {currentPageIndex + 1} / {pages.length}</span>
+          <div className="category-note-drawer__title-row">
+            <h2>{normalizedCategory}</h2>
+            <span>{'\u30da\u30fc\u30b8'} {currentPageIndex + 1} / {pages.length}</span>
+          </div>
         </div>
         <div className="category-note-drawer__header-actions">
           <button type="button" onClick={addPage}>{'\u8ffd\u52a0'}</button>
