@@ -320,9 +320,11 @@
   }
 
   .category-note-page-rail > .category-note-page {
-    width: calc(100% - 16px);
-    height: 100%;
-    margin: 0 8px;
+    width: calc(100% - 48px);
+    height: auto;
+    margin: 0 24px;
+    align-self: center;
+    justify-self: center;
   }
 
   .category-note-page--preview {
