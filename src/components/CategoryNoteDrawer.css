@@ -155,7 +155,7 @@
     align-items: center;
     justify-content: center;
     overflow: hidden;
-    padding: 10px 14px 8px;
+    padding: 0;
     background: #f3f4f6;
   }
 
@@ -290,12 +290,9 @@
   }
 
   .category-note-canvas-area {
-    padding: 10px 14px 8px;
+    padding: 0;
   }
 
-  .category-note-page {
-    width: min(100%, calc((100dvh - var(--safe-top, 0px) - 112px) * 210 / 297));
-  }
 }
 
 @media (min-width: 900px) and (orientation: landscape) {
@@ -315,9 +312,9 @@
 
 @media (min-width: 900px) and (orientation: landscape) {
   .category-note-page-viewport {
-    aspect-ratio: 210 / 297;
-    width: min(100%, calc((100dvh - var(--safe-top, 0px) - 112px) * 210 / 297));
-    max-height: 100%;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
     overflow: hidden;
     position: relative;
     background: #f3f4f6;
@@ -338,14 +335,22 @@
     transition: none;
   }
 
-  .category-note-page-rail > .category-note-page {
+  .category-note-page-slot {
+    min-width: 0;
+    height: 100%;
+    display: grid;
+    place-items: center;
+    box-sizing: border-box;
+    overflow: visible;
+    background: #f3f4f6;
+    padding: 8px clamp(76px, 18%, 116px) 16px;
+  }
+
+  .category-note-page-slot > .category-note-page {
     aspect-ratio: 210 / 297;
-    height: calc(100% - 24px);
-    width: auto;
-    max-width: calc(100% - 160px);
-    margin: 0 80px;
-    align-self: center;
-    justify-self: center;
+    width: min(100%, calc((100dvh - var(--safe-top, 0px) - 150px) * 210 / 297));
+    height: auto;
+    max-height: 100%;
   }
 
   .category-note-page--preview {

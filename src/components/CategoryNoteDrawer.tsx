@@ -680,32 +680,36 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
             className={`category-note-page-rail${pageSwiping ? ' category-note-page-rail--swiping' : ''}`}
             aria-label="A4 note page slider"
           >
-            <div
-              ref={prevPageRef}
-              className={`category-note-page category-note-page--preview${currentPageIndex <= 0 ? ' category-note-page--missing' : ''}`}
-              style={{ backgroundImage: pages[currentPageIndex - 1]?.dataUrl ? `url(${pages[currentPageIndex - 1].dataUrl})` : undefined }}
-              aria-hidden="true"
-            />
-            <div
-              className={`category-note-page category-note-page--active${pagePinching ? ' category-note-page--pinching' : ''}`}
-              style={{ transform: pageScale === 1 ? undefined : `translate3d(${pagePan.x}px, ${pagePan.y}px, 0) scale(${pageScale})` }}
-            >
-              <canvas
-                ref={canvasRef}
-                className="category-note-canvas"
-                onPointerDown={beginDraw}
-                onPointerMove={moveDraw}
-                onPointerUp={endDraw}
-                onPointerCancel={endDraw}
-                onPointerLeave={endDraw}
+            <div className="category-note-page-slot" aria-hidden="true">
+              <div
+                ref={prevPageRef}
+                className={`category-note-page category-note-page--preview${currentPageIndex <= 0 ? ' category-note-page--missing' : ''}`}
+                style={{ backgroundImage: pages[currentPageIndex - 1]?.dataUrl ? `url(${pages[currentPageIndex - 1].dataUrl})` : undefined }}
               />
             </div>
-            <div
-              ref={nextPageRef}
-              className={`category-note-page category-note-page--preview${currentPageIndex >= pages.length - 1 ? ' category-note-page--missing' : ''}`}
-              style={{ backgroundImage: pages[currentPageIndex + 1]?.dataUrl ? `url(${pages[currentPageIndex + 1].dataUrl})` : undefined }}
-              aria-hidden="true"
-            />
+            <div className="category-note-page-slot">
+              <div
+                className={`category-note-page category-note-page--active${pagePinching ? ' category-note-page--pinching' : ''}`}
+                style={{ transform: pageScale === 1 ? undefined : `translate3d(${pagePan.x}px, ${pagePan.y}px, 0) scale(${pageScale})` }}
+              >
+                <canvas
+                  ref={canvasRef}
+                  className="category-note-canvas"
+                  onPointerDown={beginDraw}
+                  onPointerMove={moveDraw}
+                  onPointerUp={endDraw}
+                  onPointerCancel={endDraw}
+                  onPointerLeave={endDraw}
+                />
+              </div>
+            </div>
+            <div className="category-note-page-slot" aria-hidden="true">
+              <div
+                ref={nextPageRef}
+                className={`category-note-page category-note-page--preview${currentPageIndex >= pages.length - 1 ? ' category-note-page--missing' : ''}`}
+                style={{ backgroundImage: pages[currentPageIndex + 1]?.dataUrl ? `url(${pages[currentPageIndex + 1].dataUrl})` : undefined }}
+              />
+            </div>
           </div>
         </div>
       </div>
