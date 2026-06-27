@@ -1,11 +1,11 @@
-﻿.category-note-tab,
+.category-note-tab,
 .category-note-drawer {
   display: none;
 }
 
 @media (min-width: 900px) and (orientation: landscape) {
   :root {
-    --tablet-note-width: min(42vw, 640px);
+    --tablet-note-width: min(50vw, 820px);
   }
 
   .category-note-tab,

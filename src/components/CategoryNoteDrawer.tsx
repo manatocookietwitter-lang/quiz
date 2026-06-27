@@ -130,7 +130,9 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   const pageSwipeRef = useRef<{ x: number; y: number; pointerId: number } | null>(null);
   const touchPointsRef = useRef(new Map<number, { x: number; y: number }>());
   const pinchRef = useRef<{ startDistance: number; startScale: number } | null>(null);
+  const pagePanGestureRef = useRef<{ x: number; y: number; pointerId: number; startPan: { x: number; y: number } } | null>(null);
   const pageScaleRef = useRef(1);
+  const pagePanRef = useRef({ x: 0, y: 0 });
   const pagePinchingRef = useRef(false);
   const pageElementRef = useRef<HTMLDivElement | null>(null);
   const pageSwipeFrameRef = useRef<number | null>(null);
@@ -149,11 +151,27 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   const [canUndo, setCanUndo] = useState(false);
   const [pageSwiping, setPageSwiping] = useState(false);
   const [pageScale, setPageScaleState] = useState(1);
+  const [pagePan, setPagePanState] = useState({ x: 0, y: 0 });
   const [pagePinching, setPagePinchingState] = useState(false);
 
+  const setPagePanValue = (nextPan: { x: number; y: number }, scale = pageScaleRef.current) => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    const maxX = rect ? Math.max(0, (rect.width * (scale - 1)) / 2) : 0;
+    const maxY = rect ? Math.max(0, (rect.height * (scale - 1)) / 2) : 0;
+    const clamped = {
+      x: Math.max(-maxX, Math.min(maxX, nextPan.x)),
+      y: Math.max(-maxY, Math.min(maxY, nextPan.y)),
+    };
+    pagePanRef.current = clamped;
+    setPagePanState(clamped);
+  };
+
   const setPageScaleValue = (nextScale: number) => {
-    pageScaleRef.current = nextScale;
-    setPageScaleState(nextScale);
+    const normalizedScale = Math.max(1, nextScale);
+    pageScaleRef.current = normalizedScale;
+    setPageScaleState(normalizedScale);
+    if (normalizedScale <= 1.02) setPagePanValue({ x: 0, y: 0 }, 1);
+    else setPagePanValue(pagePanRef.current, normalizedScale);
   };
 
   const setPagePinchingValue = (nextPinching: boolean) => {
@@ -164,9 +182,13 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   const resetTouchGesture = () => {
     touchPointsRef.current.clear();
     pageSwipeRef.current = null;
+    pagePanGestureRef.current = null;
     pinchRef.current = null;
     setPagePinchingValue(false);
-    if (pageScaleRef.current < 1) setPageScaleValue(1);
+    if (pageScaleRef.current <= 1.02) {
+      setPageScaleValue(1);
+      setPagePanValue({ x: 0, y: 0 }, 1);
+    }
   };
 
   const pages = note.pages.length > 0 ? note.pages : [createBlankPage()];
@@ -345,10 +367,23 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
 
     if (touchPointsRef.current.size >= 2) {
       pageSwipeRef.current = null;
+      pagePanGestureRef.current = null;
       setPageSwiping(false);
       const points = Array.from(touchPointsRef.current.values()).slice(0, 2);
       pinchRef.current = { startDistance: getPointDistance(points[0], points[1]), startScale: pageScaleRef.current };
       setPagePinchingValue(true);
+      return;
+    }
+
+    if (pageScaleRef.current > 1.02) {
+      pageSwipeRef.current = null;
+      pagePanGestureRef.current = {
+        x: event.clientX,
+        y: event.clientY,
+        pointerId: event.pointerId,
+        startPan: pagePanRef.current,
+      };
+      setPageSwiping(false);
       return;
     }
 
@@ -372,10 +407,20 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
         const points = Array.from(touchPointsRef.current.values()).slice(0, 2);
         const nextDistance = getPointDistance(points[0], points[1]);
         const nextScale = pinchRef.current.startScale * (nextDistance / Math.max(pinchRef.current.startDistance, 1));
-        setPageScaleValue(Math.max(0.92, Math.min(2.5, nextScale)));
+        setPageScaleValue(Math.max(1, Math.min(2.5, nextScale)));
         return;
       }
     }
+    const pan = pagePanGestureRef.current;
+    if (pan && pan.pointerId === event.pointerId && pageScaleRef.current > 1.02) {
+      event.preventDefault();
+      setPagePanValue({
+        x: pan.startPan.x + event.clientX - pan.x,
+        y: pan.startPan.y + event.clientY - pan.y,
+      });
+      return;
+    }
+
     const swipe = pageSwipeRef.current;
     if (!swipe || swipe.pointerId !== event.pointerId) return;
     const deltaX = event.clientX - swipe.x;
@@ -401,7 +446,10 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
     if (event.pointerType === 'touch') {
       touchPointsRef.current.delete(event.pointerId);
       if (pinchRef.current || pagePinchingRef.current) {
-        if (pageScaleRef.current < 1) setPageScaleValue(1);
+        if (pageScaleRef.current <= 1.02) {
+      setPageScaleValue(1);
+      setPagePanValue({ x: 0, y: 0 }, 1);
+    }
         if (touchPointsRef.current.size < 2) {
           pinchRef.current = null;
           setPagePinchingValue(false);
@@ -410,6 +458,13 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
         return;
       }
     }
+    const pan = pagePanGestureRef.current;
+    if (pan && pan.pointerId === event.pointerId) {
+      pagePanGestureRef.current = null;
+      event.currentTarget.releasePointerCapture?.(event.pointerId);
+      return;
+    }
+
     const swipe = pageSwipeRef.current;
     if (!swipe || swipe.pointerId !== event.pointerId) {
       event.currentTarget.releasePointerCapture?.(event.pointerId);
@@ -631,7 +686,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
             />
             <div
               className={`category-note-page category-note-page--active${pagePinching ? ' category-note-page--pinching' : ''}`}
-              style={{ transform: pageScale === 1 ? undefined : `scale(${pageScale})` }}
+              style={{ transform: pageScale === 1 ? undefined : `translate3d(${pagePan.x}px, ${pagePan.y}px, 0) scale(${pageScale})` }}
             >
               <canvas
                 ref={canvasRef}
@@ -829,6 +884,8 @@ function drawDataUrlToContext(context: CanvasRenderingContext2D, dataUrl: string
     noteImageCache.set(dataUrl, image);
   }
 }
+
+
 
 
 

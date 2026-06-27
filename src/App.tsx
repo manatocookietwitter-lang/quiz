@@ -28,14 +28,49 @@ export default function App() {
   const [data, setData] = useState<AppData>(() => loadAppData());
   const dataRef = useRef(data);
   const [screen, setScreen] = useState<AppScreen>({ name: 'home' });
-  const [transitionDirection, setTransitionDirection] = useState<'forward' | 'back'>('forward');
+  const [transitionDirection, setTransitionDirection] = useState<'forward' | 'back' | 'replace'>('replace');
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
+  const [pendingExitTarget, setPendingExitTarget] = useState<AppScreen | null>(null);
+  const navigationStackRef = useRef<AppScreen[]>([{ name: 'home' }]);
+  const browserDepthRef = useRef(0);
+  const pendingBackTargetRef = useRef<AppScreen | null>(null);
+  const pendingExitTargetRef = useRef<AppScreen | null>(null);
+  const confirmedQuizExitRef = useRef(false);
+  const screenRef = useRef<AppScreen>({ name: 'home' });
 
   useEffect(() => {
     dataRef.current = data;
     saveAppData(data);
   }, [data]);
 
+  useEffect(() => {
+    screenRef.current = screen;
+  }, [screen]);
+
+  useEffect(() => {
+    window.history.replaceState({ quizMake: true }, '');
+
+    const handlePopState = () => {
+      const current = screenRef.current;
+      const target = pendingBackTargetRef.current ?? navigationStackRef.current[navigationStackRef.current.length - 2] ?? { name: 'home' };
+      pendingBackTargetRef.current = null;
+
+      if (current.name === 'quizSession' && !confirmedQuizExitRef.current) {
+        window.history.pushState({ quizMake: true }, '');
+        pendingExitTargetRef.current = target;
+        setPendingExitTarget(target);
+        return;
+      }
+
+      if (confirmedQuizExitRef.current) {
+        confirmedQuizExitRef.current = false;
+      }
+      applyBackNavigation(target);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
   useEffect(() => {
     const handleUpdate = (event: WindowEventMap['quiz-make-sw-update']) => {
       setWaitingWorker(event.detail.worker);
@@ -51,18 +86,74 @@ export default function App() {
   };
 
   const navigate = (next: AppScreen) => {
+    navigationStackRef.current = [...navigationStackRef.current, next];
+    browserDepthRef.current += 1;
+    window.history.pushState({ quizMake: true }, '');
     setTransitionDirection('forward');
     setScreen(next);
+  };
+
+  const applyBackNavigation = (target: AppScreen) => {
+    const targetKey = getScreenKey(target);
+    const stack = navigationStackRef.current;
+    let targetIndex = -1;
+    for (let index = stack.length - 1; index >= 0; index -= 1) {
+      if (getScreenKey(stack[index]) === targetKey) {
+        targetIndex = index;
+        break;
+      }
+    }
+
+    navigationStackRef.current = targetIndex >= 0 ? stack.slice(0, targetIndex + 1) : [target];
+    browserDepthRef.current = Math.max(0, browserDepthRef.current - 1);
+    pendingBackTargetRef.current = null;
+    setTransitionDirection('back');
+    setScreen(target);
+  };
+
+  const performBackNavigation = (target: AppScreen) => {
+    pendingBackTargetRef.current = target;
+    if (browserDepthRef.current > 0) {
+      window.history.back();
+      return;
+    }
+    applyBackNavigation(target);
   };
 
   const goBackTo = (next: AppScreen) => {
-    setTransitionDirection('back');
-    setScreen(next);
+    if (screenRef.current.name === 'quizSession') {
+      pendingExitTargetRef.current = next;
+      setPendingExitTarget(next);
+      return;
+    }
+    performBackNavigation(next);
   };
 
   const replaceScreen = (next: AppScreen) => {
-    setTransitionDirection('forward');
+    const stack = navigationStackRef.current;
+    navigationStackRef.current = stack.length > 0 ? [...stack.slice(0, -1), next] : [next];
+    window.history.replaceState({ quizMake: true }, '');
+    setTransitionDirection('replace');
     setScreen(next);
+  };
+
+  const cancelExitSession = () => {
+    pendingExitTargetRef.current = null;
+    setPendingExitTarget(null);
+  };
+
+  const confirmExitSession = () => {
+    const target = pendingExitTargetRef.current ?? pendingExitTarget ?? { name: 'home' };
+    pendingExitTargetRef.current = null;
+    setPendingExitTarget(null);
+    confirmedQuizExitRef.current = true;
+    pendingBackTargetRef.current = target;
+    if (browserDepthRef.current > 0) {
+      window.history.back();
+      return;
+    }
+    confirmedQuizExitRef.current = false;
+    applyBackNavigation(target);
   };
 
   const goHome = () => goBackTo({ name: 'home' });
@@ -358,6 +449,18 @@ export default function App() {
       <div key={getScreenKey(screen)} className={`quiz-screen-transition quiz-screen-transition--${transitionDirection}`}>
         {content}
       </div>
+      {pendingExitTarget ? (
+        <div className="quiz-exit-confirm" role="dialog" aria-modal="true" aria-label="演習終了確認">
+          <div className="quiz-exit-confirm__card">
+            <h2>演習を終了しますか？</h2>
+            <p>途中の演習を終了して前の画面へ戻ります。</p>
+            <div className="quiz-exit-confirm__actions">
+              <button type="button" className="quiz-exit-confirm__button quiz-exit-confirm__button--secondary" onClick={cancelExitSession}>キャンセル</button>
+              <button type="button" className="quiz-exit-confirm__button quiz-exit-confirm__button--danger" onClick={confirmExitSession}>終了する</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {waitingWorker ? (
         <div className="quiz-update-toast">
           <span>新しいバージョンがあります</span>
@@ -397,3 +500,4 @@ function makeUniqueProblemSetTitle(data: AppData, folderId: string, rawTitle: st
   }
   return nextTitle;
 }
+

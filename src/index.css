@@ -1,4 +1,4 @@
-﻿@tailwind base;
+@tailwind base;
 @tailwind components;
 @tailwind utilities;
 
@@ -346,16 +346,46 @@ button:disabled {
   transform: translateZ(0);
   backface-visibility: hidden;
   contain: layout paint;
+  will-change: transform, opacity;
 }
 
-.quiz-screen-transition--forward,
+.quiz-screen-transition--forward {
+  animation: quizScreenForwardIn 190ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 .quiz-screen-transition--back {
-  animation: quizScreenFadeIn 120ms ease-out both;
+  animation: quizScreenBackIn 190ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-@keyframes quizScreenFadeIn {
+.quiz-screen-transition--replace {
+  animation: quizScreenReplaceIn 90ms ease-out both;
+}
+
+@keyframes quizScreenForwardIn {
   from {
-    opacity: 0.985;
+    opacity: 0.96;
+    transform: translate3d(-28px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes quizScreenBackIn {
+  from {
+    opacity: 0.96;
+    transform: translate3d(28px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes quizScreenReplaceIn {
+  from {
+    opacity: 0.98;
   }
   to {
     opacity: 1;
@@ -417,7 +447,15 @@ button:disabled {
   background: #f7f7f7;
   color: #111111;
   box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.2);
-  transition: height 180ms ease, border-radius 180ms ease;
+  transition:
+    height 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-radius 180ms ease,
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    left 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    right 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    width 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    max-width 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 160ms ease;
 }
 
 .answer-sheet button {
@@ -755,7 +793,7 @@ button:disabled {
   body.quiz-note-open .answer-sheet {
     --answer-sheet-x: translateY(0);
     left: 16px;
-    right: calc(var(--tablet-note-width, min(42vw, 640px)) + 16px);
+    right: calc(var(--tablet-note-width, min(50vw, 820px)) + 16px);
     bottom: calc(var(--safe-bottom) + 10px);
     width: auto;
     max-width: none;
@@ -772,3 +810,62 @@ button:disabled {
     user-select: none;
   }
 }
+.quiz-exit-confirm {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  display: grid;
+  place-items: center;
+  padding: max(18px, var(--safe-top, 0px)) max(18px, var(--safe-right, 0px)) max(18px, var(--safe-bottom, 0px)) max(18px, var(--safe-left, 0px));
+  background: rgba(0, 0, 0, 0.68);
+}
+
+.quiz-exit-confirm__card {
+  width: min(360px, calc(100vw - 36px));
+  border-radius: 22px;
+  background: #202020;
+  padding: 22px;
+  color: #ffffff;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+}
+
+.quiz-exit-confirm__card h2 {
+  margin: 0 0 10px;
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.quiz-exit-confirm__card p {
+  margin: 0;
+  color: #cfcfcf;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.65;
+}
+
+.quiz-exit-confirm__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.quiz-exit-confirm__actions button {
+  min-height: 50px;
+  border: none;
+  border-radius: 14px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.quiz-exit-confirm__button--secondary {
+  background: #2b2b2b;
+  color: #ffffff;
+}
+
+.quiz-exit-confirm__button--danger {
+  background: #ef4444;
+  color: #ffffff;
+}
+
