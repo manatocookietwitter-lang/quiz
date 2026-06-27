@@ -339,11 +339,13 @@
   }
 
   .category-note-page-rail > .category-note-page {
-    width: calc(100% - 160px);
-    height: calc(100% - 18px);
+    aspect-ratio: 210 / 297;
+    height: calc(100% - 24px);
+    width: auto;
+    max-width: calc(100% - 160px);
     margin: 0 80px;
-
     align-self: center;
+    justify-self: center;
   }
 
   .category-note-page--preview {
