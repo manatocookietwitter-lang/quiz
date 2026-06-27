@@ -203,7 +203,7 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
         <BackButton onClick={onBack} label="戻る" className="sync-screen__back" />
         <div className="sync-screen__header-text">
           <h1>同期設定</h1>
-          <p>手動同期と安全な自動反映</p>
+          <p>同期IDでデータ共有</p>
         </div>
       </header>
 
@@ -215,9 +215,6 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
               {configured ? 'Supabase設定済み' : 'Supabase未設定'}
             </span>
           </div>
-          <p className="sync-card__description">
-            同じ同期IDを使う端末同士で、Quiz makeのデータを共有します。同期IDは他人に知られない文字列にしてください。
-          </p>
           <input
             className="sync-input"
             value={syncId}
@@ -235,7 +232,6 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
           <div className="sync-card__title-row sync-card__title-row--center">
             <div>
               <h2>自動同期</h2>
-              <p className="sync-card__inline-note">ONのときだけ、約60秒ごとに変更をクラウドへ保存します。</p>
             </div>
             <button
               type="button"
@@ -246,9 +242,6 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
               {autoEnabled ? 'ON' : 'OFF'}
             </button>
           </div>
-          <p className="sync-card__description">
-            起動時やアプリ復帰時にクラウド側が新しい場合は、確認してからこの端末へ読み込みます。勝手に上書きはしません。
-          </p>
           <div className={`sync-auto-state${autoCanRun ? ' sync-auto-state--ready' : ''}`}>
             {autoCanRun ? '自動同期は有効です' : autoEnabled ? '同期IDまたはSupabase設定が不足しています' : '自動同期はOFFです'}
           </div>
@@ -264,16 +257,12 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
               クラウドから読み込み
             </button>
           </div>
-          <p className="sync-card__note">
-            保存はクラウドを上書き、読み込みはこの端末を上書きします。読み込み前には確認を表示します。
-          </p>
         </section>
 
         <section className="sync-card">
           <div className="sync-card__title-row sync-card__title-row--center">
             <div>
               <h2>接続診断</h2>
-              <p className="sync-card__inline-note">Supabase設定、テーブル接続、診断用保存と読み戻しを確認します。</p>
             </div>
           </div>
           <button type="button" className="sync-button sync-button--secondary" onClick={handleDiagnostic} disabled={diagnosticBusy}>
