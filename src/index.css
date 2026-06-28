@@ -892,3 +892,78 @@ button:disabled {
   color: #ffffff;
 }
 
+
+/* Smartphone QuizRunner layout guard */
+.quiz-runner__main {
+  min-height: 0;
+}
+
+@media (max-width: 899px) {
+  .quiz-runner__question-panel {
+    height: auto !important;
+    min-height: 88px;
+    max-height: 124px;
+    padding: 10px 18px;
+  }
+
+  .quiz-runner__question-text {
+    max-height: 86px !important;
+  }
+
+  .quiz-runner__choices {
+    justify-content: flex-start !important;
+    gap: 10px !important;
+    padding: 12px 18px 8px !important;
+  }
+
+  .quiz-runner__answer-actions {
+    padding-bottom: calc(var(--safe-bottom) + 22px) !important;
+  }
+
+  .answer-sheet {
+    --answer-sheet-x: translateY(0);
+    left: 12px;
+    right: 12px;
+    bottom: calc(var(--safe-bottom) + 16px);
+    width: auto;
+    max-width: none;
+  }
+
+  .answer-sheet--default {
+    height: min(280px, calc(100dvh - var(--safe-top) - var(--safe-bottom) - 128px));
+    min-height: 216px;
+  }
+
+  .answer-sheet--expanded {
+    height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 104px);
+    max-height: none;
+    min-height: 320px;
+  }
+
+  .answer-sheet--hidden {
+    height: 64px;
+  }
+}
+
+@media (max-width: 380px) and (max-height: 720px) {
+  .quiz-runner__question-panel {
+    min-height: 78px;
+    max-height: 112px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+
+  .quiz-runner__question-text {
+    max-height: 76px !important;
+  }
+
+  .quiz-runner__choices {
+    gap: 8px !important;
+    padding-top: 8px !important;
+  }
+
+  .answer-sheet--default {
+    height: 248px;
+    min-height: 208px;
+  }
+}

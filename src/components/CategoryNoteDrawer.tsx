@@ -11,6 +11,7 @@ const NOTE_COLORS = {
 const PEN_WIDTHS = [1, 2, 3] as const;
 const ERASER_WIDTHS = [5, 10, 15] as const;
 const MAX_HISTORY = 30;
+const OVERSCROLL_LIMIT = 36;
 const noteImageCache = new Map<string, HTMLImageElement>();
 
 type NoteColorKey = keyof typeof NOTE_COLORS;
@@ -154,16 +155,50 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   const [pagePan, setPagePanState] = useState({ x: 0, y: 0 });
   const [pagePinching, setPagePinchingState] = useState(false);
 
-  const setPagePanValue = (nextPan: { x: number; y: number }, scale = pageScaleRef.current) => {
-    const rect = canvasRef.current?.getBoundingClientRect();
-    const maxX = rect ? Math.max(0, (rect.width * (scale - 1)) / 2) : 0;
-    const maxY = rect ? Math.max(0, (rect.height * (scale - 1)) / 2) : 0;
-    const clamped = {
-      x: Math.max(-maxX, Math.min(maxX, nextPan.x)),
-      y: Math.max(-maxY, Math.min(maxY, nextPan.y)),
+  const getPagePanMetrics = (scale = pageScaleRef.current) => {
+    const page = canvasRef.current?.parentElement as HTMLElement | null;
+    const slot = page?.parentElement as HTMLElement | null;
+    const pageWidth = page?.offsetWidth ?? 0;
+    const pageHeight = page?.offsetHeight ?? 0;
+    const viewportWidth = slot?.clientWidth ?? 0;
+    const viewportHeight = slot?.clientHeight ?? 0;
+
+    return {
+      scaledPageWidth: pageWidth * scale,
+      scaledPageHeight: pageHeight * scale,
+      viewportWidth,
+      viewportHeight,
     };
+  };
+
+  const clampAxisPan = (pan: number, pageSize: number, viewportSize: number, allowOverscroll = false) => {
+    const overflow = Math.max(0, pageSize - viewportSize);
+    if (overflow <= 0) return 0;
+    const maxPan = overflow / 2;
+    const overscroll = allowOverscroll ? OVERSCROLL_LIMIT : 0;
+    return Math.max(-maxPan - overscroll, Math.min(maxPan + overscroll, pan));
+  };
+
+  const clampPagePan = (nextPan: { x: number; y: number }, scale = pageScaleRef.current, allowOverscroll = false) => {
+    const metrics = getPagePanMetrics(scale);
+    return {
+      x: clampAxisPan(nextPan.x, metrics.scaledPageWidth, metrics.viewportWidth, allowOverscroll),
+      y: clampAxisPan(nextPan.y, metrics.scaledPageHeight, metrics.viewportHeight, allowOverscroll),
+    };
+  };
+
+  const setPagePanValue = (nextPan: { x: number; y: number }, scale = pageScaleRef.current, allowOverscroll = false) => {
+    const clamped = clampPagePan(nextPan, scale, allowOverscroll);
     pagePanRef.current = clamped;
     setPagePanState(clamped);
+  };
+
+  const resetPageView = () => {
+    pageScaleRef.current = 1;
+    pagePanRef.current = { x: 0, y: 0 };
+    setPageScaleState(1);
+    setPagePanState({ x: 0, y: 0 });
+    setPagePinchingValue(false);
   };
 
   const setPageScaleValue = (nextScale: number) => {
@@ -325,6 +360,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
     pageDataUrlRef.current = '';
     setNote(nextNote);
     setPageIndex(nextIndex);
+    resetPageView();
     clearHistory();
     persistNote(nextNote);
   };
@@ -345,6 +381,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
     pageDataUrlRef.current = nextPages[nextIndex]?.dataUrl ?? '';
     setNote(nextNote);
     setPageIndex(nextIndex);
+    resetPageView();
     clearHistory();
     persistNote(nextNote);
   };
@@ -356,6 +393,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
     pageDataUrlRef.current = nextNote.pages[nextIndex]?.dataUrl ?? '';
     setNote(nextNote);
     setPageIndex(nextIndex);
+    resetPageView();
     clearHistory();
     persistNote(nextNote);
   };
@@ -384,6 +422,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
         startPan: pagePanRef.current,
       };
       setPageSwiping(false);
+      setPagePinchingValue(true);
       return;
     }
 
@@ -417,7 +456,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
       setPagePanValue({
         x: pan.startPan.x + event.clientX - pan.x,
         y: pan.startPan.y + event.clientY - pan.y,
-      });
+      }, pageScaleRef.current, true);
       return;
     }
 
@@ -453,6 +492,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
         if (touchPointsRef.current.size < 2) {
           pinchRef.current = null;
           setPagePinchingValue(false);
+          setPagePanValue(pagePanRef.current, pageScaleRef.current, false);
         }
         event.currentTarget.releasePointerCapture?.(event.pointerId);
         return;
@@ -461,6 +501,8 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
     const pan = pagePanGestureRef.current;
     if (pan && pan.pointerId === event.pointerId) {
       pagePanGestureRef.current = null;
+      setPagePinchingValue(false);
+      setPagePanValue(pagePanRef.current, pageScaleRef.current, false);
       event.currentTarget.releasePointerCapture?.(event.pointerId);
       return;
     }
@@ -531,7 +573,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
       rail.removeEventListener('transitionend', finishCommit);
       pageDataUrlRef.current = nextPages[targetIndex]?.dataUrl ?? '';
       resetTouchGesture();
-      setPageScaleValue(1);
+      resetPageView();
       rail.style.transition = 'none';
       rail.style.transform = 'translate3d(-33.333333%, 0, 0)';
       flushSync(() => {

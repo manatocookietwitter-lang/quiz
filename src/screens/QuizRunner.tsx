@@ -36,7 +36,31 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
   const [savedLevelLabel, setSavedLevelLabel] = useState('');
   const [answerMessage, setAnswerMessage] = useState('');
   const [noteOpen, setNoteOpen] = useState(false);
-  const noteAreaOpen = ENABLE_TABLET_NOTES && noteOpen;
+  const [isTabletLandscape, setIsTabletLandscape] = useState(false);
+  const noteFeatureEnabled = ENABLE_TABLET_NOTES && isTabletLandscape && Boolean(setId);
+  const noteAreaOpen = noteFeatureEnabled && noteOpen;
+
+  useEffect(() => {
+    if (!ENABLE_TABLET_NOTES) return;
+
+    const query = window.matchMedia('(min-width: 900px) and (orientation: landscape)');
+    const update = () => setIsTabletLandscape(query.matches);
+    update();
+
+    if (typeof query.addEventListener === 'function') {
+      query.addEventListener('change', update);
+      return () => query.removeEventListener('change', update);
+    }
+
+    query.addListener(update);
+    return () => query.removeListener(update);
+  }, []);
+
+  useEffect(() => {
+    if (!noteFeatureEnabled && noteOpen) {
+      setNoteOpen(false);
+    }
+  }, [noteFeatureEnabled, noteOpen]);
 
   useEffect(() => {
     document.body.classList.toggle('quiz-note-open', noteAreaOpen);
@@ -163,8 +187,8 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
           percent={progressPercent}
         />
 
-        <main className="flex min-h-0 flex-1 flex-col">
-          <section className="flex h-[clamp(104px,17dvh,132px)] shrink-0 items-center justify-center overflow-hidden bg-[#B89C79] px-5 py-3 text-center text-[#111111]">
+        <main className="quiz-runner__main flex min-h-0 flex-1 flex-col">
+          <section className="quiz-runner__question-panel flex h-[clamp(104px,17dvh,132px)] shrink-0 items-center justify-center overflow-hidden bg-[#B89C79] px-5 py-3 text-center text-[#111111]">
             <div className="min-h-0 w-full">
               {currentQuestion.category ? (
                 <div className="mb-1 truncate text-xs font-semibold text-[#4F3F2F]/75">{currentQuestion.category}</div>
@@ -175,13 +199,13 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
                   {instructionInfo.hasNegative ? <span className="question-instruction-badge question-instruction-badge--negative">{'\u5426\u5b9a\u554f\u984c\uff1a\u8aa4\u308a\u3092\u9078\u3076'}</span> : null}
                 </div>
               ) : null}
-              <div className={['mx-auto max-h-[96px] overflow-y-auto whitespace-pre-wrap break-words font-semibold leading-[1.45] no-scrollbar', questionTextClass].join(' ')}>
+              <div className={['quiz-runner__question-text mx-auto max-h-[96px] overflow-y-auto whitespace-pre-wrap break-words font-semibold leading-[1.45] no-scrollbar', questionTextClass].join(' ')}>
                 <span className="font-black">{registeredQuestionNumber}. </span><HighlightedQuestionText text={currentQuestion.question} phrases={instructionInfo.highlightPhrases} />
               </div>
             </div>
           </section>
 
-          <section className={`flex min-h-0 flex-1 flex-col justify-center gap-2.5 px-6 py-3 transition-opacity ${answered ? 'opacity-75' : ''}`}>
+          <section className={`quiz-runner__choices flex min-h-0 flex-1 flex-col justify-center gap-2.5 px-6 py-3 transition-opacity ${answered ? 'opacity-75' : ''}`}>
             {currentQuestion.choices.map((choice, index) => (
               <QuizChoiceButton
                 key={`${currentQuestion.id}_${index}`}
@@ -229,7 +253,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
           ) : null}
         </main>
 
-        {ENABLE_TABLET_NOTES && setId ? (
+        {noteFeatureEnabled && setId ? (
           <CategoryNoteDrawer
             problemSetId={setId}
             category={currentQuestion.category}
@@ -594,5 +618,3 @@ function AnswerPanel({
     </section>
   );
 }
-
-
