@@ -223,15 +223,18 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
             ))}
           </section>
 
-          {!answered ? (
-            <section className="quiz-runner__answer-actions shrink-0 px-5 pb-[max(14px,env(safe-area-inset-bottom))]">
-              {answerMessage ? (
-                <p className="mb-2 text-center text-sm font-bold text-[#C94F4F]">{answerMessage}</p>
-              ) : null}
-              <div className="grid grid-cols-2 gap-3">
+          <section
+            className={`quiz-runner__answer-actions shrink-0 px-5 pb-[max(14px,env(safe-area-inset-bottom))] ${answered ? 'quiz-runner__answer-actions--spacer' : ''}`}
+            aria-hidden={answered}
+          >
+            {!answered && answerMessage ? (
+              <p className="mb-2 text-center text-sm font-bold text-[#C94F4F]">{answerMessage}</p>
+            ) : null}
+            <div className="quiz-runner__answer-action-grid grid grid-cols-2 gap-3">
               <button
                 type="button"
                 onClick={handleUnknown}
+                disabled={answered}
                 className="flex h-[52px] items-center justify-center rounded-full border border-[#D0D0D0] bg-[#F4F4F4] text-base font-bold text-[#8A8A8A] active:scale-[0.98]"
               >
                 {'\u308f\u304b\u3089\u306a\u3044'}
@@ -239,6 +242,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
               <button
                 type="button"
                 onClick={handleSubmitAnswer}
+                disabled={answered}
                 aria-disabled={selectedIndexes.length === 0}
                 className={`flex h-[52px] items-center justify-center rounded-full text-base font-bold active:scale-[0.98] ${
                   selectedIndexes.length > 0
@@ -248,9 +252,8 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
               >
                 {'\u89e3\u7b54'}
               </button>
-              </div>
-            </section>
-          ) : null}
+            </div>
+          </section>
         </main>
 
         {noteFeatureEnabled && setId ? (
