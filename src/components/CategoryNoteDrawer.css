@@ -5,7 +5,7 @@
 
 @media (min-width: 900px) and (orientation: landscape) {
   :root {
-    --tablet-note-width: min(50vw, 820px);
+    --tablet-note-width: min(56vw, 760px);
   }
 
   .category-note-tab,
@@ -55,8 +55,8 @@
     bottom: 0;
     z-index: 1200;
     width: var(--tablet-note-width);
-    min-width: 380px;
-    max-width: 640px;
+    min-width: 430px;
+    max-width: 760px;
     display: flex;
     flex-direction: column;
     background: #151515;
@@ -343,7 +343,7 @@
     box-sizing: border-box;
     overflow: visible;
     background: #f3f4f6;
-    padding: 8px clamp(40px, 10%, 72px) 16px;
+    padding: 8px clamp(64px, 12%, 104px) 16px;
   }
 
   .category-note-page-slot > .category-note-page {

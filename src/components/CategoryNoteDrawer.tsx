@@ -9,7 +9,7 @@ const NOTE_COLORS = {
   black: '#111827',
 } as const;
 const PEN_WIDTHS = [1, 2, 3] as const;
-const ERASER_WIDTHS = [5, 10, 15] as const;
+const ERASER_WIDTHS = [10, 15, 30] as const;
 const MAX_HISTORY = 30;
 const OVERSCROLL_LIMIT = 36;
 const noteImageCache = new Map<string, HTMLImageElement>();
@@ -147,7 +147,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   const [pageIndex, setPageIndex] = useState(0);
   const [colorKey, setColorKey] = useState<NoteColorKey>('black');
   const [penSize, setPenSize] = useState<PenSize>(1);
-  const [eraserSize, setEraserSize] = useState<EraserSize>(5);
+  const [eraserSize, setEraserSize] = useState<EraserSize>(10);
   const [tool, setTool] = useState<NoteTool>('pen');
   const [canUndo, setCanUndo] = useState(false);
   const [pageSwiping, setPageSwiping] = useState(false);
@@ -263,16 +263,16 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
     pageDataUrlRef.current = currentPage?.dataUrl ?? '';
 
     const setupCanvas = (forceDraw = false) => {
-      const rect = canvas.getBoundingClientRect();
-      if (rect.width === 0 || rect.height === 0) return;
+      const { width, height } = getCanvasLogicalSize(canvas);
+      if (width === 0 || height === 0) return;
       if (drawingRef.current) {
         pendingResizeRef.current = true;
         return;
       }
 
       const ratio = window.devicePixelRatio || 1;
-      const nextWidth = Math.round(rect.width * ratio);
-      const nextHeight = Math.round(rect.height * ratio);
+      const nextWidth = Math.round(width * ratio);
+      const nextHeight = Math.round(height * ratio);
       const sizeChanged = canvas.width !== nextWidth || canvas.height !== nextHeight;
 
       if (sizeChanged) {
@@ -286,7 +286,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
 
       if (sizeChanged || forceDraw) {
-        drawDataUrlToContext(context, pageDataUrlRef.current, rect.width, rect.height);
+        drawDataUrlToContext(context, pageDataUrlRef.current, width, height);
       }
     };
 
@@ -667,21 +667,11 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   const drawDataUrlToCanvas = (dataUrl: string) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const context = canvas.getContext('2d');
-    if (!context) return;
-    ctxRef.current = context;
-    drawDataUrlToContext(context, dataUrl, rect.width, rect.height);
-  };
-
-  const redrawCanvasFromCurrentImage = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return;
+    const { width, height } = getCanvasLogicalSize(canvas);
+    if (width === 0 || height === 0) return;
     const ratio = window.devicePixelRatio || 1;
-    const nextWidth = Math.round(rect.width * ratio);
-    const nextHeight = Math.round(rect.height * ratio);
+    const nextWidth = Math.round(width * ratio);
+    const nextHeight = Math.round(height * ratio);
     if (canvas.width !== nextWidth || canvas.height !== nextHeight) {
       canvas.width = nextWidth;
       canvas.height = nextHeight;
@@ -690,7 +680,26 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
     if (!context) return;
     ctxRef.current = context;
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
-    drawDataUrlToContext(context, pageDataUrlRef.current, rect.width, rect.height);
+    drawDataUrlToContext(context, dataUrl, width, height);
+  };
+
+  const redrawCanvasFromCurrentImage = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const { width, height } = getCanvasLogicalSize(canvas);
+    if (width === 0 || height === 0) return;
+    const ratio = window.devicePixelRatio || 1;
+    const nextWidth = Math.round(width * ratio);
+    const nextHeight = Math.round(height * ratio);
+    if (canvas.width !== nextWidth || canvas.height !== nextHeight) {
+      canvas.width = nextWidth;
+      canvas.height = nextHeight;
+    }
+    const context = canvas.getContext('2d');
+    if (!context) return;
+    ctxRef.current = context;
+    context.setTransform(ratio, 0, 0, ratio, 0, 0);
+    drawDataUrlToContext(context, pageDataUrlRef.current, width, height);
   };
 
   const selectColor = (key: NoteColorKey) => {
@@ -823,8 +832,8 @@ function EraserIcon() {
 function UndoIcon() {
   return (
     <svg className="category-note-svg-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <path d="M9 7H5v4" />
-      <path d="M5.7 10.3A7 7 0 1 0 12 6h-1.8" />
+      <path d="M9 8 4 13l5 5" />
+      <path d="M4.8 13h9.7a5.2 5.2 0 0 1 0 10.4H11" />
     </svg>
   );
 }
@@ -889,6 +898,13 @@ function migrateSinglePageNote(parsed: Partial<CategoryNote> & { dataUrl?: unkno
   };
 }
 
+function getCanvasLogicalSize(canvas: HTMLCanvasElement) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    width: canvas.offsetWidth || canvas.clientWidth || rect.width,
+    height: canvas.offsetHeight || canvas.clientHeight || rect.height,
+  };
+}
 function canDraw(event: PointerEvent<HTMLCanvasElement>) {
   return event.pointerType === 'pen' || (import.meta.env.DEV && event.pointerType === 'mouse');
 }
