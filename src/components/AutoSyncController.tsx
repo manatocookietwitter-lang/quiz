@@ -30,7 +30,7 @@ export function AutoSyncController() {
 
       uploadRunningRef.current = true;
       try {
-        const payload = exportQuizMakeData();
+        const payload = await exportQuizMakeData();
         const hash = computePayloadHash(payload);
         const lastState = getLastSyncState();
         if (!lastState.lastSyncAt && !lastState.lastUploadHash) {
@@ -106,7 +106,7 @@ export function AutoSyncController() {
         }
         if (!download.value) return;
 
-        const imported = importQuizMakeData(download.value.payload);
+        const imported = await importQuizMakeData(download.value.payload);
         if (!imported.ok) {
           setLastSyncState({ status: 'クラウド読み込み失敗', error: imported.error });
           return;

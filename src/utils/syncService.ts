@@ -1,7 +1,9 @@
+import { exportCategoryNotesRaw, isCategoryNoteKey, replaceCategoryNotesRaw } from './noteStorage';
 export type SyncPayload = {
   version: 1;
   updatedAt: string;
   localStorage: Record<string, string>;
+  indexedDbNotes?: Record<string, string>;
 };
 
 export type SyncResult<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -201,13 +203,13 @@ export function generateSyncId(): string {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-export function exportQuizMakeData(updatedAt = new Date().toISOString()): SyncPayload {
+export async function exportQuizMakeData(updatedAt = new Date().toISOString()): Promise<SyncPayload> {
   const localStorageData: Record<string, string> = {};
   const keys: string[] = [];
 
   for (let index = 0; index < localStorage.length; index += 1) {
     const key = localStorage.key(index);
-    if (key && isQuizMakeStorageKey(key)) keys.push(key);
+    if (key && isQuizMakeStorageKey(key) && !isCategoryNoteKey(key)) keys.push(key);
   }
 
   keys.sort().forEach((key) => {
@@ -219,10 +221,11 @@ export function exportQuizMakeData(updatedAt = new Date().toISOString()): SyncPa
     version: 1,
     updatedAt,
     localStorage: localStorageData,
+    indexedDbNotes: await exportCategoryNotesRaw(),
   };
 }
 
-export function importQuizMakeData(payload: SyncPayload): SyncResult<number> {
+export async function importQuizMakeData(payload: SyncPayload): Promise<SyncResult<number>> {
   const validation = validateSyncPayload(payload);
   if (!validation.ok) return validation;
 
@@ -234,9 +237,16 @@ export function importQuizMakeData(payload: SyncPayload): SyncResult<number> {
     }
 
     keysToRemove.forEach((key) => localStorage.removeItem(key));
+
+    const noteEntries: Record<string, string> = { ...(validation.value.indexedDbNotes ?? {}) };
     Object.entries(validation.value.localStorage).forEach(([key, value]) => {
+      if (isCategoryNoteKey(key)) {
+        noteEntries[key] = value;
+        return;
+      }
       if (isQuizMakeStorageKey(key)) localStorage.setItem(key, value);
     });
+    const noteCount = await replaceCategoryNotesRaw(noteEntries);
 
     const now = new Date().toISOString();
     setLastSyncState({
@@ -246,7 +256,8 @@ export function importQuizMakeData(payload: SyncPayload): SyncResult<number> {
       error: '',
     });
 
-    return { ok: true, value: Object.keys(validation.value.localStorage).length };
+    const localStorageCount = Object.keys(validation.value.localStorage).filter((key) => !isCategoryNoteKey(key)).length;
+    return { ok: true, value: localStorageCount + noteCount };
   } catch (error) {
     return {
       ok: false,
@@ -258,7 +269,6 @@ export function importQuizMakeData(payload: SyncPayload): SyncResult<number> {
     };
   }
 }
-
 export async function uploadSyncData(syncId: string, payload: SyncPayload): Promise<SyncResult<RemoteSyncRecord>> {
   const normalizedSyncId = syncId.trim();
   if (!normalizedSyncId) return { ok: false, error: '同期IDを入力してください。' };
@@ -380,7 +390,7 @@ export async function runSyncDiagnostic(syncId: string): Promise<SyncDiagnosticR
 
   let exportedPayload: SyncPayload | null = null;
   try {
-    exportedPayload = exportQuizMakeData();
+    exportedPayload = await exportQuizMakeData();
     addStep({ name: 'localStorage export', ok: true, message: `${Object.keys(exportedPayload.localStorage).length}件のキーをexportできます` });
   } catch (error) {
     addStep({
@@ -458,7 +468,7 @@ export async function runSyncDiagnostic(syncId: string): Promise<SyncDiagnosticR
 }
 
 export function computePayloadHash(payload: SyncPayload): string {
-  const text = JSON.stringify({ version: payload.version, localStorage: sortRecord(payload.localStorage) });
+  const text = JSON.stringify({ version: payload.version, localStorage: sortRecord(payload.localStorage), indexedDbNotes: sortRecord(payload.indexedDbNotes ?? {}) });
   let hash = 0;
   for (let index = 0; index < text.length; index += 1) {
     hash = (hash * 31 + text.charCodeAt(index)) | 0;
@@ -486,8 +496,12 @@ export function summarizeSyncPayload(payload: SyncPayload): SyncPayloadSummary {
     }
   }
 
-  const noteCount = Object.keys(payload.localStorage).filter((key) => key.startsWith('quizMake:notes:')).length;
-  const text = JSON.stringify(payload.localStorage);
+  const noteKeys = new Set([
+    ...Object.keys(payload.localStorage).filter(isCategoryNoteKey),
+    ...Object.keys(payload.indexedDbNotes ?? {}).filter(isCategoryNoteKey),
+  ]);
+  const noteCount = noteKeys.size;
+  const text = JSON.stringify({ localStorage: payload.localStorage, indexedDbNotes: payload.indexedDbNotes ?? {} });
   const byteSize = typeof TextEncoder !== 'undefined'
     ? new TextEncoder().encode(text).length
     : text.length;

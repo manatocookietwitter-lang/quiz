@@ -1,5 +1,6 @@
 import { type PointerEvent, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
+import { loadCategoryNoteRaw, saveCategoryNoteRaw } from '../utils/noteStorage';
 import './CategoryNoteDrawer.css';
 
 const UNCATEGORIZED = '\u672a\u5206\u985e';
@@ -155,6 +156,8 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   const [pageScale, setPageScaleState] = useState(1);
   const [pagePan, setPagePanState] = useState({ x: 0, y: 0 });
   const [pagePinching, setPagePinchingState] = useState(false);
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [saveError, setSaveError] = useState('');
 
   const getPagePanMetrics = (scale = pageScaleRef.current) => {
     const page = canvasRef.current?.parentElement as HTMLElement | null;
@@ -232,6 +235,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   const currentPage = pages[currentPageIndex] ?? pages[0];
   const activeWidth = tool === 'eraser' ? eraserSize : penSize;
   const activeWidths = tool === 'eraser' ? ERASER_WIDTHS : PEN_WIDTHS;
+  const saveStatusText = saveState === 'saving' ? '保存中...' : saveState === 'saved' ? '保存済み' : saveState === 'error' ? '保存失敗' : '';
 
   useEffect(() => {
     toolRef.current = tool;
@@ -247,10 +251,32 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
 
   useEffect(() => {
     if (!problemSetId || !noteKey) return;
-    const loaded = loadNote(noteKey, problemSetId, normalizedCategory);
-    setNote(loaded);
-    setPageIndex(Math.min(loaded.currentPageIndex, Math.max(loaded.pages.length - 1, 0)));
-    clearHistory();
+    let cancelled = false;
+    setSaveState('idle');
+    setSaveError('');
+
+    void loadCategoryNoteRaw(noteKey)
+      .then((raw) => {
+        if (cancelled) return;
+        const loaded = parseNote(raw, problemSetId, normalizedCategory);
+        setNote(loaded);
+        setPageIndex(Math.min(loaded.currentPageIndex, Math.max(loaded.pages.length - 1, 0)));
+        clearHistory();
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.warn('Failed to load category note.', error);
+        const fallback = createEmptyNote(problemSetId, normalizedCategory);
+        setNote(fallback);
+        setPageIndex(0);
+        clearHistory();
+        setSaveState('error');
+        setSaveError('ノートの読み込みに失敗しました');
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [problemSetId, noteKey, normalizedCategory]);
 
   useEffect(() => {
@@ -301,11 +327,17 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
 
   const persistNote = (nextNote: CategoryNote) => {
     if (!noteKey) return;
-    try {
-      localStorage.setItem(noteKey, JSON.stringify(nextNote));
-    } catch (error) {
-      console.warn('Failed to save category note.', error);
-    }
+    setSaveState('saving');
+    setSaveError('');
+    void saveCategoryNoteRaw(noteKey, JSON.stringify(nextNote))
+      .then(() => {
+        setSaveState('saved');
+      })
+      .catch((error) => {
+        console.warn('Failed to save category note.', error);
+        setSaveState('error');
+        setSaveError(error instanceof Error ? error.message : 'ノートの保存に失敗しました');
+      });
   };
 
   const updateCurrentPage = (dataUrl = snapshot(), nextIndex = currentPageIndex) => {
@@ -716,6 +748,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
           <div className="category-note-drawer__title-row">
             <h2>{normalizedCategory}</h2>
             <span>{'\u30da\u30fc\u30b8'} {currentPageIndex + 1} / {pages.length}</span>
+            {saveStatusText ? <span className={`category-note-save-state category-note-save-state--${saveState}`} title={saveError || saveStatusText}>{saveStatusText}</span> : null}
           </div>
         </div>
         <div className="category-note-drawer__header-actions">
@@ -862,9 +895,8 @@ function createEmptyNote(problemSetId: string, category: string): CategoryNote {
   };
 }
 
-function loadNote(key: string, problemSetId: string, category: string): CategoryNote {
+function parseNote(raw: string | null, problemSetId: string, category: string): CategoryNote {
   try {
-    const raw = localStorage.getItem(key);
     if (!raw) return createEmptyNote(problemSetId, category);
     const parsed = JSON.parse(raw) as Partial<CategoryNote>;
     if (!Array.isArray(parsed.pages) || parsed.pages.length === 0) return migrateSinglePageNote(parsed, problemSetId, category);

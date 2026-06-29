@@ -104,9 +104,9 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
     setMessage(result.value ? '自動同期をONにしました。' : '自動同期をOFFにしました。');
   };
 
-  const handleDownloadBackup = () => {
+  const handleDownloadBackup = async () => {
     try {
-      const payload = exportQuizMakeData();
+      const payload = await exportQuizMakeData();
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
@@ -143,7 +143,7 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
     setError('');
     setMessage('クラウドへ保存しています...');
 
-    const payload = exportQuizMakeData();
+    const payload = await exportQuizMakeData();
     const localHash = computePayloadHash(payload);
     const localSummary = summarizeSyncPayload(payload);
     const result = await uploadSyncData(normalizedSyncId, payload);
@@ -215,7 +215,7 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
       return;
     }
 
-    const importResult = importQuizMakeData(result.value.payload);
+    const importResult = await importQuizMakeData(result.value.payload);
     setLastState(getLastSyncState());
     if (!importResult.ok) {
       setMessage('');
