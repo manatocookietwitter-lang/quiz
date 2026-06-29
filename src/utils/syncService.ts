@@ -1,3 +1,4 @@
+import { APP_DATA_STORAGE_KEY, createEmptyAppData, exportAppDataRaw, importAppDataRaw, saveAppDataAsync } from '../storage';
 import { exportCategoryNotesRaw, isCategoryNoteKey, replaceCategoryNotesRaw } from './noteStorage';
 export type SyncPayload = {
   version: 1;
@@ -209,13 +210,15 @@ export async function exportQuizMakeData(updatedAt = new Date().toISOString()): 
 
   for (let index = 0; index < localStorage.length; index += 1) {
     const key = localStorage.key(index);
-    if (key && isQuizMakeStorageKey(key) && !isCategoryNoteKey(key)) keys.push(key);
+    if (key && isQuizMakeStorageKey(key) && key !== APP_DATA_STORAGE_KEY && !isCategoryNoteKey(key)) keys.push(key);
   }
 
   keys.sort().forEach((key) => {
     const value = localStorage.getItem(key);
     if (value !== null) localStorageData[key] = value;
   });
+
+  localStorageData[APP_DATA_STORAGE_KEY] = await exportAppDataRaw();
 
   return {
     version: 1,
@@ -238,14 +241,21 @@ export async function importQuizMakeData(payload: SyncPayload): Promise<SyncResu
 
     keysToRemove.forEach((key) => localStorage.removeItem(key));
 
+    let importedAppData = false;
     const noteEntries: Record<string, string> = { ...(validation.value.indexedDbNotes ?? {}) };
     Object.entries(validation.value.localStorage).forEach(([key, value]) => {
+      if (key === APP_DATA_STORAGE_KEY) return;
       if (isCategoryNoteKey(key)) {
         noteEntries[key] = value;
         return;
       }
       if (isQuizMakeStorageKey(key)) localStorage.setItem(key, value);
     });
+
+    const appDataRaw = validation.value.localStorage[APP_DATA_STORAGE_KEY];
+    if (appDataRaw) importedAppData = await importAppDataRaw(appDataRaw);
+    if (!importedAppData) await saveAppDataAsync(createEmptyAppData());
+
     const noteCount = await replaceCategoryNotesRaw(noteEntries);
 
     const now = new Date().toISOString();
@@ -478,7 +488,7 @@ export function computePayloadHash(payload: SyncPayload): string {
 
 
 export function summarizeSyncPayload(payload: SyncPayload): SyncPayloadSummary {
-  const appDataRaw = payload.localStorage['quiz-make-app-data-v1'];
+  const appDataRaw = payload.localStorage[APP_DATA_STORAGE_KEY];
   let folderCount = 0;
   let problemSetCount = 0;
   let questionCount = 0;
@@ -637,7 +647,7 @@ function parseRemoteRecord(value: unknown, fallbackSyncId: string, fallbackPaylo
 function isQuizMakeStorageKey(key: string): boolean {
   if (key.startsWith('quizMake:sync:')) return false;
   if (key.startsWith(SYNC_BACKUP_PREFIX)) return false;
-  return key === 'quiz-make-app-data-v1' || key.startsWith('quizMake:') || key.startsWith('quiz-make:');
+  return key === APP_DATA_STORAGE_KEY || key.startsWith('quizMake:') || key.startsWith('quiz-make:');
 }
 
 function isQuotaExceededError(error: unknown): boolean {

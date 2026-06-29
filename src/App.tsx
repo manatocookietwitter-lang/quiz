@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AppData, AppScreen, ProblemSet, Question, QuizMode, QuizResult, QuizSession } from './types';
-import { createEmptyAppData, loadAppData, parseBackupJson, saveAppData } from './storage';
+import { createEmptyAppData, loadAppDataAsync, parseBackupJson, saveAppData } from './storage';
 import { HomeScreen } from './screens/HomeScreen';
 import { FolderScreen } from './screens/FolderScreen';
 import { ProblemSetDetailScreen } from './screens/ProblemSetDetailScreen';
@@ -25,7 +25,8 @@ import {
 import { validateImportJson } from './utils/importValidator';
 
 export default function App() {
-  const [data, setData] = useState<AppData>(() => loadAppData());
+  const [data, setData] = useState<AppData>(() => createEmptyAppData());
+  const [storageReady, setStorageReady] = useState(false);
   const dataRef = useRef(data);
   const [screen, setScreen] = useState<AppScreen>({ name: 'home' });
   const [transitionDirection, setTransitionDirection] = useState<'forward' | 'back' | 'replace'>('replace');
@@ -39,9 +40,22 @@ export default function App() {
   const screenRef = useRef<AppScreen>({ name: 'home' });
 
   useEffect(() => {
+    let cancelled = false;
+    void loadAppDataAsync().then((loadedData) => {
+      if (cancelled) return;
+      dataRef.current = loadedData;
+      setData(loadedData);
+      setStorageReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     dataRef.current = data;
-    saveAppData(data);
-  }, [data]);
+    if (storageReady) saveAppData(data);
+  }, [data, storageReady]);
 
   useEffect(() => {
     screenRef.current = screen;
@@ -305,6 +319,14 @@ export default function App() {
     }
     goBackTo({ name: 'home' });
   };
+
+  if (!storageReady) {
+    return (
+      <div style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', background: '#000', color: '#fff', fontWeight: 800 }}>
+        読み込み中...
+      </div>
+    );
+  }
 
   let content;
 

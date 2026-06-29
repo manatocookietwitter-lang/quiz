@@ -1,6 +1,10 @@
-import type { AppData } from './types';
+﻿import type { AppData } from './types';
 
-const STORAGE_KEY = 'quiz-make-app-data-v1';
+export const APP_DATA_STORAGE_KEY = 'quiz-make-app-data-v1';
+
+const APP_DB_NAME = 'quiz-make-app-data-v1';
+const APP_STORE_NAME = 'appData';
+let appDbPromise: Promise<IDBDatabase> | null = null;
 
 export function createEmptyAppData(): AppData {
   return {
@@ -15,25 +19,72 @@ export function createEmptyAppData(): AppData {
 
 export function loadAppData(): AppData {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return createEmptyAppData();
-    const parsed = JSON.parse(raw) as unknown;
-    if (!isAppData(parsed)) return createEmptyAppData();
-    return parsed;
+    const raw = localStorage.getItem(APP_DATA_STORAGE_KEY);
+    return parseAppDataRaw(raw);
   } catch (error) {
     console.error('Failed to load Quiz make data.', error);
     return createEmptyAppData();
   }
 }
 
+export async function loadAppDataAsync(): Promise<AppData> {
+  const indexedRaw = await getAppDataRawFromIndexedDb().catch((error) => {
+    console.warn('Failed to load Quiz make data from IndexedDB.', error);
+    return null;
+  });
+  const indexedData = tryParseAppDataRaw(indexedRaw);
+  if (indexedData) return indexedData;
+
+  const legacyRaw = safeLocalStorageGet(APP_DATA_STORAGE_KEY);
+  const legacyData = tryParseAppDataRaw(legacyRaw);
+  if (!legacyData) return createEmptyAppData();
+
+  const migrated = await saveAppDataAsync(legacyData);
+  if (migrated) safeLocalStorageRemove(APP_DATA_STORAGE_KEY);
+  return legacyData;
+}
+
 export function saveAppData(data: AppData): boolean {
+  void saveAppDataAsync(data);
+  return true;
+}
+
+export async function saveAppDataAsync(data: AppData): Promise<boolean> {
+  const raw = JSON.stringify(data);
+
+  if (isIndexedDbAvailable()) {
+    try {
+      await setAppDataRawToIndexedDb(raw);
+      safeLocalStorageRemove(APP_DATA_STORAGE_KEY);
+      return true;
+    } catch (error) {
+      console.error('Failed to save Quiz make data to IndexedDB.', error);
+    }
+  }
+
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    localStorage.setItem(APP_DATA_STORAGE_KEY, raw);
     return true;
   } catch (error) {
     console.error('Failed to save Quiz make data.', error);
     return false;
   }
+}
+
+export async function exportAppDataRaw(): Promise<string> {
+  const indexedRaw = await getAppDataRawFromIndexedDb().catch(() => null);
+  if (tryParseAppDataRaw(indexedRaw)) return indexedRaw as string;
+
+  const legacyRaw = safeLocalStorageGet(APP_DATA_STORAGE_KEY);
+  if (tryParseAppDataRaw(legacyRaw)) return legacyRaw as string;
+
+  return JSON.stringify(createEmptyAppData());
+}
+
+export async function importAppDataRaw(raw: string): Promise<boolean> {
+  const data = tryParseAppDataRaw(raw);
+  if (!data) return false;
+  return saveAppDataAsync(data);
 }
 
 export function isAppData(value: unknown): value is AppData {
@@ -60,6 +111,85 @@ export function parseBackupJson(text: string): { ok: true; data: AppData } | { o
     return { ok: true, data: parsed };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? `JSONの解析に失敗しました: ${error.message}` : 'JSONの解析に失敗しました。' };
+  }
+}
+
+function parseAppDataRaw(raw: string | null): AppData {
+  return tryParseAppDataRaw(raw) ?? createEmptyAppData();
+}
+
+function tryParseAppDataRaw(raw: string | null): AppData | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return isAppData(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function isIndexedDbAvailable(): boolean {
+  return typeof indexedDB !== 'undefined';
+}
+
+function openAppDb(): Promise<IDBDatabase> {
+  if (!isIndexedDbAvailable()) return Promise.reject(new Error('IndexedDB is not available.'));
+  if (appDbPromise) return appDbPromise;
+
+  appDbPromise = new Promise((resolve, reject) => {
+    const request = indexedDB.open(APP_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(APP_STORE_NAME)) db.createObjectStore(APP_STORE_NAME);
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error ?? new Error('Failed to open app data database.'));
+    request.onblocked = () => reject(new Error('App data database is blocked by another tab.'));
+  });
+
+  appDbPromise.catch(() => {
+    appDbPromise = null;
+  });
+
+  return appDbPromise;
+}
+
+async function getAppDataRawFromIndexedDb(): Promise<string | null> {
+  if (!isIndexedDbAvailable()) return null;
+  const db = await openAppDb();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(APP_STORE_NAME, 'readonly');
+    const request = transaction.objectStore(APP_STORE_NAME).get(APP_DATA_STORAGE_KEY);
+    request.onsuccess = () => resolve(typeof request.result === 'string' ? request.result : null);
+    request.onerror = () => reject(request.error ?? new Error('Failed to read app data.'));
+  });
+}
+
+async function setAppDataRawToIndexedDb(raw: string): Promise<void> {
+  const db = await openAppDb();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(APP_STORE_NAME, 'readwrite');
+    const request = transaction.objectStore(APP_STORE_NAME).put(raw, APP_DATA_STORAGE_KEY);
+    request.onerror = () => reject(request.error ?? new Error('Failed to save app data.'));
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error ?? request.error ?? new Error('Failed to save app data.'));
+    transaction.onabort = () => reject(transaction.error ?? new Error('Failed to save app data.'));
+  });
+}
+
+function safeLocalStorageGet(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function safeLocalStorageRemove(key: string): void {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Best effort cleanup only.
   }
 }
 
