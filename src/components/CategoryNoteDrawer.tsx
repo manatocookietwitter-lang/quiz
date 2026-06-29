@@ -12,6 +12,7 @@ const PEN_WIDTHS = [1, 2, 3] as const;
 const ERASER_WIDTHS = [10, 15, 30] as const;
 const MAX_HISTORY = 30;
 const OVERSCROLL_LIMIT = 36;
+const PAN_EDGE_BREATHING_ROOM = 18;
 const noteImageCache = new Map<string, HTMLImageElement>();
 
 type NoteColorKey = keyof typeof NOTE_COLORS;
@@ -175,7 +176,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
     const overflow = Math.max(0, pageSize - viewportSize);
     if (overflow <= 0) return 0;
     const maxPan = overflow / 2;
-    const overscroll = allowOverscroll ? OVERSCROLL_LIMIT : 0;
+    const overscroll = allowOverscroll ? OVERSCROLL_LIMIT : PAN_EDGE_BREATHING_ROOM;
     return Math.max(-maxPan - overscroll, Math.min(maxPan + overscroll, pan));
   };
 
