@@ -235,7 +235,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   const currentPage = pages[currentPageIndex] ?? pages[0];
   const activeWidth = tool === 'eraser' ? eraserSize : penSize;
   const activeWidths = tool === 'eraser' ? ERASER_WIDTHS : PEN_WIDTHS;
-  const saveStatusText = saveState === 'saving' ? '保存中...' : saveState === 'saved' ? '保存済み' : saveState === 'error' ? '保存失敗' : '';
+  const saveStatusText = saveState === 'error' ? '保存失敗' : '';
 
   useEffect(() => {
     toolRef.current = tool;
