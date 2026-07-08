@@ -22,12 +22,21 @@ export function NoteListScreen({ data, setId, onBack }: NoteListScreenProps) {
     return [normalizeProblemCategory(questions[0]?.category)];
   }, [questions]);
   const [selectedCategory, setSelectedCategory] = useState(() => noteCategories[0] ?? '未分類');
+  const [isTabletLandscape, setIsTabletLandscape] = useState(() => getIsTabletLandscape());
 
   useEffect(() => {
     if (!noteCategories.includes(selectedCategory)) {
       setSelectedCategory(noteCategories[0] ?? '未分類');
     }
   }, [noteCategories, selectedCategory]);
+
+  useEffect(() => {
+    const query = window.matchMedia('(min-width: 900px) and (orientation: landscape)');
+    const update = () => setIsTabletLandscape(query.matches);
+    update();
+    query.addEventListener?.('change', update);
+    return () => query.removeEventListener?.('change', update);
+  }, []);
 
   const title = problemSet?.title ?? '問題セット';
 
@@ -44,36 +53,45 @@ export function NoteListScreen({ data, setId, onBack }: NoteListScreenProps) {
         </header>
 
         <main className="quiz-notes__body">
-          <aside className="quiz-notes__categories" aria-label="分類別ノート">
-            <div className="quiz-notes__section-title">
-              <span>分類</span>
-              <strong>{noteCategories.length}</strong>
-            </div>
-            <div className="quiz-notes__category-list">
-              {noteCategories.map((category) => (
-                <button
-                  key={category}
-                  type="button"
-                  className={`quiz-notes__category${selectedCategory === category ? ' quiz-notes__category--active' : ''}`}
-                  onClick={() => setSelectedCategory(category)}
-                >
-                  <span>{category}</span>
-                  <b aria-hidden="true">›</b>
-                </button>
-              ))}
-            </div>
-          </aside>
+          {isTabletLandscape ? (
+            <>
+              <aside className="quiz-notes__categories" aria-label="分類別ノート">
+                <div className="quiz-notes__section-title">
+                  <span>分類</span>
+                  <strong>{noteCategories.length}</strong>
+                </div>
+                <div className="quiz-notes__category-list">
+                  {noteCategories.map((category) => (
+                    <button
+                      key={category}
+                      type="button"
+                      className={`quiz-notes__category${selectedCategory === category ? ' quiz-notes__category--active' : ''}`}
+                      onClick={() => setSelectedCategory(category)}
+                    >
+                      <span>{category}</span>
+                      <b aria-hidden="true">›</b>
+                    </button>
+                  ))}
+                </div>
+              </aside>
 
-          <section className="quiz-notes__panel-wrap">
-            <CategoryNotePanel key={selectedCategory} problemSetId={setId} category={selectedCategory} className="quiz-notes__panel" onClose={onBack} />
-          </section>
-
-          <section className="quiz-notes__unsupported">
-            <h2>ノート一覧</h2>
-            <p>ノート機能はタブレット横画面で表示されます。</p>
-          </section>
+              <section className="quiz-notes__panel-wrap">
+                <CategoryNotePanel key={selectedCategory} problemSetId={setId} category={selectedCategory} className="quiz-notes__panel" onClose={onBack} />
+              </section>
+            </>
+          ) : (
+            <section className="quiz-notes__unsupported">
+              <h2>ノート一覧</h2>
+              <p>ノート機能はタブレット横画面で表示されます。</p>
+            </section>
+          )}
         </main>
       </div>
     </Layout>
   );
+}
+
+function getIsTabletLandscape() {
+  if (typeof window === 'undefined') return false;
+  return window.matchMedia('(min-width: 900px) and (orientation: landscape)').matches;
 }

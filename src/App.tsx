@@ -13,6 +13,7 @@ import { ReviewScreen } from './screens/ReviewScreen';
 import { ResultScreen } from './screens/ResultScreen';
 import { SyncScreen } from './screens/SyncScreen';
 import { AutoSyncController } from './components/AutoSyncController';
+import { ConfirmDialog } from './components/ConfirmDialog';
 import { createId } from './utils/id';
 import { formatBackupDate, nowIso } from './utils/date';
 import {
@@ -23,7 +24,10 @@ import {
   toggleAmbiguous,
 } from './utils/quiz';
 import { validateImportJson } from './utils/importValidator';
-
+import { exportQuizMakeData, importQuizMakeData, summarizeSyncPayload, validateSyncPayload, type SyncPayload, type SyncPayloadSummary } from './utils/syncService';
+type PendingBackupImport =
+  | { kind: 'sync'; payload: SyncPayload; summary: SyncPayloadSummary }
+  | { kind: 'legacy'; data: AppData };
 export default function App() {
   const [data, setData] = useState<AppData>(() => createEmptyAppData());
   const [storageReady, setStorageReady] = useState(false);
@@ -32,6 +36,8 @@ export default function App() {
   const [transitionDirection, setTransitionDirection] = useState<'forward' | 'back' | 'replace'>('replace');
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
   const [pendingExitTarget, setPendingExitTarget] = useState<AppScreen | null>(null);
+  const [pendingBackupImport, setPendingBackupImport] = useState<PendingBackupImport | null>(null);
+  const [backupImportError, setBackupImportError] = useState('');
   const navigationStackRef = useRef<AppScreen[]>([{ name: 'home' }]);
   const browserDepthRef = useRef(0);
   const pendingBackTargetRef = useRef<AppScreen | null>(null);
@@ -265,16 +271,21 @@ export default function App() {
     replaceScreen({ name: 'home' });
   };
 
-  const handleExport = () => {
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `quiz-make-backup-${formatBackupDate()}.json`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
+  const handleExport = async () => {
+    try {
+      const payload = await exportQuizMakeData();
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `quiz-make-backup-${formatBackupDate()}.json`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setBackupImportError(error instanceof Error ? `バックアップの作成に失敗しました: ${error.message}` : 'バックアップの作成に失敗しました。');
+    }
   };
 
   const handleApplyUpdate = () => {
@@ -284,18 +295,51 @@ export default function App() {
   const handleImportBackup = async (file: File): Promise<string | null> => {
     try {
       const text = await file.text();
+      const parsed = JSON.parse(text) as unknown;
+      const syncValidation = validateSyncPayload(parsed);
+      if (syncValidation.ok) {
+        setBackupImportError('');
+        setPendingBackupImport({ kind: 'sync', payload: syncValidation.value, summary: summarizeSyncPayload(syncValidation.value) });
+        return null;
+      }
+
       const result = parseBackupJson(text);
       if (!result.ok) return result.error;
-      const ok = window.confirm('現在のデータをすべて上書きします。バックアップJSONをインポートしますか？');
-      if (!ok) return null;
-      setData(result.data);
-      replaceScreen({ name: 'home' });
+      setBackupImportError('');
+      setPendingBackupImport({ kind: 'legacy', data: result.data });
       return null;
     } catch (error) {
       return error instanceof Error ? `読み込みに失敗しました: ${error.message}` : '読み込みに失敗しました。';
     }
   };
 
+  const cancelImportBackup = () => {
+    setPendingBackupImport(null);
+  };
+
+  const confirmImportBackup = async () => {
+    const target = pendingBackupImport;
+    if (!target) return;
+    setPendingBackupImport(null);
+    setBackupImportError('');
+
+    if (target.kind === 'legacy') {
+      commitData(target.data);
+      replaceScreen({ name: 'home' });
+      return;
+    }
+
+    const result = await importQuizMakeData(target.payload);
+    if (!result.ok) {
+      setBackupImportError(result.error);
+      return;
+    }
+
+    const loaded = await loadAppDataAsync();
+    dataRef.current = loaded;
+    setData(loaded);
+    replaceScreen({ name: 'home' });
+  };
   const handleStartQuiz = (setId: string, mode: QuizMode) => {
     navigate({ name: 'quiz', setId, mode });
   };
@@ -471,6 +515,20 @@ export default function App() {
       <div key={getScreenKey(screen)} className={`quiz-screen-transition quiz-screen-transition--${transitionDirection}`}>
         {content}
       </div>
+      <ConfirmDialog
+        open={pendingBackupImport !== null}
+        title={'バックアップを読み込みますか？'}
+        message={pendingBackupImport ? getBackupImportMessage(pendingBackupImport) : ''}
+        confirmLabel={'読み込む'}
+        onCancel={cancelImportBackup}
+        onConfirm={() => void confirmImportBackup()}
+      />
+      {backupImportError ? (
+        <div className="quiz-update-toast">
+          <span>{backupImportError}</span>
+          <button type="button" onClick={() => setBackupImportError('')}>閉じる</button>
+        </div>
+      ) : null}
       {pendingExitTarget ? (
         <div className="quiz-exit-confirm" role="dialog" aria-modal="true" aria-label="演習終了確認">
           <div className="quiz-exit-confirm__card">
@@ -493,10 +551,22 @@ export default function App() {
   );
 }
 
+function getBackupImportMessage(target: PendingBackupImport) {
+  if (target.kind === 'legacy') {
+    return '旧形式のバックアップJSONを読み込みます。\n現在の問題データ、進捗、Levelは上書きされます。\nノートはこの旧形式には含まれていません。';
+  }
+
+  return `ノート込みのバックアップJSONを読み込みます。\n現在の問題データ、進捗、Level、ノートは上書きされます。\n\n内容: ${formatBackupImportSummary(target.summary)}`;
+}
+
+function formatBackupImportSummary(summary: SyncPayloadSummary) {
+  return `フォルダ${summary.folderCount} / セット${summary.problemSetCount} / 問題${summary.questionCount} / 進捗${summary.progressCount} / ノート${summary.noteCount}`;
+}
 function getScreenKey(screen: AppScreen) {
   if (screen.name === 'folder') return `folder-${screen.folderId}`;
   if (screen.name === 'problemSetDetail') return `detail-${screen.setId}`;
   if (screen.name === 'problemList') return `problem-list-${screen.setId}-${screen.sortMode ?? 'ordered'}`;
+  if (screen.name === 'noteList') return `note-list-${screen.setId}`;
   if (screen.name === 'import') return `import-${screen.folderId}`;
   if (screen.name === 'quiz') return `quiz-${screen.setId}-${screen.mode}`;
   if (screen.name === 'quizSession') return `quiz-session-${screen.session.setId ?? 'custom'}-${screen.session.initialIndex ?? 0}-${screen.session.questions.length}`;

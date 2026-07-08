@@ -391,3 +391,14 @@
   flex-basis: calc(88px + var(--safe-top));
   padding-top: calc(16px + var(--safe-top));
 }
+.quiz-import__template-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.quiz-import__template-button--secondary {
+  background: #2b2b2b;
+  border: 1px solid #3a3a3a;
+  color: #ffffff;
+}

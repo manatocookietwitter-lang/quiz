@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { BackButton } from '../components/BackButton';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import {
   clearSyncLocalBackups,
   computePayloadHash,
@@ -19,6 +20,7 @@ import {
   uploadSyncData,
   type LastSyncState,
   type SyncDiagnosticResult,
+  type SyncPayload,
   type SyncPayloadSummary,
 } from '../utils/syncService';
 import './SyncScreen.css';
@@ -39,6 +41,8 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
   const [storageUsage, setStorageUsage] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [clearBackupsConfirmOpen, setClearBackupsConfirmOpen] = useState(false);
+  const [pendingCloudImport, setPendingCloudImport] = useState<{ payload: SyncPayload; summary: SyncPayloadSummary } | null>(null);
 
   const normalizedSyncId = syncId.trim();
   const canRun = Boolean(normalizedSyncId) && !busy;
@@ -126,11 +130,14 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
   };
 
   const handleClearSyncBackups = () => {
-    const ok = window.confirm('同期読み込み前に作成された一時バックアップだけを削除します。\n問題データやノート本体は削除されません。\n実行しますか？');
-    if (!ok) return;
+    setClearBackupsConfirmOpen(true);
+  };
+
+  const confirmClearSyncBackups = () => {
+    setClearBackupsConfirmOpen(false);
     const count = clearSyncLocalBackups();
     setError('');
-    setMessage(count > 0 ? `同期バックアップを${count}件整理しました。` : '整理対象の同期バックアップはありません。');
+    setMessage(count > 0 ? `\u540c\u671f\u30d0\u30c3\u30af\u30a2\u30c3\u30d7\u3092${count}\u4ef6\u6574\u7406\u3057\u307e\u3057\u305f\u3002` : '\u6574\u7406\u5bfe\u8c61\u306e\u540c\u671f\u30d0\u30c3\u30af\u30a2\u30c3\u30d7\u306f\u3042\u308a\u307e\u305b\u3093\u3002');
   };
 
   const handleUpload = async () => {
@@ -209,13 +216,25 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
     }
 
     const remoteSummary = summarizeSyncPayload(result.value.payload);
-    const ok = window.confirm(`クラウドのデータでこの端末のデータを上書きします。\n\nクラウド内容: ${formatSyncSummary(remoteSummary)}\n\n必要な場合は、先に「現在データをJSONバックアップ」で保存してください。\n実行しますか？`);
-    if (!ok) {
-      setMessage('読み込みをキャンセルしました。');
-      return;
-    }
+    setMessage('');
+    setPendingCloudImport({ payload: result.value.payload, summary: remoteSummary });
+  };
 
-    const importResult = await importQuizMakeData(result.value.payload);
+  const cancelCloudImport = () => {
+    setPendingCloudImport(null);
+    setMessage('読み込みをキャンセルしました。');
+  };
+
+  const confirmCloudImport = async () => {
+    const target = pendingCloudImport;
+    if (!target) return;
+    setPendingCloudImport(null);
+    setBusy(true);
+    setError('');
+    setMessage('クラウドデータを反映しています...');
+
+    const importResult = await importQuizMakeData(target.payload);
+    setBusy(false);
     setLastState(getLastSyncState());
     if (!importResult.ok) {
       setMessage('');
@@ -223,10 +242,9 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
       return;
     }
 
-    setMessage(`クラウドから読み込みました。${formatSyncSummary(remoteSummary)} / アプリを再読み込みします...`);
+    setMessage(`クラウドから読み込みました。${formatSyncSummary(target.summary)} / アプリを再読み込みします...`);
     window.setTimeout(() => window.location.reload(), 800);
   };
-
   const handleDiagnostic = async () => {
     setDiagnosticBusy(true);
     setMessage('接続診断を実行しています...');
@@ -390,6 +408,23 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
         {message ? <div className="sync-alert sync-alert--message">{message}</div> : null}
         {error ? <div className="sync-alert sync-alert--error">{error}</div> : null}
       </main>
+
+      <ConfirmDialog
+        open={pendingCloudImport !== null}
+        title={'クラウドから読み込みますか？'}
+        message={pendingCloudImport ? `クラウドのデータでこの端末のデータを上書きします。\n\nクラウド内容: ${formatSyncSummary(pendingCloudImport.summary)}\n\n必要な場合は、先に「現在データをJSONバックアップ」で保存してください。` : ''}
+        confirmLabel={'読み込む'}
+        onCancel={cancelCloudImport}
+        onConfirm={() => void confirmCloudImport()}
+      />
+      <ConfirmDialog
+        open={clearBackupsConfirmOpen}
+        title={'\u540c\u671f\u30d0\u30c3\u30af\u30a2\u30c3\u30d7\u3092\u6574\u7406\u3057\u307e\u3059\u304b\uff1f'}
+        message={'\u540c\u671f\u8aad\u307f\u8fbc\u307f\u524d\u306b\u4f5c\u6210\u3055\u308c\u305f\u4e00\u6642\u30d0\u30c3\u30af\u30a2\u30c3\u30d7\u3060\u3051\u3092\u524a\u9664\u3057\u307e\u3059\u3002\n\u554f\u984c\u30c7\u30fc\u30bf\u3084\u30ce\u30fc\u30c8\u672c\u4f53\u306f\u524a\u9664\u3055\u308c\u307e\u305b\u3093\u3002'}
+        confirmLabel={'\u6574\u7406\u3059\u308b'}
+        onCancel={() => setClearBackupsConfirmOpen(false)}
+        onConfirm={confirmClearSyncBackups}
+      />
     </div>
   );
 }

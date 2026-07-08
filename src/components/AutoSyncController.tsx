@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   cleanupLegacySyncBackups,
   computePayloadHash,
@@ -11,6 +11,7 @@ import {
   setLastSyncState,
   uploadSyncData,
 } from '../utils/syncService';
+import { ConfirmDialog } from './ConfirmDialog';
 
 const AUTO_SYNC_INTERVAL_MS = 60000;
 const REMOTE_CHECK_COOLDOWN_MS = 60000;
@@ -20,9 +21,45 @@ export function AutoSyncController() {
   const remoteCheckRunningRef = useRef(false);
   const lastRemoteCheckAtRef = useRef(0);
   const promptedRemoteUpdatedAtRef = useRef('');
+  const [pendingRemoteImport, setPendingRemoteImport] = useState<{ syncId: string; updatedAt: string } | null>(null);
+
+  const cancelRemoteImport = () => {
+    setPendingRemoteImport(null);
+    setLastSyncState({ status: 'クラウド読み込みを保留しました', error: '' });
+  };
+
+  const confirmRemoteImport = async () => {
+    const target = pendingRemoteImport;
+    if (!target) return;
+    setPendingRemoteImport(null);
+    setLastSyncState({ status: 'クラウドから読み込み中...', error: '' });
+
+    const download = await downloadSyncData(target.syncId);
+    if (!download.ok) {
+      console.warn('Auto sync download failed.', download.error);
+      setLastSyncState({ status: 'クラウド読み込み失敗', error: download.error });
+      return;
+    }
+    if (!download.value) return;
+
+    const imported = await importQuizMakeData(download.value.payload);
+    if (!imported.ok) {
+      setLastSyncState({ status: 'クラウド読み込み失敗', error: imported.error });
+      return;
+    }
+
+    setLastSyncState({
+      lastSyncAt: download.value.updatedAt,
+      lastRemoteUpdatedAt: download.value.updatedAt,
+      status: 'クラウドから読み込みました',
+      error: '',
+    });
+    window.setTimeout(() => window.location.reload(), 700);
+  };
 
   useEffect(() => {
     cleanupLegacySyncBackups();
+
     const uploadIfChanged = async () => {
       const settings = getAutoSyncSettings();
       if (!settings.enabled || !settings.syncId || !settings.configured) return;
@@ -92,28 +129,7 @@ export function AutoSyncController() {
 
         promptedRemoteUpdatedAtRef.current = meta.value.updatedAt;
         setLastSyncState({ status: 'クラウドに新しいデータがあります', error: '' });
-        const ok = window.confirm('クラウドに新しいデータがあります。\n\nこの端末のデータをクラウドの内容で上書きします。必要な場合は同期設定画面の「現在データをJSONバックアップ」で先に保存してください。\n\n実行しますか？');
-        if (!ok) {
-          setLastSyncState({ status: 'クラウド読み込みを保留しました', error: '' });
-          return;
-        }
-
-        const download = await downloadSyncData(settings.syncId);
-        if (!download.ok) {
-          console.warn('Auto sync download failed.', download.error);
-          setLastSyncState({ status: 'クラウド読み込み失敗', error: download.error });
-          return;
-        }
-        if (!download.value) return;
-
-        const imported = await importQuizMakeData(download.value.payload);
-        if (!imported.ok) {
-          setLastSyncState({ status: 'クラウド読み込み失敗', error: imported.error });
-          return;
-        }
-
-        setLastSyncState({ lastSyncAt: download.value.updatedAt, lastRemoteUpdatedAt: download.value.updatedAt, status: 'クラウドから読み込みました', error: '' });
-        window.setTimeout(() => window.location.reload(), 700);
+        setPendingRemoteImport({ syncId: settings.syncId, updatedAt: meta.value.updatedAt });
       } catch (error) {
         const message = error instanceof Error ? error.message : 'クラウド確認に失敗しました。';
         console.warn('Auto sync remote check failed.', error);
@@ -146,5 +162,14 @@ export function AutoSyncController() {
     };
   }, []);
 
-  return null;
+  return (
+    <ConfirmDialog
+      open={pendingRemoteImport !== null}
+      title={'クラウドに新しいデータがあります'}
+      message={'この端末のデータをクラウドの内容で上書きします。\n必要な場合は同期設定画面の「現在データをJSONバックアップ」で先に保存してください。'}
+      confirmLabel={'読み込む'}
+      onCancel={cancelRemoteImport}
+      onConfirm={() => void confirmRemoteImport()}
+    />
+  );
 }

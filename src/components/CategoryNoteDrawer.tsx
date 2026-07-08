@@ -1,5 +1,7 @@
 import { type PointerEvent, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
+import { ConfirmDialog } from './ConfirmDialog';
+import { createId } from '../utils/id';
 import { loadCategoryNoteRaw, saveCategoryNoteRaw } from '../utils/noteStorage';
 import './CategoryNoteDrawer.css';
 
@@ -14,6 +16,7 @@ const ERASER_WIDTHS = [10, 15, 30] as const;
 const MAX_HISTORY = 30;
 const OVERSCROLL_LIMIT = 36;
 const PAN_EDGE_BREATHING_ROOM = 18;
+const NOTE_IMAGE_CACHE_LIMIT = 100;
 const noteImageCache = new Map<string, HTMLImageElement>();
 
 type NoteColorKey = keyof typeof NOTE_COLORS;
@@ -158,6 +161,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   const [pagePinching, setPagePinchingState] = useState(false);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [saveError, setSaveError] = useState('');
+  const [deletePageConfirmOpen, setDeletePageConfirmOpen] = useState(false);
 
   const getPagePanMetrics = (scale = pageScaleRef.current) => {
     const page = canvasRef.current?.parentElement as HTMLElement | null;
@@ -400,8 +404,12 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
 
   const deletePage = () => {
     if (pages.length <= 1) return;
-    const confirmed = window.confirm('\u3053\u306e\u30da\u30fc\u30b8\u3092\u524a\u9664\u3057\u307e\u3059\u3002\u3053\u306e\u30da\u30fc\u30b8\u306b\u66f8\u3044\u305f\u30ce\u30fc\u30c8\u306f\u524a\u9664\u3055\u308c\u307e\u3059\u3002\u672c\u5f53\u306b\u524a\u9664\u3057\u307e\u3059\u304b\uff1f');
-    if (!confirmed) return;
+    setDeletePageConfirmOpen(true);
+  };
+
+  const confirmDeletePage = () => {
+    setDeletePageConfirmOpen(false);
+    if (pages.length <= 1) return;
     const nextPages = pages.filter((_, index) => index !== currentPageIndex);
     const nextIndex = Math.min(currentPageIndex, nextPages.length - 1);
     const nextNote: CategoryNote = {
@@ -849,6 +857,15 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
           </button>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={deletePageConfirmOpen}
+        title={'\u3053\u306e\u30da\u30fc\u30b8\u3092\u524a\u9664\u3057\u307e\u3059\u304b\uff1f'}
+        message={'\u3053\u306e\u30da\u30fc\u30b8\u306b\u66f8\u3044\u305f\u30ce\u30fc\u30c8\u306f\u524a\u9664\u3055\u308c\u307e\u3059\u3002\n\u5143\u306b\u623b\u305b\u307e\u305b\u3093\u3002'}
+        confirmLabel={'\u524a\u9664'}
+        onCancel={() => setDeletePageConfirmOpen(false)}
+        onConfirm={confirmDeletePage}
+      />
     </section>
   );
 }
@@ -882,7 +899,7 @@ function getNoteKey(problemSetId: string, category: string) {
 }
 
 function createBlankPage(): NotePage {
-  return { id: `page_${Date.now()}_${Math.random().toString(36).slice(2)}`, dataUrl: '', updatedAt: new Date().toISOString() };
+  return { id: createId('notePage'), dataUrl: '', updatedAt: new Date().toISOString() };
 }
 
 function createEmptyNote(problemSetId: string, category: string): CategoryNote {
@@ -957,18 +974,35 @@ function getPointDistance(a: { x: number; y: number }, b: { x: number; y: number
 }
 
 function preloadNoteImage(dataUrl: string | undefined) {
-  if (!dataUrl || noteImageCache.has(dataUrl)) return;
+  if (!dataUrl || getCachedNoteImage(dataUrl)) return;
   const image = new Image();
   image.src = dataUrl;
-  noteImageCache.set(dataUrl, image);
+  setCachedNoteImage(dataUrl, image);
 }
 
+function getCachedNoteImage(dataUrl: string) {
+  const image = noteImageCache.get(dataUrl);
+  if (!image) return undefined;
+  noteImageCache.delete(dataUrl);
+  noteImageCache.set(dataUrl, image);
+  return image;
+}
+
+function setCachedNoteImage(dataUrl: string, image: HTMLImageElement) {
+  if (noteImageCache.has(dataUrl)) noteImageCache.delete(dataUrl);
+  noteImageCache.set(dataUrl, image);
+  while (noteImageCache.size > NOTE_IMAGE_CACHE_LIMIT) {
+    const oldestKey = noteImageCache.keys().next().value;
+    if (!oldestKey) break;
+    noteImageCache.delete(oldestKey);
+  }
+}
 function drawDataUrlToContext(context: CanvasRenderingContext2D, dataUrl: string, width: number, height: number) {
   context.fillStyle = '#ffffff';
   context.fillRect(0, 0, width, height);
   if (!dataUrl) return;
 
-  const cached = noteImageCache.get(dataUrl);
+  const cached = getCachedNoteImage(dataUrl);
   if (cached?.complete) {
     context.drawImage(cached, 0, 0, width, height);
     return;
@@ -978,7 +1012,7 @@ function drawDataUrlToContext(context: CanvasRenderingContext2D, dataUrl: string
   image.onload = () => context.drawImage(image, 0, 0, width, height);
   if (!cached) {
     image.src = dataUrl;
-    noteImageCache.set(dataUrl, image);
+    setCachedNoteImage(dataUrl, image);
   }
 }
 

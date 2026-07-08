@@ -3,7 +3,7 @@ import type { AppData, Folder } from '../types';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Layout } from '../components/Layout';
 import { formatDisplayDate } from '../utils/date';
-import { CHATGPT_TEMPLATE_PROMPT } from '../utils/importValidator';
+import { CHATGPT_MATERIAL_TEMPLATE_PROMPT, CHATGPT_PAST_EXAM_TEMPLATE_PROMPT } from '../utils/importValidator';
 import './HomeScreen.css';
 
 interface HomeScreenProps {
@@ -35,7 +35,7 @@ export function HomeScreen({
   const [deleteTarget, setDeleteTarget] = useState<Folder | null>(null);
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const [importError, setImportError] = useState('');
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState('');
 
   const handleCreateFolder = () => {
     const name = folderName.trim();
@@ -53,11 +53,11 @@ export function HomeScreen({
     setImportError(error ?? '');
   };
 
-  const handleCopyTemplate = async () => {
+  const handleCopyTemplate = async (template: string, label: string) => {
     try {
-      await navigator.clipboard.writeText(CHATGPT_TEMPLATE_PROMPT);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1600);
+      await navigator.clipboard.writeText(template);
+      setCopied(label);
+      window.setTimeout(() => setCopied(''), 1600);
     } catch {
       setImportError('テンプレートのコピーに失敗しました。');
     }
@@ -125,7 +125,8 @@ export function HomeScreen({
               setMenuOpen(false);
               fileInputRef.current?.click();
             }}
-            onCopyTemplate={handleCopyTemplate}
+            onCopyMaterialTemplate={() => handleCopyTemplate(CHATGPT_MATERIAL_TEMPLATE_PROMPT, '資料から問題作成')}
+            onCopyPastExamTemplate={() => handleCopyTemplate(CHATGPT_PAST_EXAM_TEMPLATE_PROMPT, '過去問を集約')}
             onOpenSync={() => {
               setMenuOpen(false);
               onOpenSync();
@@ -262,16 +263,18 @@ function HomeMenu({
   onClose,
   onExport,
   onImport,
-  onCopyTemplate,
+  onCopyMaterialTemplate,
+  onCopyPastExamTemplate,
   onOpenSync,
   onClearAll,
 }: {
-  copied: boolean;
+  copied: string;
   importError: string;
   onClose: () => void;
   onExport: () => void;
   onImport: () => void;
-  onCopyTemplate: () => void;
+  onCopyMaterialTemplate: () => void;
+  onCopyPastExamTemplate: () => void;
   onOpenSync: () => void;
   onClearAll: () => void;
 }) {
@@ -287,8 +290,11 @@ function HomeMenu({
         <button type="button" className="quiz-home__menu-item" onClick={onImport}>
           JSONインポート
         </button>
-        <button type="button" className="quiz-home__menu-item" onClick={onCopyTemplate}>
-          {copied ? 'コピーしました' : 'ChatGPTテンプレートをコピー'}
+        <button type="button" className="quiz-home__menu-item" onClick={onCopyMaterialTemplate}>
+          {copied === '資料から問題作成' ? 'コピーしました' : '資料から問題作成テンプレート'}
+        </button>
+        <button type="button" className="quiz-home__menu-item" onClick={onCopyPastExamTemplate}>
+          {copied === '過去問を集約' ? 'コピーしました' : '過去問集約テンプレート'}
         </button>
         <button type="button" className="quiz-home__menu-item" onClick={onOpenSync}>
           同期設定
@@ -296,7 +302,7 @@ function HomeMenu({
         <button type="button" className="quiz-home__menu-item quiz-home__menu-item--danger" onClick={onClearAll}>
           全データ削除
         </button>
-        {copied ? <div className="quiz-home__menu-notice">テンプレートをクリップボードにコピーしました。</div> : null}
+        {copied ? <div className="quiz-home__menu-notice">{copied}テンプレートをクリップボードにコピーしました。</div> : null}
         {importError ? <div className="quiz-home__menu-error">{importError}</div> : null}
       </div>
     </div>

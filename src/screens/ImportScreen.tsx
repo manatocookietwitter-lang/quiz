@@ -1,7 +1,7 @@
 import { type ChangeEvent, useState } from 'react';
 import { BackButton } from '../components/BackButton';
 import { Layout } from '../components/Layout';
-import { CHATGPT_TEMPLATE_PROMPT } from '../utils/importValidator';
+import { CHATGPT_MATERIAL_TEMPLATE_PROMPT, CHATGPT_PAST_EXAM_TEMPLATE_PROMPT } from '../utils/importValidator';
 import './ImportScreen.css';
 
 interface ImportScreenProps {
@@ -33,19 +33,19 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
   const [jsonText, setJsonText] = useState('');
   const [importFiles, setImportFiles] = useState<ImportFileItem[]>([]);
   const [error, setError] = useState('');
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState('');
   const [isImporting, setIsImporting] = useState(false);
   const [isPreparingFiles, setIsPreparingFiles] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [importProgress, setImportProgress] = useState('');
   const [notice, setNotice] = useState('');
 
-  const handleCopyTemplate = async () => {
+  const handleCopyTemplate = async (template: string, label: string) => {
     try {
-      await navigator.clipboard.writeText(CHATGPT_TEMPLATE_PROMPT);
-      setCopied(true);
-      setNotice('テンプレートをクリップボードにコピーしました');
-      window.setTimeout(() => setCopied(false), 1600);
+      await navigator.clipboard.writeText(template);
+      setCopied(label);
+      setNotice(`${label}テンプレートをクリップボードにコピーしました`);
+      window.setTimeout(() => setCopied(''), 1600);
     } catch {
       setError('テンプレートのコピーに失敗しました。端末のコピー権限を確認してください。');
     }
@@ -240,9 +240,14 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
               <span>2</span>
               <h2>ChatGPTで作る</h2>
             </div>
-            <button type="button" onClick={handleCopyTemplate} className="quiz-import__template-button">
-              {copied ? 'コピーしました' : 'ChatGPTテンプレートをコピー'}
-            </button>
+            <div className="quiz-import__template-actions">
+              <button type="button" onClick={() => handleCopyTemplate(CHATGPT_MATERIAL_TEMPLATE_PROMPT, '資料から問題作成')} className="quiz-import__template-button">
+                {copied === '資料から問題作成' ? 'コピーしました' : '資料から問題作成'}
+              </button>
+              <button type="button" onClick={() => handleCopyTemplate(CHATGPT_PAST_EXAM_TEMPLATE_PROMPT, '過去問を集約')} className="quiz-import__template-button quiz-import__template-button--secondary">
+                {copied === '過去問を集約' ? 'コピーしました' : '過去問を集約'}
+              </button>
+            </div>
           </section>
 
           <section className="quiz-import__file-card">

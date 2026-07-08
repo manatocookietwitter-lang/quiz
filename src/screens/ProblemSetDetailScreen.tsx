@@ -227,7 +227,7 @@ function DetailHeader({ title, onBack, onOpenImport }: { title: string; onBack: 
       <BackButton onClick={onBack} className="quiz-detail__back-button" />
       <h1 className="quiz-detail__title">{title}</h1>
       {onOpenImport ? (
-        <button type="button" className="quiz-detail__header-icon" aria-label={'\u65b0\u898f\u554f\u984c'} onClick={onOpenImport}>`r`n          {'+'}`r`n        </button>
+        <button type="button" className="quiz-detail__header-icon" aria-label={'\u65b0\u898f\u554f\u984c'} onClick={onOpenImport}>{'+'}</button>
       ) : (
         <div className="quiz-detail__header-icon">{'\u22ef'}</div>
       )}

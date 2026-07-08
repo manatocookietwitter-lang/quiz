@@ -1,4 +1,4 @@
-import { APP_DATA_STORAGE_KEY, createEmptyAppData, exportAppDataRaw, importAppDataRaw, saveAppDataAsync } from '../storage';
+import { APP_DATA_STORAGE_KEY, createEmptyAppData, exportAppDataRaw, importAppDataRaw, isAppData, saveAppDataAsync } from '../storage';
 import { exportCategoryNotesRaw, isCategoryNoteKey, replaceCategoryNotesRaw } from './noteStorage';
 export type SyncPayload = {
   version: 1;
@@ -644,6 +644,36 @@ function parseRemoteRecord(value: unknown, fallbackSyncId: string, fallbackPaylo
   };
 }
 
+function collectCurrentQuizMakeLocalStorage(): Record<string, string> {
+  const result: Record<string, string> = {};
+  try {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key || !isQuizMakeStorageKey(key) || key === APP_DATA_STORAGE_KEY || isCategoryNoteKey(key)) continue;
+      const value = localStorage.getItem(key);
+      if (value !== null) result[key] = value;
+    }
+  } catch {
+    // Best effort snapshot only.
+  }
+  return result;
+}
+
+async function restoreImportedData(appDataRaw: string, notes: Record<string, string>, localStorageSnapshot: Record<string, string>): Promise<void> {
+  await importAppDataRaw(appDataRaw).catch(() => undefined);
+  await replaceCategoryNotesRaw(notes).catch(() => undefined);
+  try {
+    const keysToRemove: string[] = [];
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (key && isQuizMakeStorageKey(key) && key !== APP_DATA_STORAGE_KEY && !isCategoryNoteKey(key)) keysToRemove.push(key);
+    }
+    keysToRemove.forEach((key) => localStorage.removeItem(key));
+    Object.entries(localStorageSnapshot).forEach(([key, value]) => localStorage.setItem(key, value));
+  } catch {
+    // Restore is best effort.
+  }
+}
 function isQuizMakeStorageKey(key: string): boolean {
   if (key.startsWith('quizMake:sync:')) return false;
   if (key.startsWith(SYNC_BACKUP_PREFIX)) return false;
