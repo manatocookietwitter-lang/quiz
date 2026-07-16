@@ -487,9 +487,28 @@ function AnswerPanel({
   const VELOCITY_THRESHOLD = 0.5;
 
   const clampDragOffset = (deltaY: number) => {
-    if (startStateRef.current === 'expanded') return Math.max(0, Math.min(220, deltaY));
-    if (startStateRef.current === 'hidden') return Math.min(0, Math.max(-140, deltaY));
-    return Math.max(-180, Math.min(160, deltaY));
+    const startState = startStateRef.current;
+    const startHeight = getBaseSheetHeight(startState);
+    const hiddenHeight = getBaseSheetHeight('hidden');
+    const defaultHeight = getBaseSheetHeight('default');
+    const expandedHeight = getBaseSheetHeight('expanded');
+    const resistance = 0.22;
+
+    let minDelta = 0;
+    let maxDelta = 0;
+
+    if (startState === 'hidden') {
+      minDelta = hiddenHeight - defaultHeight;
+    } else if (startState === 'default') {
+      minDelta = defaultHeight - expandedHeight;
+      maxDelta = defaultHeight - hiddenHeight;
+    } else {
+      maxDelta = expandedHeight - defaultHeight;
+    }
+
+    if (deltaY < minDelta) return minDelta + (deltaY - minDelta) * resistance;
+    if (deltaY > maxDelta) return maxDelta + (deltaY - maxDelta) * resistance;
+    return deltaY;
   };
 
   const snapByDrag = (deltaY: number, velocityY: number) => {

@@ -462,8 +462,8 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
 
   const beginPageSwipe = (event: PointerEvent<HTMLCanvasElement>) => {
     if (event.pointerType !== 'touch' || isPalmLikeTouch(event)) return;
+    event.preventDefault();
     if (touchPointsRef.current.size === 0) {
-      if (!event.isPrimary) return;
       primaryTouchIdRef.current = event.pointerId;
     }
     touchPointsRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -988,7 +988,8 @@ function canDraw(event: PointerEvent<HTMLCanvasElement>) {
 
 function isPalmLikeTouch(event: PointerEvent<HTMLCanvasElement>) {
   if (event.pointerType !== 'touch') return false;
-  return event.width >= 40 || event.height >= 40 || event.width * event.height >= 1600;
+  const contactArea = event.width * event.height;
+  return event.width >= 64 || event.height >= 64 || contactArea >= 3600;
 }
 
 function getCanvasPoint(canvas: HTMLCanvasElement, event: PointerEvent<HTMLCanvasElement>) {
