@@ -289,9 +289,10 @@
     flex: 0 0 auto;
     display: flex;
     align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
     gap: 6px;
   }
-
   .category-note-drawer__header-actions button {
     min-width: 50px;
     min-height: 34px;

@@ -418,10 +418,12 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
     updateCurrentPage(previous);
   };
 
-  const addPage = () => {
+  const addPage = (position: 'before' | 'after') => {
     const saved = updateCurrentPage();
-    const nextPages = [...saved.pages, createBlankPage()];
-    const nextIndex = nextPages.length - 1;
+    const insertionIndex = position === 'before' ? currentPageIndex : currentPageIndex + 1;
+    const nextPages = [...saved.pages];
+    nextPages.splice(insertionIndex, 0, createBlankPage());
+    const nextIndex = insertionIndex;
     const nextNote: CategoryNote = {
       problemSetId: problemSetId ?? '',
       category: normalizedCategory,
@@ -476,9 +478,10 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   };
 
   const beginPageSwipe = (event: PointerEvent<HTMLCanvasElement>) => {
-    if (event.pointerType !== 'touch' || isPalmLikeTouch(event)) return;
+    if (event.pointerType !== 'touch') return;
     event.preventDefault();
     if (touchPointsRef.current.size === 0) {
+      if (isPalmLikeTouch(event)) return;
       primaryTouchIdRef.current = event.pointerId;
     }
     touchPointsRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -808,7 +811,8 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
           </div>
         </div>
         <div className="category-note-drawer__header-actions">
-          <button type="button" onClick={addPage}>{'\u8ffd\u52a0'}</button>
+          <button type="button" onClick={() => addPage('before')}>{'前に追加'}</button>
+          <button type="button" onClick={() => addPage('after')}>{'後ろに追加'}</button>
           <button type="button" className="category-note-drawer__danger-button" disabled={pages.length <= 1} onClick={deletePage}>{'\u524a\u9664'}</button>
           {onClose ? <button type="button" onClick={handleClose}>{'\u9589\u3058\u308b'}</button> : null}
         </div>
@@ -1011,7 +1015,7 @@ function canDraw(event: PointerEvent<HTMLCanvasElement>) {
 function isPalmLikeTouch(event: PointerEvent<HTMLCanvasElement>) {
   if (event.pointerType !== 'touch') return false;
   const contactArea = event.width * event.height;
-  return event.width >= 64 || event.height >= 64 || contactArea >= 3600;
+  return event.width >= 96 || event.height >= 96 || contactArea >= 8000;
 }
 
 function getCanvasPoint(canvas: HTMLCanvasElement, event: PointerEvent<HTMLCanvasElement>) {
