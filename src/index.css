@@ -464,14 +464,14 @@ button:disabled {
   color: #111111;
   box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.2);
   transition:
-    height 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    height 280ms cubic-bezier(0.22, 1, 0.36, 1),
     border-radius 180ms ease,
     transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    left 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    right 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    width 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    max-width 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 160ms ease;
+    left 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    right 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    width 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    max-width 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 180ms ease;
 }
 
 .answer-sheet button {
@@ -705,14 +705,14 @@ button:disabled {
 /* Answer sheet interaction refinements */
 .answer-sheet {
   transition:
-    left 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    right 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    width 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    max-width 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    height 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 160ms ease,
-    border-radius 220ms cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: left, right, width, max-width, height;
+    left 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    right 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    width 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    max-width 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    height 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 180ms ease,
+    border-radius 280ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: left, right, width, max-width, height, transform;
 }
 
 .answer-sheet--dragging {
@@ -828,8 +828,8 @@ button:disabled {
     max-width: 430px;
     transform: translateX(-50%);
     transition:
-      left 220ms cubic-bezier(0.22, 1, 0.36, 1),
-      width 220ms cubic-bezier(0.22, 1, 0.36, 1),
+      left 280ms cubic-bezier(0.22, 1, 0.36, 1),
+      width 280ms cubic-bezier(0.22, 1, 0.36, 1),
       transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 

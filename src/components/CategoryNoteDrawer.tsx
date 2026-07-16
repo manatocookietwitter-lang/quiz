@@ -143,6 +143,9 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   const pageElementRef = useRef<HTMLDivElement | null>(null);
   const pageSwipeFrameRef = useRef<number | null>(null);
   const pageSwipeOffsetRef = useRef(0);
+  const pagePanFrameRef = useRef<number | null>(null);
+  const activePageRef = useRef<HTMLDivElement | null>(null);
+  const primaryTouchIdRef = useRef<number | null>(null);
   const pageDataUrlRef = useRef('');
   const toolRef = useRef<NoteTool>('pen');
   const colorRef = useRef<string>(NOTE_COLORS.black);
@@ -199,9 +202,26 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
     const clamped = clampPagePan(nextPan, scale, allowOverscroll);
     pagePanRef.current = clamped;
     setPagePanState(clamped);
+    activePageRef.current?.style.setProperty('transform', scale === 1 ? '' : 'translate3d(' + clamped.x + 'px, ' + clamped.y + 'px, 0) scale(' + scale + ')');
+  };
+
+  const setPagePanInteractive = (nextPan: { x: number; y: number }, scale = pageScaleRef.current, allowOverscroll = true) => {
+    const clamped = clampPagePan(nextPan, scale, allowOverscroll);
+    pagePanRef.current = clamped;
+    if (pagePanFrameRef.current !== null) return;
+    pagePanFrameRef.current = requestAnimationFrame(() => {
+      pagePanFrameRef.current = null;
+      const page = activePageRef.current;
+      if (!page) return;
+      page.style.transform = 'translate3d(' + pagePanRef.current.x + 'px, ' + pagePanRef.current.y + 'px, 0) scale(' + scale + ')';
+    });
   };
 
   const resetPageView = () => {
+    if (pagePanFrameRef.current !== null) {
+      cancelAnimationFrame(pagePanFrameRef.current);
+      pagePanFrameRef.current = null;
+    }
     pageScaleRef.current = 1;
     pagePanRef.current = { x: 0, y: 0 };
     setPageScaleState(1);
@@ -224,6 +244,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
 
   const resetTouchGesture = () => {
     touchPointsRef.current.clear();
+    primaryTouchIdRef.current = null;
     pageSwipeRef.current = null;
     pagePanGestureRef.current = null;
     pinchRef.current = null;
@@ -440,7 +461,11 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   };
 
   const beginPageSwipe = (event: PointerEvent<HTMLCanvasElement>) => {
-    if (event.pointerType !== 'touch') return;
+    if (event.pointerType !== 'touch' || isPalmLikeTouch(event)) return;
+    if (touchPointsRef.current.size === 0) {
+      if (!event.isPrimary) return;
+      primaryTouchIdRef.current = event.pointerId;
+    }
     touchPointsRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
     event.currentTarget.setPointerCapture?.(event.pointerId);
 
@@ -494,7 +519,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
     const pan = pagePanGestureRef.current;
     if (pan && pan.pointerId === event.pointerId && pageScaleRef.current > 1.02) {
       event.preventDefault();
-      setPagePanValue({
+      setPagePanInteractive({
         x: pan.startPan.x + event.clientX - pan.x,
         y: pan.startPan.y + event.clientY - pan.y,
       }, pageScaleRef.current, true);
@@ -525,6 +550,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   const endPageSwipe = (event: PointerEvent<HTMLCanvasElement>) => {
     if (event.pointerType === 'touch') {
       touchPointsRef.current.delete(event.pointerId);
+      if (primaryTouchIdRef.current === event.pointerId) primaryTouchIdRef.current = null;
       if (pinchRef.current || pagePinchingRef.current) {
         if (pageScaleRef.current <= 1.02) {
       setPageScaleValue(1);
@@ -782,6 +808,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
             </div>
             <div className="category-note-page-slot">
               <div
+                ref={activePageRef}
                 className={`category-note-page category-note-page--active${pagePinching ? ' category-note-page--pinching' : ''}`}
                 style={{ transform: pageScale === 1 ? undefined : `translate3d(${pagePan.x}px, ${pagePan.y}px, 0) scale(${pageScale})` }}
               >
@@ -957,6 +984,11 @@ function getCanvasLogicalSize(canvas: HTMLCanvasElement) {
 }
 function canDraw(event: PointerEvent<HTMLCanvasElement>) {
   return event.pointerType === 'pen' || (import.meta.env.DEV && event.pointerType === 'mouse');
+}
+
+function isPalmLikeTouch(event: PointerEvent<HTMLCanvasElement>) {
+  if (event.pointerType !== 'touch') return false;
+  return event.width >= 40 || event.height >= 40 || event.width * event.height >= 1600;
 }
 
 function getCanvasPoint(canvas: HTMLCanvasElement, event: PointerEvent<HTMLCanvasElement>) {

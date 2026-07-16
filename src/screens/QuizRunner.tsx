@@ -1,4 +1,4 @@
-import { type CSSProperties, type PointerEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { type PointerEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { AppData, Question, QuizResult } from '../types';
 import { BackButton } from '../components/BackButton';
@@ -475,7 +475,10 @@ function AnswerPanel({
   onNext: () => void;
 }) {
   const [isDragging, setIsDragging] = useState(false);
-  const [dragOffsetY, setDragOffsetY] = useState(0);
+  const sheetRef = useRef<HTMLElement | null>(null);
+  const draggingRef = useRef(false);
+  const dragOffsetRef = useRef(0);
+  const dragFrameRef = useRef<number | null>(null);
   const dragStartYRef = useRef(0);
   const dragStartTimeRef = useRef(0);
   const startStateRef = useRef<AnswerSheetState>('default');
@@ -511,33 +514,49 @@ function AnswerPanel({
   };
 
   const resetDrag = () => {
+    if (dragFrameRef.current !== null) {
+      cancelAnimationFrame(dragFrameRef.current);
+      dragFrameRef.current = null;
+    }
+    draggingRef.current = false;
     setIsDragging(false);
-    setDragOffsetY(0);
+    dragOffsetRef.current = 0;
+    sheetRef.current?.style.removeProperty('height');
   };
 
   const cancelDrag = (event: PointerEvent<HTMLElement>) => {
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) return;
     resetDrag();
     event.currentTarget.releasePointerCapture?.(event.pointerId);
   };
 
   const handlePointerDown = (event: PointerEvent<HTMLElement>) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
     dragStartYRef.current = event.clientY;
     dragStartTimeRef.current = performance.now();
     startStateRef.current = state;
+    draggingRef.current = true;
     setIsDragging(true);
-    setDragOffsetY(0);
+    dragOffsetRef.current = 0;
     event.currentTarget.setPointerCapture?.(event.pointerId);
   };
 
   const handlePointerMove = (event: PointerEvent<HTMLElement>) => {
-    if (!isDragging) return;
+    if (!draggingRef.current) return;
     event.preventDefault();
     const deltaY = event.clientY - dragStartYRef.current;
-    setDragOffsetY(clampDragOffset(deltaY));
+    dragOffsetRef.current = clampDragOffset(deltaY);
+    if (dragFrameRef.current === null) {
+      dragFrameRef.current = requestAnimationFrame(() => {
+        dragFrameRef.current = null;
+        if (!sheetRef.current || !draggingRef.current) return;
+        sheetRef.current.style.height = `${getDraggedSheetHeight()}px`;
+      });
+    }
   };
 
   const handlePointerUp = (event: PointerEvent<HTMLElement>) => {
-    if (!isDragging) return;
+    if (!draggingRef.current) return;
     const deltaY = event.clientY - dragStartYRef.current;
     const elapsed = Math.max(1, performance.now() - dragStartTimeRef.current);
     snapByDrag(deltaY, deltaY / elapsed);
@@ -557,7 +576,7 @@ function AnswerPanel({
   const getDraggedSheetHeight = () => {
     const baseHeight = getBaseSheetHeight(startStateRef.current);
     const maxHeight = Math.max(320, window.innerHeight - 40);
-    return Math.max(64, Math.min(maxHeight, baseHeight - dragOffsetY));
+    return Math.max(64, Math.min(maxHeight, baseHeight - dragOffsetRef.current));
   };
   const dragProps = {
     onPointerDown: handlePointerDown,
@@ -567,12 +586,10 @@ function AnswerPanel({
     onPointerLeave: cancelDrag,
   };
 
-  const sheetStyle = isDragging
-    ? ({ height: `${getDraggedSheetHeight()}px` } as CSSProperties)
-    : undefined;
+
   if (state === 'hidden') {
     return (
-      <section className={`answer-sheet answer-sheet--hidden ${isDragging ? 'answer-sheet--dragging' : ''}`} style={sheetStyle} {...dragProps}>
+      <section ref={sheetRef} className={'answer-sheet answer-sheet--hidden ' + (isDragging ? 'answer-sheet--dragging' : '')} {...dragProps}>
         <div className="answer-sheet__hidden-handle" />
         <div className="answer-sheet__hidden-bar">
           <span className={`answer-sheet__hidden-result ${isCorrect ? 'answer-sheet__hidden-result--correct' : 'answer-sheet__hidden-result--wrong'}`}>{isCorrect ? '\u6b63\u89e3' : '\u4e0d\u6b63\u89e3'}</span>
@@ -585,7 +602,7 @@ function AnswerPanel({
     );
   }
   return (
-    <section className={`answer-sheet answer-sheet--${state} ${isDragging ? 'answer-sheet--dragging' : ''}`} style={sheetStyle}>
+    <section ref={sheetRef} className={'answer-sheet answer-sheet--' + state + ' ' + (isDragging ? 'answer-sheet--dragging' : '')}>
       <div className="answer-sheet__drag-area" {...dragProps}>
         <div className="answer-sheet__drag-handle" />
       </div>
