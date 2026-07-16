@@ -150,6 +150,8 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   const toolRef = useRef<NoteTool>('pen');
   const colorRef = useRef<string>(NOTE_COLORS.black);
   const widthRef = useRef<number>(1);
+  const noteSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const latestNoteSaveIdRef = useRef(0);
 
   const [note, setNote] = useState<CategoryNote>(() => createEmptyNote(problemSetId ?? '', normalizedCategory));
   const [pageIndex, setPageIndex] = useState(0);
@@ -350,21 +352,33 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
 
   const snapshot = () => canvasRef.current?.toDataURL('image/png') ?? '';
 
-  const persistNote = (nextNote: CategoryNote) => {
-    if (!noteKey) return;
+  const persistNote = (nextNote: CategoryNote): Promise<void> => {
+    if (!noteKey) return Promise.resolve();
+
+    const raw = JSON.stringify(nextNote);
+    const saveId = latestNoteSaveIdRef.current + 1;
+    latestNoteSaveIdRef.current = saveId;
     setSaveState('saving');
     setSaveError('');
-    void saveCategoryNoteRaw(noteKey, JSON.stringify(nextNote))
+
+    const queuedSave = noteSaveQueueRef.current
+      .catch(() => undefined)
+      .then(() => saveCategoryNoteRaw(noteKey, raw));
+    noteSaveQueueRef.current = queuedSave;
+
+    void queuedSave
       .then(() => {
-        setSaveState('saved');
+        if (latestNoteSaveIdRef.current === saveId) setSaveState('saved');
       })
       .catch((error) => {
+        if (latestNoteSaveIdRef.current !== saveId) return;
         console.warn('Failed to save category note.', error);
         setSaveState('error');
-        setSaveError(error instanceof Error ? error.message : 'ノートの保存に失敗しました');
+        setSaveError(error instanceof Error ? error.message : 'ノートの保存に失敗しました。');
       });
-  };
 
+    return queuedSave;
+  };
   const updateCurrentPage = (dataUrl = snapshot(), nextIndex = currentPageIndex) => {
     if (!problemSetId || !dataUrl) return note;
     const nextPages = [...pages];
@@ -431,7 +445,8 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   const confirmDeletePage = () => {
     setDeletePageConfirmOpen(false);
     if (pages.length <= 1) return;
-    const nextPages = pages.filter((_, index) => index !== currentPageIndex);
+    const saved = updateCurrentPage();
+    const nextPages = saved.pages.filter((_, index) => index !== currentPageIndex);
     const nextIndex = Math.min(currentPageIndex, nextPages.length - 1);
     const nextNote: CategoryNote = {
       problemSetId: problemSetId ?? '',
@@ -769,6 +784,13 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
     drawDataUrlToContext(context, pageDataUrlRef.current, width, height);
   };
 
+  const handleClose = () => {
+    updateCurrentPage();
+    const pendingSave = noteSaveQueueRef.current;
+    void pendingSave
+      .catch(() => undefined)
+      .then(() => onClose?.());
+  };
   const selectColor = (key: NoteColorKey) => {
     setColorKey(key);
     setTool('pen');
@@ -788,7 +810,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
         <div className="category-note-drawer__header-actions">
           <button type="button" onClick={addPage}>{'\u8ffd\u52a0'}</button>
           <button type="button" className="category-note-drawer__danger-button" disabled={pages.length <= 1} onClick={deletePage}>{'\u524a\u9664'}</button>
-          {onClose ? <button type="button" onClick={onClose}>{'\u9589\u3058\u308b'}</button> : null}
+          {onClose ? <button type="button" onClick={handleClose}>{'\u9589\u3058\u308b'}</button> : null}
         </div>
       </header>
 

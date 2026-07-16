@@ -1,10 +1,12 @@
-﻿import type { AppData } from './types';
+import type { AppData } from './types';
 
 export const APP_DATA_STORAGE_KEY = 'quiz-make-app-data-v1';
 
 const APP_DB_NAME = 'quiz-make-app-data-v1';
 const APP_STORE_NAME = 'appData';
+const APP_BACKUP_STORE_NAME = 'appDataBackups';
 let appDbPromise: Promise<IDBDatabase> | null = null;
+let appSaveQueue: Promise<boolean> = Promise.resolve(true);
 
 export function createEmptyAppData(): AppData {
   return {
@@ -50,6 +52,14 @@ export function saveAppData(data: AppData): boolean {
 }
 
 export async function saveAppDataAsync(data: AppData): Promise<boolean> {
+  const queuedSave = appSaveQueue
+    .catch(() => true)
+    .then(() => saveAppDataNow(data));
+  appSaveQueue = queuedSave;
+  return queuedSave;
+}
+
+async function saveAppDataNow(data: AppData): Promise<boolean> {
   const raw = JSON.stringify(data);
 
   if (isIndexedDbAvailable()) {
@@ -137,10 +147,11 @@ function openAppDb(): Promise<IDBDatabase> {
   if (appDbPromise) return appDbPromise;
 
   appDbPromise = new Promise((resolve, reject) => {
-    const request = indexedDB.open(APP_DB_NAME, 1);
+    const request = indexedDB.open(APP_DB_NAME, 2);
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains(APP_STORE_NAME)) db.createObjectStore(APP_STORE_NAME);
+      if (!db.objectStoreNames.contains(APP_BACKUP_STORE_NAME)) db.createObjectStore(APP_BACKUP_STORE_NAME);
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error ?? new Error('Failed to open app data database.'));
@@ -158,25 +169,41 @@ async function getAppDataRawFromIndexedDb(): Promise<string | null> {
   if (!isIndexedDbAvailable()) return null;
   const db = await openAppDb();
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction(APP_STORE_NAME, 'readonly');
-    const request = transaction.objectStore(APP_STORE_NAME).get(APP_DATA_STORAGE_KEY);
-    request.onsuccess = () => resolve(typeof request.result === 'string' ? request.result : null);
+    const transaction = db.transaction([APP_STORE_NAME, APP_BACKUP_STORE_NAME], 'readonly');
+    const store = transaction.objectStore(APP_STORE_NAME);
+    const backupStore = transaction.objectStore(APP_BACKUP_STORE_NAME);
+    const request = store.get(APP_DATA_STORAGE_KEY);
+    request.onsuccess = () => {
+      if (typeof request.result === 'string' && tryParseAppDataRaw(request.result)) {
+        resolve(request.result);
+        return;
+      }
+      const backupRequest = backupStore.get(APP_DATA_STORAGE_KEY);
+      backupRequest.onsuccess = () => resolve(typeof backupRequest.result === 'string' ? backupRequest.result : null);
+      backupRequest.onerror = () => reject(backupRequest.error ?? new Error('Failed to read app data backup.'));
+    };
     request.onerror = () => reject(request.error ?? new Error('Failed to read app data.'));
   });
 }
-
 async function setAppDataRawToIndexedDb(raw: string): Promise<void> {
   const db = await openAppDb();
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction(APP_STORE_NAME, 'readwrite');
-    const request = transaction.objectStore(APP_STORE_NAME).put(raw, APP_DATA_STORAGE_KEY);
-    request.onerror = () => reject(request.error ?? new Error('Failed to save app data.'));
+    const transaction = db.transaction([APP_STORE_NAME, APP_BACKUP_STORE_NAME], 'readwrite');
+    const store = transaction.objectStore(APP_STORE_NAME);
+    const backupStore = transaction.objectStore(APP_BACKUP_STORE_NAME);
+    const currentRequest = store.get(APP_DATA_STORAGE_KEY);
+    currentRequest.onsuccess = () => {
+      if (typeof currentRequest.result === 'string' && currentRequest.result !== raw) {
+        backupStore.put(currentRequest.result, APP_DATA_STORAGE_KEY);
+      }
+      store.put(raw, APP_DATA_STORAGE_KEY);
+    };
+    currentRequest.onerror = () => reject(currentRequest.error ?? new Error('Failed to read app data before saving.'));
     transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(transaction.error ?? request.error ?? new Error('Failed to save app data.'));
+    transaction.onerror = () => reject(transaction.error ?? new Error('Failed to save app data.'));
     transaction.onabort = () => reject(transaction.error ?? new Error('Failed to save app data.'));
   });
 }
-
 function safeLocalStorageGet(key: string): string | null {
   try {
     return localStorage.getItem(key);

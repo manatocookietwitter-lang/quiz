@@ -1,5 +1,5 @@
-import { APP_DATA_STORAGE_KEY, createEmptyAppData, exportAppDataRaw, importAppDataRaw, isAppData, saveAppDataAsync } from '../storage';
-import { exportCategoryNotesRaw, isCategoryNoteKey, replaceCategoryNotesRaw } from './noteStorage';
+import { APP_DATA_STORAGE_KEY, exportAppDataRaw, importAppDataRaw, isAppData } from '../storage';
+import { exportCategoryNotesRaw, isCategoryNoteKey, mergeCategoryNotesRaw, replaceCategoryNotesRaw } from './noteStorage';
 export type SyncPayload = {
   version: 1;
   updatedAt: string;
@@ -241,7 +241,7 @@ export async function importQuizMakeData(payload: SyncPayload): Promise<SyncResu
 
     keysToRemove.forEach((key) => localStorage.removeItem(key));
 
-    let importedAppData = false;
+
     const noteEntries: Record<string, string> = { ...(validation.value.indexedDbNotes ?? {}) };
     Object.entries(validation.value.localStorage).forEach(([key, value]) => {
       if (key === APP_DATA_STORAGE_KEY) return;
@@ -253,10 +253,15 @@ export async function importQuizMakeData(payload: SyncPayload): Promise<SyncResu
     });
 
     const appDataRaw = validation.value.localStorage[APP_DATA_STORAGE_KEY];
-    if (appDataRaw) importedAppData = await importAppDataRaw(appDataRaw);
-    if (!importedAppData) await saveAppDataAsync(createEmptyAppData());
+    if (appDataRaw) {
+      const importedAppData = await importAppDataRaw(appDataRaw);
+      if (!importedAppData) {
+        return { ok: false, error: '同期データの問題データを保存できなかったため、既存データを保持しました。' };
+      }
+    }
 
-    const noteCount = await replaceCategoryNotesRaw(noteEntries);
+
+    const noteCount = await mergeCategoryNotesRaw(noteEntries);
 
     const now = new Date().toISOString();
     setLastSyncState({
@@ -529,16 +534,43 @@ export function summarizeSyncPayload(payload: SyncPayload): SyncPayloadSummary {
 
 export function validateSyncPayload(value: unknown): SyncResult<SyncPayload> {
   if (!isRecord(value)) return { ok: false, error: '同期データの形式が正しくありません。' };
-  if (value.version !== 1) return { ok: false, error: '同期データのversionが対応していません。' };
+  if (value.version !== 1) return { ok: false, error: '同期データのversionに対応していません。' };
   if (typeof value.updatedAt !== 'string') return { ok: false, error: '同期データのupdatedAtがありません。' };
-  if (!isStringRecord(value.localStorage)) return { ok: false, error: '同期データ内のlocalStorage形式が正しくありません。' };
+  if (!isStringRecord(value.localStorage)) return { ok: false, error: '同期データのlocalStorage形式が正しくありません。' };
 
   const invalidKey = Object.keys(value.localStorage).find((key) => !isQuizMakeStorageKey(key));
-  if (invalidKey) return { ok: false, error: `Quiz make以外のキーが含まれています: ${invalidKey}` };
+  if (invalidKey) return { ok: false, error: 'Quiz make以外のキーが含まれています: ' + invalidKey };
 
-  return { ok: true, value: { version: 1, updatedAt: value.updatedAt, localStorage: sortRecord(value.localStorage) } };
+  const indexedDbNotesValue = value.indexedDbNotes;
+  if (indexedDbNotesValue !== undefined && !isStringRecord(indexedDbNotesValue)) {
+    return { ok: false, error: '同期データのindexedDbNotes形式が正しくありません。' };
+  }
+  const indexedDbNotes = indexedDbNotesValue ?? {};
+  const invalidNoteKey = Object.keys(indexedDbNotes).find((key) => !isCategoryNoteKey(key));
+  if (invalidNoteKey) return { ok: false, error: 'ノート以外のキーが含まれています: ' + invalidNoteKey };
+
+  const appDataRaw = value.localStorage[APP_DATA_STORAGE_KEY];
+  if (appDataRaw !== undefined) {
+    try {
+      const appData = JSON.parse(appDataRaw) as unknown;
+      if (!isAppData(appData)) {
+        return { ok: false, error: '同期データの問題データ形式が正しくありません。既存データは変更していません。' };
+      }
+    } catch {
+      return { ok: false, error: '同期データの問題データJSONを読み込めません。既存データは変更していません。' };
+    }
+  }
+
+  return {
+    ok: true,
+    value: {
+      version: 1,
+      updatedAt: value.updatedAt,
+      localStorage: sortRecord(value.localStorage),
+      indexedDbNotes: sortRecord(indexedDbNotes),
+    },
+  };
 }
-
 
 async function responseToDiagnosticStep(response: Response, name: string, successMessage: string): Promise<SyncDiagnosticStep> {
   if (response.ok) return { name, ok: true, message: successMessage };
