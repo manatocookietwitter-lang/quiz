@@ -480,80 +480,90 @@ function AnswerPanel({
   const dragOffsetRef = useRef(0);
   const dragFrameRef = useRef<number | null>(null);
   const dragStartYRef = useRef(0);
-  const dragStartTimeRef = useRef(0);
   const startStateRef = useRef<AnswerSheetState>('default');
+  const startHeightRef = useRef(280);
 
-  const SNAP_THRESHOLD = 80;
-  const VELOCITY_THRESHOLD = 0.5;
+  const getBaseSheetHeight = (targetState: AnswerSheetState) => {
+    if (targetState === 'hidden') return 64;
+
+    const rootStyle = getComputedStyle(document.documentElement);
+    const safeTop = Number.parseFloat(rootStyle.getPropertyValue('--safe-top')) || 0;
+    const safeBottom = Number.parseFloat(rootStyle.getPropertyValue('--safe-bottom')) || 0;
+    const viewportHeight = Math.max(0, window.innerHeight - safeTop - safeBottom);
+    const isMobile = window.matchMedia('(max-width: 899px)').matches;
+
+    if (targetState === 'default') {
+      return isMobile ? Math.max(216, Math.min(280, viewportHeight - 128)) : 280;
+    }
+
+    const availableHeight = isMobile ? viewportHeight - 104 : viewportHeight - 88;
+    return Math.max(320, Math.min(620, availableHeight));
+  };
 
   const clampDragOffset = (deltaY: number) => {
-    const startState = startStateRef.current;
-    const startHeight = getBaseSheetHeight(startState);
+    const startHeight = startHeightRef.current;
     const hiddenHeight = getBaseSheetHeight('hidden');
-    const defaultHeight = getBaseSheetHeight('default');
     const expandedHeight = getBaseSheetHeight('expanded');
+    const minDelta = startHeight - expandedHeight;
+    const maxDelta = startHeight - hiddenHeight;
     const resistance = 0.22;
-
-    let minDelta = 0;
-    let maxDelta = 0;
-
-    if (startState === 'hidden') {
-      minDelta = hiddenHeight - defaultHeight;
-    } else if (startState === 'default') {
-      minDelta = defaultHeight - expandedHeight;
-      maxDelta = defaultHeight - hiddenHeight;
-    } else {
-      maxDelta = expandedHeight - defaultHeight;
-    }
 
     if (deltaY < minDelta) return minDelta + (deltaY - minDelta) * resistance;
     if (deltaY > maxDelta) return maxDelta + (deltaY - maxDelta) * resistance;
     return deltaY;
   };
 
-  const snapByDrag = (deltaY: number, velocityY: number) => {
-    const fastUp = velocityY < -VELOCITY_THRESHOLD;
-    const fastDown = velocityY > VELOCITY_THRESHOLD;
+  const snapByDrag = (dragOffset: number) => {
+    const draggedHeight = startHeightRef.current - dragOffset;
+    const states: AnswerSheetState[] = ['expanded', 'default', 'hidden'];
+    let nearestState = states[0];
+    let nearestDistance = Math.abs(getBaseSheetHeight(nearestState) - draggedHeight);
 
-    if (startStateRef.current === 'default') {
-      if (deltaY < -SNAP_THRESHOLD || fastUp) onExpand();
-      else if (deltaY > SNAP_THRESHOLD || fastDown) onHide();
-      else onDefault();
-      return;
+    for (const candidate of states.slice(1)) {
+      const distance = Math.abs(getBaseSheetHeight(candidate) - draggedHeight);
+      if (distance < nearestDistance) {
+        nearestState = candidate;
+        nearestDistance = distance;
+      }
     }
 
-    if (startStateRef.current === 'expanded') {
-      if (deltaY > SNAP_THRESHOLD || fastDown) onDefault();
-      else onExpand();
-      return;
-    }
-
-    if (deltaY < -SNAP_THRESHOLD || fastUp) onDefault();
-    else onHide();
+    if (nearestState === 'expanded') onExpand();
+    else if (nearestState === 'hidden') onHide();
+    else onDefault();
   };
 
-  const resetDrag = () => {
+  const resetDrag = (deferHeightReset = false) => {
     if (dragFrameRef.current !== null) {
       cancelAnimationFrame(dragFrameRef.current);
       dragFrameRef.current = null;
     }
+
     draggingRef.current = false;
     setIsDragging(false);
     dragOffsetRef.current = 0;
-    sheetRef.current?.style.removeProperty('height');
+
+    const clearInlineHeight = () => {
+      sheetRef.current?.style.removeProperty('height');
+    };
+
+    if (deferHeightReset) requestAnimationFrame(clearInlineHeight);
+    else clearInlineHeight();
   };
 
   const cancelDrag = (event: PointerEvent<HTMLElement>) => {
-    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) return;
+    if (event.type === 'pointerleave' && event.currentTarget.hasPointerCapture?.(event.pointerId)) return;
+    if (!draggingRef.current) return;
     resetDrag();
     event.currentTarget.releasePointerCapture?.(event.pointerId);
   };
 
   const handlePointerDown = (event: PointerEvent<HTMLElement>) => {
     if (event.pointerType === 'mouse' && event.button !== 0) return;
+
     dragStartYRef.current = event.clientY;
-    dragStartTimeRef.current = performance.now();
     startStateRef.current = state;
+    startHeightRef.current =
+      sheetRef.current?.getBoundingClientRect().height ?? getBaseSheetHeight(state);
     draggingRef.current = true;
     setIsDragging(true);
     dragOffsetRef.current = 0;
@@ -563,40 +573,33 @@ function AnswerPanel({
   const handlePointerMove = (event: PointerEvent<HTMLElement>) => {
     if (!draggingRef.current) return;
     event.preventDefault();
+
     const deltaY = event.clientY - dragStartYRef.current;
     dragOffsetRef.current = clampDragOffset(deltaY);
+
     if (dragFrameRef.current === null) {
       dragFrameRef.current = requestAnimationFrame(() => {
         dragFrameRef.current = null;
         if (!sheetRef.current || !draggingRef.current) return;
-        sheetRef.current.style.height = `${getDraggedSheetHeight()}px`;
+        sheetRef.current.style.height = String(getDraggedSheetHeight()) + 'px';
       });
     }
   };
 
   const handlePointerUp = (event: PointerEvent<HTMLElement>) => {
     if (!draggingRef.current) return;
-    const deltaY = event.clientY - dragStartYRef.current;
-    const elapsed = Math.max(1, performance.now() - dragStartTimeRef.current);
-    snapByDrag(deltaY, deltaY / elapsed);
-    resetDrag();
+
+    snapByDrag(dragOffsetRef.current);
+    resetDrag(true);
     event.currentTarget.releasePointerCapture?.(event.pointerId);
   };
 
-  const getBaseSheetHeight = (targetState: AnswerSheetState) => {
-    if (targetState === 'hidden') return 64;
-    if (targetState === 'default') return 280;
-    const rootStyle = getComputedStyle(document.documentElement);
-    const safeTop = Number.parseFloat(rootStyle.getPropertyValue('--safe-top')) || 0;
-    const safeBottom = Number.parseFloat(rootStyle.getPropertyValue('--safe-bottom')) || 0;
-    return Math.max(320, Math.min(620, window.innerHeight - safeTop - safeBottom - 88));
+  const getDraggedSheetHeight = () => {
+    const expandedHeight = getBaseSheetHeight('expanded');
+    const maxHeight = Math.max(expandedHeight, window.innerHeight - 40);
+    return Math.max(48, Math.min(maxHeight, startHeightRef.current - dragOffsetRef.current));
   };
 
-  const getDraggedSheetHeight = () => {
-    const baseHeight = getBaseSheetHeight(startStateRef.current);
-    const maxHeight = Math.max(320, window.innerHeight - 40);
-    return Math.max(64, Math.min(maxHeight, baseHeight - dragOffsetRef.current));
-  };
   const dragProps = {
     onPointerDown: handlePointerDown,
     onPointerMove: handlePointerMove,
@@ -604,7 +607,6 @@ function AnswerPanel({
     onPointerCancel: cancelDrag,
     onPointerLeave: cancelDrag,
   };
-
 
   if (state === 'hidden') {
     return (
