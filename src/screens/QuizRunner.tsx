@@ -21,10 +21,11 @@ interface QuizRunnerProps {
   onBack: () => void;
   onAnswer: (question: Question, selectedIndexes: number[], isReviewMode: boolean) => { isCorrect: boolean; addedToReview: boolean; levelLabel?: string };
   onToggleAmbiguous: (questionId: string) => void;
+  onSaveDetailedExplanation: (questionId: string, detailedExplanation: string) => void;
   onFinish: (result: QuizResult) => void;
 }
 
-export function QuizRunner({ data, title, subtitle, questions, mode, setId, initialIndex = 0, onBack, onAnswer, onToggleAmbiguous, onFinish }: QuizRunnerProps) {
+export function QuizRunner({ data, title, subtitle, questions, mode, setId, initialIndex = 0, onBack, onAnswer, onToggleAmbiguous, onSaveDetailedExplanation, onFinish }: QuizRunnerProps) {
   const [currentIndex, setCurrentIndex] = useState(() => Math.min(Math.max(initialIndex, 0), Math.max(questions.length - 1, 0)));
   const [selectedIndexes, setSelectedIndexes] = useState<number[]>([]);
   const [lastCorrect, setLastCorrect] = useState<boolean | null>(null);
@@ -270,6 +271,8 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
             isCorrect={lastCorrect === true}
             answer={answerText}
             explanation={currentQuestion.explanation}
+            detailedExplanation={currentQuestion.detailedExplanation ?? ''}
+            questionId={currentQuestion.id}
             sourcePage={currentQuestion.sourcePage}
             savedLevelLabel={savedLevelLabel}
             isAmbiguous={progress?.isAmbiguous ?? false}
@@ -279,6 +282,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
             onDefault={() => setAnswerSheetState('default')}
             onHide={() => setAnswerSheetState('hidden')}
             onToggleAmbiguous={handleAmbiguous}
+            onSaveDetailedExplanation={(value) => onSaveDetailedExplanation(currentQuestion.id, value)}
             onNext={handleNext}
           />,
           document.body,
@@ -446,9 +450,11 @@ function splitTextByPhrases(text: string, phrases: string[]) {
 }
 
 function AnswerPanel({
+  questionId,
   isCorrect,
   answer,
   explanation,
+  detailedExplanation,
   sourcePage,
   savedLevelLabel,
   isAmbiguous,
@@ -458,11 +464,14 @@ function AnswerPanel({
   onDefault,
   onHide,
   onToggleAmbiguous,
+  onSaveDetailedExplanation,
   onNext,
 }: {
+  questionId: string;
   isCorrect: boolean;
   answer: string;
   explanation: string;
+  detailedExplanation: string;
   sourcePage: string;
   savedLevelLabel: string;
   isAmbiguous: boolean;
@@ -472,9 +481,13 @@ function AnswerPanel({
   onDefault: () => void;
   onHide: () => void;
   onToggleAmbiguous: () => void;
+  onSaveDetailedExplanation: (value: string) => void;
   onNext: () => void;
 }) {
   const [isDragging, setIsDragging] = useState(false);
+  const [panelPage, setPanelPage] = useState<'answer' | 'detail'>('answer');
+  const [detailText, setDetailText] = useState(detailedExplanation);
+  const [detailMessage, setDetailMessage] = useState('');
   const sheetRef = useRef<HTMLElement | null>(null);
   const draggingRef = useRef(false);
   const dragOffsetRef = useRef(0);
@@ -484,8 +497,17 @@ function AnswerPanel({
   const lastPointerYRef = useRef(0);
   const lastPointerTimeRef = useRef(0);
   const velocityYRef = useRef(0);
-  const startStateRef = useRef<AnswerSheetState>('default');
   const startHeightRef = useRef(320);
+  const detailSwipeStartRef = useRef<{ x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    setDetailText(detailedExplanation);
+    setDetailMessage('');
+  }, [questionId, detailedExplanation]);
+
+  useEffect(() => {
+    setPanelPage('answer');
+  }, [questionId, state]);
 
   const getBaseSheetHeight = (targetState: AnswerSheetState) => {
     if (targetState === 'hidden') return 64;
@@ -530,6 +552,7 @@ function AnswerPanel({
       onHide();
       return;
     }
+
     const draggedHeight = startHeightRef.current - dragOffset;
     const states: AnswerSheetState[] = ['expanded', 'default', 'hidden'];
     let nearestState = states[0];
@@ -582,9 +605,7 @@ function AnswerPanel({
     lastPointerYRef.current = event.clientY;
     lastPointerTimeRef.current = now;
     velocityYRef.current = 0;
-    startStateRef.current = state;
-    startHeightRef.current =
-      sheetRef.current?.getBoundingClientRect().height ?? getBaseSheetHeight(state);
+    startHeightRef.current = sheetRef.current?.getBoundingClientRect().height ?? getBaseSheetHeight(state);
     draggingRef.current = true;
     setIsDragging(true);
     dragOffsetRef.current = 0;
@@ -600,8 +621,7 @@ function AnswerPanel({
     if (elapsed > 0) velocityYRef.current = (event.clientY - lastPointerYRef.current) / elapsed;
     lastPointerYRef.current = event.clientY;
     lastPointerTimeRef.current = now;
-    const deltaY = event.clientY - dragStartYRef.current;
-    dragOffsetRef.current = clampDragOffset(deltaY);
+    dragOffsetRef.current = clampDragOffset(event.clientY - dragStartYRef.current);
 
     if (dragFrameRef.current === null) {
       dragFrameRef.current = requestAnimationFrame(() => {
@@ -637,54 +657,205 @@ function AnswerPanel({
     onPointerLeave: cancelDrag,
   };
 
+  const handleDetailPointerDown = (event: PointerEvent<HTMLElement>) => {
+    if (panelPage !== 'answer' || (event.pointerType === 'mouse' && event.button !== 0)) return;
+    detailSwipeStartRef.current = { x: event.clientX, y: event.clientY };
+  };
+
+  const handleDetailPointerUp = (event: PointerEvent<HTMLElement>) => {
+    const start = detailSwipeStartRef.current;
+    detailSwipeStartRef.current = null;
+    if (!start || state !== 'expanded' || panelPage !== 'answer') return;
+
+    const deltaX = event.clientX - start.x;
+    const deltaY = event.clientY - start.y;
+    if (Math.abs(deltaX) < 44 || Math.abs(deltaX) < Math.abs(deltaY) * 1.15) return;
+    setPanelPage(deltaX > 0 ? 'detail' : 'answer');
+  };
+
+  const handleClipboardRead = async () => {
+    try {
+      if (!navigator.clipboard?.readText) throw new Error('clipboard unavailable');
+      const value = await navigator.clipboard.readText();
+      setDetailText(value);
+      setDetailMessage(value ? '\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u304b\u3089\u8aad\u307f\u8fbc\u307f\u307e\u3057\u305f' : '\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u304c\u7a7a\u3067\u3059');
+    } catch {
+      setDetailMessage('\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3092\u8aad\u307f\u8fbc\u3081\u307e\u305b\u3093\u3067\u3057\u305f');
+    }
+  };
+
+  const handleSaveDetail = () => {
+    onSaveDetailedExplanation(detailText);
+    setDetailMessage('\u8a73\u7d30\u89e3\u8aac\u3092\u767b\u9332\u3057\u307e\u3057\u305f');
+  };
+
+  const detailSwipeProps = {
+    onPointerDown: handleDetailPointerDown,
+    onPointerUp: handleDetailPointerUp,
+    onPointerCancel: () => { detailSwipeStartRef.current = null; },
+  };
+
+  const answerPage = (
+    <div className="answer-sheet__content-page">
+      <div className="answer-sheet__answer-box">
+        <p className="answer-sheet__label">{'\u6b63\u89e3'}</p>
+        <p className="answer-sheet__answer-text">{answer}</p>
+      </div>
+      <div className="answer-sheet__explanation-block">
+        <p className="answer-sheet__label">{'\u89e3\u8aac'}</p>
+        <ExplanationContent text={explanation} className="answer-sheet__explanation-text" />
+        {sourcePage ? <p className="answer-sheet__source">{'\u53c2\u7167\uff1a'}{sourcePage}</p> : null}
+        {state === 'expanded' ? (
+          <button type="button" className="answer-sheet__detail-open" onClick={() => setPanelPage('detail')}>
+            {'\u8a73\u7d30\u89e3\u8aac'} {'\u203a'}
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+
+  const detailPage = (
+    <div className="answer-sheet__content-page answer-sheet__detail-page">
+      <div className="answer-sheet__detail-heading">
+        <button type="button" className="answer-sheet__detail-back" onClick={() => setPanelPage('answer')}>
+          {'\u2039'} {'\u89e3\u7b54\u306b\u623b\u308b'}
+        </button>
+        <strong>{'\u8a73\u7d30\u89e3\u8aac'}</strong>
+      </div>
+      <button type="button" className="answer-sheet__clipboard-button" onClick={() => void handleClipboardRead()}>
+        {'\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u304b\u3089\u30b3\u30d4\u30fc'}
+      </button>
+      <textarea
+        className="answer-sheet__detail-input"
+        value={detailText}
+        onChange={(event) => setDetailText(event.target.value)}
+        placeholder={'\u8a73\u7d30\u89e3\u8aac\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044'}
+        aria-label={'\u8a73\u7d30\u89e3\u8aac'}
+      />
+      <div className="answer-sheet__detail-preview">
+        <p className="answer-sheet__label">{'\u8868\u793a\u30d7\u30ec\u30d3\u30e5\u30fc'}</p>
+        {detailText.trim() ? (
+          <ExplanationContent text={detailText} className="answer-sheet__explanation-text" />
+        ) : (
+          <p className="answer-sheet__detail-empty">{'\u8a73\u7d30\u89e3\u8aac\u306f\u307e\u3060\u767b\u9332\u3055\u308c\u3066\u3044\u307e\u305b\u3093'}</p>
+        )}
+      </div>
+      <button type="button" className="answer-sheet__detail-save" onClick={handleSaveDetail}>
+        {'\u8a73\u7d30\u89e3\u8aac\u3092\u767b\u9332'}
+      </button>
+      {detailMessage ? <p className="answer-sheet__detail-message">{detailMessage}</p> : null}
+    </div>
+  );
+
   if (state === 'hidden') {
     return (
       <section ref={sheetRef} className={'answer-sheet answer-sheet--hidden ' + (isDragging ? 'answer-sheet--dragging' : '')} {...dragProps}>
         <div className="answer-sheet__hidden-handle" />
         <div className="answer-sheet__hidden-bar">
-          <span className={`answer-sheet__hidden-result ${isCorrect ? 'answer-sheet__hidden-result--correct' : 'answer-sheet__hidden-result--wrong'}`}>{isCorrect ? '\u6b63\u89e3' : '\u4e0d\u6b63\u89e3'}</span>
+          <span className={'answer-sheet__hidden-result ' + (isCorrect ? 'answer-sheet__hidden-result--correct' : 'answer-sheet__hidden-result--wrong')}>{isCorrect ? '\u6b63\u89e3' : '\u4e0d\u6b63\u89e3'}</span>
           <button type="button" className="answer-sheet__hidden-open" onClick={onDefault}>{'\u89e3\u7b54\u3092\u898b\u308b'}</button>
-          <button type="button" className="answer-sheet__hidden-next" onClick={onNext}>
-            {isLast ? '\u7d50\u679c\u3078' : '\u6b21\u3078'}
-          </button>
+          <button type="button" className="answer-sheet__hidden-next" onClick={onNext}>{isLast ? '\u7d50\u679c\u3078' : '\u6b21\u3078'}</button>
         </div>
       </section>
     );
   }
+
   return (
     <section ref={sheetRef} className={'answer-sheet answer-sheet--' + state + ' ' + (isDragging ? 'answer-sheet--dragging' : '')}>
       <div className="answer-sheet__drag-area" {...dragProps}>
         <div className="answer-sheet__drag-handle" />
       </div>
-
       <div className="answer-sheet__fixed">
         <div>
-          <div className={`answer-sheet__result ${isCorrect ? 'answer-sheet__result--correct' : 'answer-sheet__result--wrong'}`}>{isCorrect ? '\u6b63\u89e3' : '\u4e0d\u6b63\u89e3'}</div>
+          <div className={'answer-sheet__result ' + (isCorrect ? 'answer-sheet__result--correct' : 'answer-sheet__result--wrong')}>{isCorrect ? '\u6b63\u89e3' : '\u4e0d\u6b63\u89e3'}</div>
           {savedLevelLabel ? <p className="answer-sheet__saved">{savedLevelLabel}</p> : null}
         </div>
         <button type="button" onClick={onHide} className="answer-sheet__hide-button">{'\u3057\u307e\u3046'}</button>
       </div>
-
-      <div className="answer-sheet__scroll no-scrollbar">
-        <div className="answer-sheet__answer-box">
-          <p className="answer-sheet__label">{'\u6b63\u89e3'}</p>
-          <p className="answer-sheet__answer-text">{answer}</p>
-        </div>
-        <div className="answer-sheet__explanation-block">
-          <p className="answer-sheet__label">{'\u89e3\u8aac'}</p>
-          <div className="answer-sheet__explanation-text">{explanation}</div>
-          {sourcePage ? <p className="answer-sheet__source">{'\u53c2\u7167\uff1a'}{sourcePage}</p> : null}
-        </div>
+      <div className={'answer-sheet__scroll ' + (state === 'expanded' ? 'answer-sheet__scroll--pages' : '')} {...(state === 'expanded' ? detailSwipeProps : {})}>
+        {state === 'expanded' ? (
+          <div className={'answer-sheet__content-rail ' + (panelPage === 'detail' ? 'answer-sheet__content-rail--detail' : '')}>
+            {answerPage}
+            {detailPage}
+          </div>
+        ) : answerPage}
       </div>
-
       <div className="answer-sheet__actions">
-        <button type="button" onClick={onToggleAmbiguous} className="answer-sheet__action answer-sheet__action--secondary">
+        <button type="button" onClick={onToggleAmbiguous} className={'answer-sheet__action answer-sheet__action--secondary' + (isAmbiguous ? ' answer-sheet__action--ambiguous' : '')}>
           {isAmbiguous ? '\u66d6\u6627\u3092\u89e3\u9664' : '\u66d6\u6627\u3068\u3057\u3066\u767b\u9332'}
         </button>
-        <button type="button" onClick={onNext} className="answer-sheet__action answer-sheet__action--primary">
-          {isLast ? '\u7d50\u679c\u3078' : '\u6b21\u3078'}
-        </button>
+        <button type="button" onClick={onNext} className="answer-sheet__action answer-sheet__action--primary">{isLast ? '\u7d50\u679c\u3078' : '\u6b21\u3078'}</button>
       </div>
     </section>
   );
+}
+
+function ExplanationContent({ text, className }: { text: string; className: string }) {
+  const blocks = parseExplanationBlocks(text);
+  return (
+    <div className={className}>
+      {blocks.map((block, blockIndex) => block.kind === 'table' ? (
+        <div className="answer-sheet__markdown-table-wrap" key={'table-' + blockIndex}>
+          <table className="answer-sheet__markdown-table">
+            <thead>
+              <tr>{block.headers.map((cell, index) => <th key={'head-' + index}>{cell}</th>)}</tr>
+            </thead>
+            <tbody>
+              {block.rows.map((row, rowIndex) => (
+                <tr key={'row-' + rowIndex}>
+                  {row.map((cell, cellIndex) => <td key={'cell-' + rowIndex + '-' + cellIndex}>{cell}</td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="answer-sheet__markdown-paragraph" key={'paragraph-' + blockIndex}>
+          {block.lines.map((line, lineIndex) => <span key={'line-' + lineIndex}>{line}{lineIndex < block.lines.length - 1 ? <br /> : null}</span>)}
+        </p>
+      ))}
+    </div>
+  );
+}
+
+function parseExplanationBlocks(text: string): Array<
+  | { kind: 'paragraph'; lines: string[] }
+  | { kind: 'table'; headers: string[]; rows: string[][] }
+> {
+  const lines = text.replace(/\r\n?/g, '\n').split('\n');
+  const blocks: Array<
+    | { kind: 'paragraph'; lines: string[] }
+    | { kind: 'table'; headers: string[]; rows: string[][] }
+  > = [];
+  let paragraph: string[] = [];
+
+  const flushParagraph = () => {
+    if (paragraph.some((line) => line.trim())) blocks.push({ kind: 'paragraph', lines: paragraph });
+    paragraph = [];
+  };
+
+  const parseRow = (line: string) => line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((cell) => cell.trim());
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const divider = lines[index + 1] ?? '';
+    if (line.includes('|') && /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(divider)) {
+      flushParagraph();
+      const headers = parseRow(line);
+      const rows: string[][] = [];
+      index += 2;
+      while (index < lines.length && lines[index].includes('|') && lines[index].trim() !== '') {
+        rows.push(parseRow(lines[index]));
+        index += 1;
+      }
+      index -= 1;
+      blocks.push({ kind: 'table', headers, rows });
+      continue;
+    }
+    if (line.trim() === '') flushParagraph();
+    else paragraph.push(line);
+  }
+
+  flushParagraph();
+  return blocks;
 }

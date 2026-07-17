@@ -22,6 +22,7 @@ import {
   deleteProblemSet,
   recordAnswer,
   toggleAmbiguous,
+  updateQuestionDetailedExplanation,
 } from './utils/quiz';
 import { validateImportJson } from './utils/importValidator';
 import { exportQuizMakeData, importQuizMakeData, summarizeSyncPayload, validateSyncPayload, type SyncPayload, type SyncPayloadSummary } from './utils/syncService';
@@ -213,6 +214,7 @@ export default function App() {
         .filter(Boolean)
         .join(' / '),
       explanation: question.explanation,
+      detailedExplanation: question.detailedExplanation ?? '',
       sourcePage: question.sourcePage ?? '',
       category: question.category ?? '',
       difficulty: question.difficulty ?? 'basic',
@@ -264,6 +266,10 @@ export default function App() {
 
   const handleToggleAmbiguous = (questionId: string) => {
     commitData(toggleAmbiguous(dataRef.current, questionId));
+  };
+
+  const handleSaveDetailedExplanation = (questionId: string, detailedExplanation: string) => {
+    commitData(updateQuestionDetailedExplanation(dataRef.current, questionId, detailedExplanation));
   };
 
   const handleClearAll = () => {
@@ -453,6 +459,7 @@ export default function App() {
         onBack={() => goBackTo({ name: 'folder', folderId: problemSet?.folderId ?? '' })}
         onAnswer={handleAnswer}
         onToggleAmbiguous={handleToggleAmbiguous}
+        onSaveDetailedExplanation={handleSaveDetailedExplanation}
         onFinish={handleFinish}
       />
     );
@@ -470,6 +477,7 @@ export default function App() {
         onBack={() => goBackTo(screen.session.backScreen)}
         onAnswer={handleAnswer}
         onToggleAmbiguous={handleToggleAmbiguous}
+        onSaveDetailedExplanation={handleSaveDetailedExplanation}
         onFinish={handleFinish}
       />
     );
@@ -481,6 +489,7 @@ export default function App() {
         onBack={goHome}
         onAnswer={handleAnswer}
         onToggleAmbiguous={handleToggleAmbiguous}
+        onSaveDetailedExplanation={handleSaveDetailedExplanation}
         onFinish={handleFinish}
       />
     );
