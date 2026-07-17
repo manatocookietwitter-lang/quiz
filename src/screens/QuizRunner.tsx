@@ -480,8 +480,12 @@ function AnswerPanel({
   const dragOffsetRef = useRef(0);
   const dragFrameRef = useRef<number | null>(null);
   const dragStartYRef = useRef(0);
+  const dragStartTimeRef = useRef(0);
+  const lastPointerYRef = useRef(0);
+  const lastPointerTimeRef = useRef(0);
+  const velocityYRef = useRef(0);
   const startStateRef = useRef<AnswerSheetState>('default');
-  const startHeightRef = useRef(280);
+  const startHeightRef = useRef(320);
 
   const getBaseSheetHeight = (targetState: AnswerSheetState) => {
     if (targetState === 'hidden') return 64;
@@ -493,7 +497,9 @@ function AnswerPanel({
     const isMobile = window.matchMedia('(max-width: 899px)').matches;
 
     if (targetState === 'default') {
-      return isMobile ? Math.max(216, Math.min(280, viewportHeight - 128)) : 280;
+      if (!isMobile) return 320;
+      if (window.matchMedia('(max-width: 380px) and (max-height: 720px)').matches) return 272;
+      return Math.max(240, Math.min(320, viewportHeight - 128));
     }
 
     const availableHeight = isMobile ? viewportHeight - 104 : viewportHeight - 88;
@@ -513,7 +519,17 @@ function AnswerPanel({
     return deltaY;
   };
 
-  const snapByDrag = (dragOffset: number) => {
+  const snapByDrag = (dragOffset: number, velocityY: number) => {
+    const FAST_SWIPE_VELOCITY = 0.45;
+    const MIN_SWIPE_DISTANCE = 18;
+    if (dragOffset <= -MIN_SWIPE_DISTANCE && velocityY <= -FAST_SWIPE_VELOCITY) {
+      onExpand();
+      return;
+    }
+    if (dragOffset >= MIN_SWIPE_DISTANCE && velocityY >= FAST_SWIPE_VELOCITY) {
+      onHide();
+      return;
+    }
     const draggedHeight = startHeightRef.current - dragOffset;
     const states: AnswerSheetState[] = ['expanded', 'default', 'hidden'];
     let nearestState = states[0];
@@ -560,7 +576,12 @@ function AnswerPanel({
   const handlePointerDown = (event: PointerEvent<HTMLElement>) => {
     if (event.pointerType === 'mouse' && event.button !== 0) return;
 
+    const now = performance.now();
     dragStartYRef.current = event.clientY;
+    dragStartTimeRef.current = now;
+    lastPointerYRef.current = event.clientY;
+    lastPointerTimeRef.current = now;
+    velocityYRef.current = 0;
     startStateRef.current = state;
     startHeightRef.current =
       sheetRef.current?.getBoundingClientRect().height ?? getBaseSheetHeight(state);
@@ -574,6 +595,11 @@ function AnswerPanel({
     if (!draggingRef.current) return;
     event.preventDefault();
 
+    const now = performance.now();
+    const elapsed = now - lastPointerTimeRef.current;
+    if (elapsed > 0) velocityYRef.current = (event.clientY - lastPointerYRef.current) / elapsed;
+    lastPointerYRef.current = event.clientY;
+    lastPointerTimeRef.current = now;
     const deltaY = event.clientY - dragStartYRef.current;
     dragOffsetRef.current = clampDragOffset(deltaY);
 
@@ -589,7 +615,10 @@ function AnswerPanel({
   const handlePointerUp = (event: PointerEvent<HTMLElement>) => {
     if (!draggingRef.current) return;
 
-    snapByDrag(dragOffsetRef.current);
+    const elapsed = performance.now() - dragStartTimeRef.current;
+    const totalVelocityY = elapsed > 0 ? (event.clientY - dragStartYRef.current) / elapsed : velocityYRef.current;
+    const velocityY = Math.abs(velocityYRef.current) >= 0.45 ? velocityYRef.current : totalVelocityY;
+    snapByDrag(dragOffsetRef.current, velocityY);
     resetDrag(true);
     event.currentTarget.releasePointerCapture?.(event.pointerId);
   };

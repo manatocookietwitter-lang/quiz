@@ -483,9 +483,9 @@ button:disabled {
 }
 
 .answer-sheet--default {
-  height: 280px;
+  height: 320px;
   max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 100px);
-  min-height: 220px;
+  min-height: 240px;
 }
 
 .answer-sheet--expanded {
@@ -966,8 +966,8 @@ button:disabled {
   }
 
   .answer-sheet--default {
-    height: min(280px, calc(100dvh - var(--safe-top) - var(--safe-bottom) - 128px));
-    min-height: 216px;
+    height: min(320px, calc(100dvh - var(--safe-top) - var(--safe-bottom) - 128px));
+    min-height: 240px;
   }
 
   .answer-sheet--expanded {
@@ -999,7 +999,7 @@ button:disabled {
   }
 
   .answer-sheet--default {
-    height: 248px;
-    min-height: 208px;
+    height: 272px;
+    min-height: 224px;
   }
 }
