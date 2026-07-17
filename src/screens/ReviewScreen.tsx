@@ -10,10 +10,11 @@ interface ReviewScreenProps {
   onBack: () => void;
   onAnswer: (question: Question, selectedIndexes: number[], isReviewMode: boolean) => { isCorrect: boolean; addedToReview: boolean; levelLabel?: string };
   onToggleAmbiguous: (questionId: string) => void;
+  onSaveDetailedExplanation: (questionId: string, detailedExplanation: string) => void;
   onFinish: (result: QuizResult) => void;
 }
 
-export function ReviewScreen({ data, onBack, onAnswer, onToggleAmbiguous, onFinish }: ReviewScreenProps) {
+export function ReviewScreen({ data, onBack, onAnswer, onToggleAmbiguous, onSaveDetailedExplanation, onFinish }: ReviewScreenProps) {
   const [sessionQuestions] = useState<Question[]>(() => getReviewQuestions(data));
 
   if (sessionQuestions.length === 0) {
@@ -50,6 +51,7 @@ export function ReviewScreen({ data, onBack, onAnswer, onToggleAmbiguous, onFini
       onBack={onBack}
       onAnswer={onAnswer}
       onToggleAmbiguous={onToggleAmbiguous}
+      onSaveDetailedExplanation={onSaveDetailedExplanation}
       onFinish={onFinish}
     />
   );

@@ -249,6 +249,7 @@ export function validateImportJson(text: string): ValidationResult {
           ? rawQuestion.answerText
           : answerIndexes.map((index) => choices[index]).join(' / '),
         explanation: rawQuestion.explanation,
+        detailedExplanation: typeof rawQuestion.detailedExplanation === 'string' ? rawQuestion.detailedExplanation : '',
         sourcePage: getSourcePage(rawQuestion),
         category: typeof rawQuestion.category === 'string' && rawQuestion.category.trim() !== '' ? rawQuestion.category : '未分類',
         difficulty: typeof rawQuestion.difficulty === 'string' ? rawQuestion.difficulty : 'basic',

@@ -260,6 +260,11 @@ export function toggleAmbiguous(data: AppData, questionId: string): AppData {
   return { ...data, progress: upsertProgress(data.progress, nextProgress) };
 }
 
+export function updateQuestionDetailedExplanation(data: AppData, questionId: string, detailedExplanation: string): AppData {
+  const updatedAt = nowIso();
+  return { ...data, questions: data.questions.map((question) => question.id === questionId ? { ...question, detailedExplanation, updatedAt } : question) };
+}
+
 export function groupReviewQuestionsByLevel(data: AppData, questions: Question[]) {
   const groups: Record<'ambiguous' | 'level0' | 'level1' | 'level2' | 'level3', Question[]> = {
     ambiguous: [],

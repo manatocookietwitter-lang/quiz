@@ -10,10 +10,11 @@ interface QuizScreenProps {
   onBack: () => void;
   onAnswer: (question: Question, selectedIndexes: number[], isReviewMode: boolean) => { isCorrect: boolean; addedToReview: boolean; levelLabel?: string };
   onToggleAmbiguous: (questionId: string) => void;
+  onSaveDetailedExplanation: (questionId: string, detailedExplanation: string) => void;
   onFinish: (result: QuizResult) => void;
 }
 
-export function QuizScreen({ data, setId, mode, onBack, onAnswer, onToggleAmbiguous, onFinish }: QuizScreenProps) {
+export function QuizScreen({ data, setId, mode, onBack, onAnswer, onToggleAmbiguous, onSaveDetailedExplanation, onFinish }: QuizScreenProps) {
   const problemSet = data.problemSets.find((set) => set.id === setId);
   const allQuestions = getQuestionsBySet(data, setId);
   const [sessionQuestions] = useState<Question[]>(() => (mode === 'random' ? shuffleArray(allQuestions) : allQuestions));
@@ -29,6 +30,7 @@ export function QuizScreen({ data, setId, mode, onBack, onAnswer, onToggleAmbigu
       onBack={onBack}
       onAnswer={onAnswer}
       onToggleAmbiguous={onToggleAmbiguous}
+      onSaveDetailedExplanation={onSaveDetailedExplanation}
       onFinish={onFinish}
     />
   );

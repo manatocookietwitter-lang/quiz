@@ -38,6 +38,7 @@ export interface Question {
   answerIndexes?: number[];
   answerText: string;
   explanation: string;
+  detailedExplanation?: string;
   sourcePage: string;
   category: string;
   difficulty: Difficulty;
@@ -78,6 +79,7 @@ export interface ImportedQuestion {
   answerIndexes?: number[];
   answerText?: string;
   explanation: string;
+  detailedExplanation?: string;
   sourcePage?: string;
   reference?: string;
   category?: string;
