@@ -488,6 +488,7 @@ function AnswerPanel({
   const [panelPage, setPanelPage] = useState<'answer' | 'detail'>('answer');
   const [detailText, setDetailText] = useState(detailedExplanation);
   const [savedDetailText, setSavedDetailText] = useState(detailedExplanation);
+  const [isEditingDetail, setIsEditingDetail] = useState(false);
   const [detailMessage, setDetailMessage] = useState('');
   const sheetRef = useRef<HTMLElement | null>(null);
   const draggingRef = useRef(false);
@@ -504,6 +505,7 @@ function AnswerPanel({
   useEffect(() => {
     setDetailText(detailedExplanation);
     setSavedDetailText(detailedExplanation);
+    setIsEditingDetail(false);
     setDetailMessage('');
   }, [questionId, detailedExplanation]);
 
@@ -689,7 +691,14 @@ function AnswerPanel({
   const handleSaveDetail = () => {
     onSaveDetailedExplanation(detailText);
     setSavedDetailText(detailText);
+    setIsEditingDetail(false);
     setDetailMessage('\u8a73\u7d30\u89e3\u8aac\u3092\u767b\u9332\u3057\u307e\u3057\u305f');
+  };
+
+  const handleCancelDetailEdit = () => {
+    setDetailText(savedDetailText);
+    setIsEditingDetail(false);
+    setDetailMessage('');
   };
 
   const detailSwipeProps = {
@@ -727,16 +736,21 @@ function AnswerPanel({
         </button>
         <strong>{'\u8a73\u7d30\u89e3\u8aac'}</strong>
       </div>
-      {hasSavedDetail ? (
+      {hasSavedDetail && !isEditingDetail ? (
         <div className="answer-sheet__detail-reading">
           <ExplanationContent text={detailText} className="answer-sheet__explanation-text" />
+          <button type="button" className="answer-sheet__detail-edit" onClick={() => setIsEditingDetail(true)}>
+            {'\u8a73\u7d30\u89e3\u8aac\u3092\u7de8\u96c6'}
+          </button>
         </div>
       ) : (
         <div className="answer-sheet__detail-editor">
-          <p className="answer-sheet__detail-helper">{'\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u306e\u8a73\u7d30\u89e3\u8aac\u3092\u8aad\u307f\u8fbc\u3093\u3067\u767b\u9332\u3067\u304d\u307e\u3059'}</p>
-          <button type="button" className="answer-sheet__clipboard-button" onClick={() => void handleClipboardRead()}>
-            {'\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u304b\u3089\u30b3\u30d4\u30fc'}
-          </button>
+          {!hasSavedDetail ? <p className="answer-sheet__detail-helper">{'\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u306e\u8a73\u7d30\u89e3\u8aac\u3092\u8aad\u307f\u8fbc\u3093\u3067\u767b\u9332\u3067\u304d\u307e\u3059'}</p> : null}
+          {!hasSavedDetail ? (
+            <button type="button" className="answer-sheet__clipboard-button" onClick={() => void handleClipboardRead()}>
+              {'\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u304b\u3089\u30b3\u30d4\u30fc'}
+            </button>
+          ) : null}
           <textarea
             className="answer-sheet__detail-input"
             value={detailText}
@@ -755,6 +769,7 @@ function AnswerPanel({
           <button type="button" className="answer-sheet__detail-save" onClick={handleSaveDetail} disabled={!detailText.trim()}>
             {'\u8a73\u7d30\u89e3\u8aac\u3092\u767b\u9332'}
           </button>
+          {hasSavedDetail ? <button type="button" className="answer-sheet__detail-cancel" onClick={handleCancelDetailEdit}>{'\u30ad\u30e3\u30f3\u30bb\u30eb'}</button> : null}
           {detailMessage ? <p className="answer-sheet__detail-message">{detailMessage}</p> : null}
         </div>
       )}

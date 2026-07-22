@@ -1086,6 +1086,23 @@ button:disabled {
   padding: 20px 24px 28px;
 }
 
+.answer-sheet__detail-edit,
+.answer-sheet__detail-cancel {
+  min-height: 40px;
+  border: 1px solid #d0d0d0;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #5b4a3a;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.answer-sheet__detail-edit {
+  display: block;
+  margin: 20px auto 0;
+  padding: 0 18px;
+}
+
 .answer-sheet__detail-editor {
   width: min(760px, 100%);
   margin: 0 auto;
@@ -1166,6 +1183,13 @@ button:disabled {
 .answer-sheet__detail-save:disabled {
   cursor: not-allowed;
   opacity: 0.45;
+}
+
+.answer-sheet__detail-cancel {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  color: #777777;
 }
 
 .answer-sheet__detail-message {
