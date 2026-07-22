@@ -487,6 +487,7 @@ function AnswerPanel({
   const [isDragging, setIsDragging] = useState(false);
   const [panelPage, setPanelPage] = useState<'answer' | 'detail'>('answer');
   const [detailText, setDetailText] = useState(detailedExplanation);
+  const [savedDetailText, setSavedDetailText] = useState(detailedExplanation);
   const [detailMessage, setDetailMessage] = useState('');
   const sheetRef = useRef<HTMLElement | null>(null);
   const draggingRef = useRef(false);
@@ -502,6 +503,7 @@ function AnswerPanel({
 
   useEffect(() => {
     setDetailText(detailedExplanation);
+    setSavedDetailText(detailedExplanation);
     setDetailMessage('');
   }, [questionId, detailedExplanation]);
 
@@ -686,6 +688,7 @@ function AnswerPanel({
 
   const handleSaveDetail = () => {
     onSaveDetailedExplanation(detailText);
+    setSavedDetailText(detailText);
     setDetailMessage('\u8a73\u7d30\u89e3\u8aac\u3092\u767b\u9332\u3057\u307e\u3057\u305f');
   };
 
@@ -694,6 +697,8 @@ function AnswerPanel({
     onPointerUp: handleDetailPointerUp,
     onPointerCancel: () => { detailSwipeStartRef.current = null; },
   };
+
+  const hasSavedDetail = savedDetailText.trim().length > 0;
 
   const answerPage = (
     <div className="answer-sheet__content-page">
@@ -722,28 +727,37 @@ function AnswerPanel({
         </button>
         <strong>{'\u8a73\u7d30\u89e3\u8aac'}</strong>
       </div>
-      <button type="button" className="answer-sheet__clipboard-button" onClick={() => void handleClipboardRead()}>
-        {'\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u304b\u3089\u30b3\u30d4\u30fc'}
-      </button>
-      <textarea
-        className="answer-sheet__detail-input"
-        value={detailText}
-        onChange={(event) => setDetailText(event.target.value)}
-        placeholder={'\u8a73\u7d30\u89e3\u8aac\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044'}
-        aria-label={'\u8a73\u7d30\u89e3\u8aac'}
-      />
-      <div className="answer-sheet__detail-preview">
-        <p className="answer-sheet__label">{'\u8868\u793a\u30d7\u30ec\u30d3\u30e5\u30fc'}</p>
-        {detailText.trim() ? (
+      {hasSavedDetail ? (
+        <div className="answer-sheet__detail-reading">
           <ExplanationContent text={detailText} className="answer-sheet__explanation-text" />
-        ) : (
-          <p className="answer-sheet__detail-empty">{'\u8a73\u7d30\u89e3\u8aac\u306f\u307e\u3060\u767b\u9332\u3055\u308c\u3066\u3044\u307e\u305b\u3093'}</p>
-        )}
-      </div>
-      <button type="button" className="answer-sheet__detail-save" onClick={handleSaveDetail}>
-        {'\u8a73\u7d30\u89e3\u8aac\u3092\u767b\u9332'}
-      </button>
-      {detailMessage ? <p className="answer-sheet__detail-message">{detailMessage}</p> : null}
+        </div>
+      ) : (
+        <div className="answer-sheet__detail-editor">
+          <p className="answer-sheet__detail-helper">{'\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u306e\u8a73\u7d30\u89e3\u8aac\u3092\u8aad\u307f\u8fbc\u3093\u3067\u767b\u9332\u3067\u304d\u307e\u3059'}</p>
+          <button type="button" className="answer-sheet__clipboard-button" onClick={() => void handleClipboardRead()}>
+            {'\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u304b\u3089\u30b3\u30d4\u30fc'}
+          </button>
+          <textarea
+            className="answer-sheet__detail-input"
+            value={detailText}
+            onChange={(event) => setDetailText(event.target.value)}
+            placeholder={'\u8a73\u7d30\u89e3\u8aac\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044'}
+            aria-label={'\u8a73\u7d30\u89e3\u8aac'}
+          />
+          <div className="answer-sheet__detail-preview">
+            <p className="answer-sheet__label">{'\u8868\u793a\u30d7\u30ec\u30d3\u30e5\u30fc'}</p>
+            {detailText.trim() ? (
+              <ExplanationContent text={detailText} className="answer-sheet__explanation-text" />
+            ) : (
+              <p className="answer-sheet__detail-empty">{'\u8a73\u7d30\u89e3\u8aac\u306f\u307e\u3060\u5165\u529b\u3055\u308c\u3066\u3044\u307e\u305b\u3093'}</p>
+            )}
+          </div>
+          <button type="button" className="answer-sheet__detail-save" onClick={handleSaveDetail} disabled={!detailText.trim()}>
+            {'\u8a73\u7d30\u89e3\u8aac\u3092\u767b\u9332'}
+          </button>
+          {detailMessage ? <p className="answer-sheet__detail-message">{detailMessage}</p> : null}
+        </div>
+      )}
     </div>
   );
 
