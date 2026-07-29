@@ -184,6 +184,12 @@
   gap: 10px;
 }
 
+.sync-id-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .sync-button,
 .sync-toggle__button {
   appearance: none;

@@ -3,14 +3,14 @@ import type { AppData, Question, QuizResult } from '../types';
 import { Header } from '../components/Header';
 import { Layout } from '../components/Layout';
 import { getReviewQuestions } from '../utils/quiz';
-import { QuizRunner } from './QuizRunner';
+import { QuizRunner, type AnswerHandlerResult } from './QuizRunner';
 
 interface ReviewScreenProps {
   data: AppData;
   onBack: () => void;
-  onAnswer: (question: Question, selectedIndexes: number[], isReviewMode: boolean) => { isCorrect: boolean; addedToReview: boolean; levelLabel?: string };
-  onToggleAmbiguous: (questionId: string) => void;
-  onSaveDetailedExplanation: (questionId: string, detailedExplanation: string) => void;
+  onAnswer: (question: Question, selectedIndexes: number[], isReviewMode: boolean) => AnswerHandlerResult;
+  onToggleAmbiguous: (questionId: string) => Promise<boolean>;
+  onSaveDetailedExplanation: (questionId: string, detailedExplanation: string) => Promise<void>;
   onFinish: (result: QuizResult) => void;
 }
 

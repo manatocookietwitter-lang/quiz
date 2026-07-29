@@ -96,6 +96,11 @@ export interface QuizResult {
   mode: 'quiz' | 'review';
   title: string;
   setId?: string;
+  retry?: {
+    questionIds: string[];
+    subtitle?: string;
+    backScreen?: AppScreen;
+  };
   answered: number;
   correct: number;
   wrong: number;

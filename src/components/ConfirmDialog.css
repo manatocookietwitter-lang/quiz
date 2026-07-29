@@ -1,7 +1,7 @@
 .confirm-dialog {
   position: fixed;
   inset: 0;
-  z-index: 99999;
+  z-index: 100100;
   display: grid;
   place-items: center;
   padding: 20px;
@@ -24,6 +24,10 @@
   background: #202020;
   color: #ffffff;
   box-shadow: 0 22px 60px rgba(0, 0, 0, 0.42);
+}
+
+.confirm-dialog__card:focus {
+  outline: none;
 }
 
 .confirm-dialog__title {
@@ -78,6 +82,11 @@
 
 .confirm-dialog__button:focus {
   outline: none;
+}
+
+.confirm-dialog__button:focus-visible {
+  outline: 3px solid rgba(103, 232, 249, 0.95);
+  outline-offset: 3px;
 }
 
 .confirm-dialog__button:disabled {

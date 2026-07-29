@@ -5,6 +5,7 @@ export const CATEGORY_NOTE_KEY_PREFIX = 'quizMake:notes:';
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 let persistenceRequested = false;
+let noteSaveQueue: Promise<void> = Promise.resolve();
 
 export function isCategoryNoteKey(key: string): boolean {
   return key.startsWith(CATEGORY_NOTE_KEY_PREFIX);
@@ -54,7 +55,20 @@ export async function requestPersistentStorage(): Promise<boolean> {
 }
 
 export async function saveCategoryNoteRaw(key: string, raw: string): Promise<void> {
+  const queuedSave = noteSaveQueue
+    .catch(() => undefined)
+    .then(() => saveCategoryNoteRawNow(key, raw));
+  noteSaveQueue = queuedSave;
+  return queuedSave;
+}
+
+export async function waitForPendingCategoryNoteSaves(): Promise<void> {
+  await noteSaveQueue;
+}
+
+async function saveCategoryNoteRawNow(key: string, raw: string): Promise<void> {
   if (!isCategoryNoteKey(key)) throw new Error('Invalid category note key.');
+  if (!isUsableNoteRaw(raw)) throw new Error('Invalid category note data.');
 
   void requestPersistentStorage();
   if (isIndexedDbAvailable()) {
@@ -85,11 +99,13 @@ export async function saveCategoryNoteRaw(key: string, raw: string): Promise<voi
   }
 }
 export async function exportCategoryNotesRaw(): Promise<Record<string, string>> {
-  const notes: Record<string, string> = {};
+  await waitForPendingCategoryNoteSaves();
+  let indexedNotes: Record<string, string> = {};
+  let indexedBackups: Record<string, string> = {};
 
   if (isIndexedDbAvailable()) {
     try {
-      Object.assign(notes, await exportIndexedDbNotes());
+      indexedNotes = await exportIndexedDbNotes();
     } catch (error) {
       console.warn('Failed to export category notes from IndexedDB.', error);
     }
@@ -97,16 +113,26 @@ export async function exportCategoryNotesRaw(): Promise<Record<string, string>> 
 
   if (isIndexedDbAvailable()) {
     try {
-      const backups = await exportIndexedDbNoteBackups();
-      Object.entries(backups).forEach(([key, value]) => {
-        if (notes[key] === undefined) notes[key] = value;
-      });
+      indexedBackups = await exportIndexedDbNoteBackups();
     } catch (error) {
       console.warn('Failed to export category note backups from IndexedDB.', error);
     }
   }
-  collectLegacyLocalStorageNotes().forEach(([key, value]) => {
-    if (notes[key] === undefined) notes[key] = value;
+
+  const localFallbacks = Object.fromEntries(collectLegacyLocalStorageNotes());
+  const keys = new Set([
+    ...Object.keys(indexedNotes),
+    ...Object.keys(indexedBackups),
+    ...Object.keys(localFallbacks),
+  ]);
+  const notes: Record<string, string> = {};
+  keys.forEach((key) => {
+    const newest = pickNewestNoteRaw([
+      indexedNotes[key] ?? null,
+      indexedBackups[key] ?? null,
+      localFallbacks[key] ?? null,
+    ]);
+    if (newest !== null) notes[key] = newest;
   });
 
   return sortRecord(notes);
@@ -145,8 +171,9 @@ function getNoteUpdatedAt(raw: string): string | null {
   }
 }
 export async function replaceCategoryNotesRaw(notes: Record<string, string>): Promise<number> {
+  await waitForPendingCategoryNoteSaves();
   const validNotes = sortRecord(Object.keys(notes).reduce<Record<string, string>>((result, key) => {
-    if (isCategoryNoteKey(key) && typeof notes[key] === 'string') result[key] = notes[key];
+    if (isCategoryNoteKey(key) && typeof notes[key] === 'string' && isUsableNoteRaw(notes[key])) result[key] = notes[key];
     return result;
   }, {}));
 
@@ -323,7 +350,7 @@ function isQuotaExceededError(error: unknown): boolean {
     || error.message.includes('exceeded the quota');
 }
 
-function pickNewestNoteRaw(candidates: Array<string | null>): string | null {
+export function pickNewestNoteRaw(candidates: Array<string | null>): string | null {
   const validCandidates = candidates.filter((candidate): candidate is string => candidate !== null && isUsableNoteRaw(candidate));
   if (validCandidates.length === 0) return null;
   return validCandidates.reduce((newest, candidate) => {
@@ -335,15 +362,39 @@ function pickNewestNoteRaw(candidates: Array<string | null>): string | null {
 }
 function isUsableNoteRaw(raw: string): boolean {
   try {
-    const value = JSON.parse(raw) as { pages?: unknown; dataUrl?: unknown };
-    return (Array.isArray(value.pages) && value.pages.length > 0) || typeof value.dataUrl === 'string';
+    const value = JSON.parse(raw) as unknown;
+    if (!isRecord(value)) return false;
+    if (Array.isArray(value.pages)) {
+      return value.pages.length > 0
+        && value.pages.every((page) => (
+          isRecord(page)
+          && typeof page.id === 'string'
+          && typeof page.dataUrl === 'string'
+          && typeof page.updatedAt === 'string'
+        ))
+        && typeof value.problemSetId === 'string'
+        && typeof value.category === 'string'
+        && Number.isInteger(value.currentPageIndex)
+        && (value.currentPageIndex as number) >= 0
+        && (value.currentPageIndex as number) < value.pages.length
+        && typeof value.updatedAt === 'string';
+    }
+    return typeof value.dataUrl === 'string';
   } catch {
     return false;
   }
+}
+
+export function isValidCategoryNoteRaw(raw: string): boolean {
+  return isUsableNoteRaw(raw);
 }
 function sortRecord(record: Record<string, string>): Record<string, string> {
   return Object.keys(record).sort().reduce<Record<string, string>>((result, key) => {
     result[key] = record[key];
     return result;
   }, {});
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }

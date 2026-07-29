@@ -46,13 +46,22 @@ export function FolderScreen({ data, folderId, onBack, onOpenImport, onOpenProbl
           </section>
         ) : (
           <section className="quiz-folder__actions" aria-label="操作">
-            <FolderCircleButton icon="✎" label="編集" onClick={() => setEditMode(true)} />
+            <FolderCircleButton icon="−" label="削除" onClick={() => setEditMode(true)} />
             <FolderCircleButton icon="＋" label="新規問題" onClick={() => onOpenImport(folder.id)} />
           </section>
         )}
 
         <section className="quiz-folder__set-list" aria-label="一覧">
-          {problemSets.map((problemSet) => {
+          {problemSets.length === 0 ? (
+            <div className="quiz-folder__empty">
+              <div className="quiz-folder__empty-icon" aria-hidden="true">＋</div>
+              <h2>問題セットがありません</h2>
+              <p>問題を追加すると、ここから演習を始められます。</p>
+              <button type="button" onClick={() => onOpenImport(folder.id)}>
+                最初の問題を追加
+              </button>
+            </div>
+          ) : problemSets.map((problemSet) => {
             const summary = getSetSummary(data, problemSet.id);
             return (
               <SetCard
@@ -91,9 +100,6 @@ function FolderHeader({ title, onBack }: { title: string; onBack: () => void }) 
       <div className="quiz-folder__header-slope" />
       <BackButton onClick={onBack} className="quiz-folder__back-button" />
       <h1 className="quiz-folder__title">{title}</h1>
-      <button type="button" className="quiz-folder__header-action" aria-label="メニュー">
-        ≡
-      </button>
     </header>
   );
 }

@@ -1,5 +1,6 @@
 import { type ChangeEvent, useState } from 'react';
 import { BackButton } from '../components/BackButton';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Layout } from '../components/Layout';
 import { CHATGPT_MATERIAL_TEMPLATE_PROMPT, CHATGPT_PAST_EXAM_TEMPLATE_PROMPT } from '../utils/importValidator';
 import './ImportScreen.css';
@@ -7,7 +8,7 @@ import './ImportScreen.css';
 interface ImportScreenProps {
   folderName: string;
   onBack: () => void;
-  onImport: (titleOverride: string, jsonText: string, stayOnScreen?: boolean) => string | null;
+  onImport: (titleOverride: string, jsonText: string, stayOnScreen?: boolean) => Promise<string | null>;
   onImportComplete: () => void;
 }
 
@@ -39,6 +40,7 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [importProgress, setImportProgress] = useState('');
   const [notice, setNotice] = useState('');
+  const [pendingClipboardText, setPendingClipboardText] = useState<string | null>(null);
 
   const handleCopyTemplate = async (template: string, label: string) => {
     try {
@@ -56,16 +58,28 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
     setNotice('');
     try {
       const text = await navigator.clipboard.readText();
-      setJsonText(text);
-      const extractedTitle = extractSetTitle(text);
-      if (extractedTitle) {
-        setTitle(extractedTitle);
-        setTitleEdited(false);
+      if (!text.trim()) {
+        setError('クリップボードが空です。現在の入力内容は変更していません。');
+        return;
       }
-      setNotice('クリップボードから読み込みました');
+      if (jsonText.trim() && text !== jsonText) {
+        setPendingClipboardText(text);
+        return;
+      }
+      applyClipboardText(text);
     } catch {
       setError('クリップボードを読み込めませんでした。ブラウザの権限を確認してください。');
     }
+  };
+
+  const applyClipboardText = (text: string) => {
+    setJsonText(text);
+    const extractedTitle = extractSetTitle(text);
+    if (extractedTitle) {
+      setTitle(extractedTitle);
+      setTitleEdited(false);
+    }
+    setNotice('クリップボードから読み込みました');
   };
 
   const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -73,6 +87,8 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
     setNotice('');
     setImportResult(null);
     const files = Array.from(event.target.files ?? []);
+    event.target.value = '';
+    if (files.length === 0) return;
     setIsPreparingFiles(true);
     const items = await Promise.all(files.map(async (file) => {
       const fallbackTitle = getFileBaseName(file.name);
@@ -101,7 +117,10 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
         };
       }
     }));
-    setImportFiles(items);
+    setImportFiles((current) => {
+      const nextIds = new Set(items.map((item) => item.id));
+      return [...current.filter((item) => !nextIds.has(item.id)), ...items];
+    });
     setIsPreparingFiles(false);
   };
   const handleJsonTextChange = (value: string) => {
@@ -125,6 +144,12 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
     )));
   };
 
+  const handleRemoveFile = (id: string) => {
+    setImportFiles((items) => items.filter((item) => item.id !== id));
+    setImportResult(null);
+    setNotice('');
+  };
+
   const handleImport = async () => {
     setError('');
     setImportResult(null);
@@ -141,7 +166,7 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
     if (!hasFiles) {
       const normalizedJsonText = normalizeJsonText(jsonText);
       const pastedTitle = title.trim() || extractSetTitle(jsonText) || '無題の問題セット';
-      const result = onImport(pastedTitle, normalizedJsonText, true);
+      const result = await onImport(pastedTitle, normalizedJsonText, true);
       if (result) {
         setError(result);
         setIsImporting(false);
@@ -157,6 +182,8 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
 
     let successCount = 0;
     const failures: ImportResult['failures'] = [];
+    const successfulFileIds = new Set<string>();
+    let pastedJsonSucceeded = false;
     let processedCount = 0;
 
     if (hasPastedJson) {
@@ -164,11 +191,12 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
       await yieldToUi();
       const normalizedJsonText = normalizeJsonText(jsonText);
       const pastedTitle = title.trim() || extractSetTitle(jsonText) || '無題の問題セット';
-      const result = onImport(pastedTitle, normalizedJsonText, true);
+      const result = await onImport(pastedTitle, normalizedJsonText, true);
       if (result) {
         failures.push({ fileName: '貼り付けJSON', error: result });
       } else {
         successCount += 1;
+        pastedJsonSucceeded = true;
       }
       processedCount += 1;
       setImportProgress(`取り込み中... ${processedCount} / ${totalItems}`);
@@ -188,30 +216,39 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
         processedCount += 1;
         continue;
       }
-      const result = onImport(fileTitle, file.rawText, true);
+      const result = await onImport(fileTitle, file.rawText, true);
       if (result) {
         failures.push({ fileName: file.fileName, error: result });
       } else {
         successCount += 1;
+        successfulFileIds.add(file.id);
       }
       processedCount += 1;
       setImportProgress(`取り込み中... ${processedCount} / ${totalItems}`);
     }
 
+    if (pastedJsonSucceeded) {
+      setJsonText('');
+    }
+    if (successfulFileIds.size > 0) {
+      setImportFiles((items) => items.filter((item) => !successfulFileIds.has(item.id)));
+    }
     setImportResult({ successCount, failures });
-    setIsImporting(false);
-    setImportProgress('');
     if (successCount > 0 && failures.length === 0) {
+      setImportProgress('取り込み完了');
       setNotice('取り込み完了。問題セット一覧へ戻ります');
       window.setTimeout(onImportComplete, 700);
+      return;
     }
+    setIsImporting(false);
+    setImportProgress('');
   };
 
   return (
     <Layout>
       <div className="quiz-import">
         <header className="quiz-import__header">
-          <BackButton onClick={onBack} className="quiz-import__back" />
+          <BackButton onClick={onBack} className="quiz-import__back" disabled={isImporting || isPreparingFiles} />
           <div className="quiz-import__title-wrap">
             <h1 className="quiz-import__title">問題セット追加</h1>
             <p className="quiz-import__subtitle">{folderName}</p>
@@ -270,15 +307,24 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
             {isPreparingFiles ? <p className="quiz-import__file-preparing">ファイルを読み込み中...</p> : null}
             {importFiles.length > 0 ? (
               <div className="quiz-import__file-list">
-                <p>取り込み予定：</p>
+                <div className="quiz-import__file-list-heading">
+                  <p>取り込み予定：{importFiles.length}件</p>
+                  <button type="button" onClick={() => setImportFiles([])}>すべて解除</button>
+                </div>
                 {importFiles.map((file, index) => (
                   <div key={file.id} className="quiz-import__file-item">
-                    <span>{index + 1}. {file.fileName}</span>
+                    <div className="quiz-import__file-item-heading">
+                      <span>{index + 1}. {file.fileName}</span>
+                      <button type="button" onClick={() => handleRemoveFile(file.id)} aria-label={`${file.fileName}を解除`}>
+                        解除
+                      </button>
+                    </div>
                     <input
                       value={file.editableSetTitle}
                       onChange={(event) => handleFileTitleChange(file.id, event.target.value)}
                       className="quiz-import__file-title-input"
                       placeholder="問題セット名"
+                      aria-label={`${file.fileName}の問題セット名`}
                     />
                     {file.readError ? <small>{file.readError}</small> : null}
                   </div>
@@ -302,11 +348,11 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
             />
           </section>
 
-          {notice ? <div className="quiz-import__notice">{notice}</div> : null}
-          {importProgress ? <div className="quiz-import__progress"><span />{importProgress}</div> : null}
+          {notice ? <div className="quiz-import__notice" role="status" aria-live="polite">{notice}</div> : null}
+          {importProgress ? <div className="quiz-import__progress" role="status" aria-live="polite"><span />{importProgress}</div> : null}
 
           {importResult ? (
-            <div className={importResult.failures.length > 0 ? 'quiz-import__result quiz-import__result--mixed' : 'quiz-import__result'}>
+            <div className={importResult.failures.length > 0 ? 'quiz-import__result quiz-import__result--mixed' : 'quiz-import__result'} role="status" aria-live="polite">
               <p>取り込み完了：{importResult.successCount}件</p>
               <p>失敗：{importResult.failures.length}件</p>
               {importResult.failures.length > 0 ? (
@@ -321,7 +367,7 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
             </div>
           ) : null}
 
-          {error ? <div className="quiz-import__error">{error}</div> : null}
+          {error ? <div className="quiz-import__error" role="alert">{error}</div> : null}
         </main>
 
         <button
@@ -333,6 +379,17 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
           {isImporting ? '取り込み中...' : '取り込む'}
         </button>
       </div>
+      <ConfirmDialog
+        open={pendingClipboardText !== null}
+        title="入力内容を置き換えますか？"
+        message="現在のJSON貼り付け欄を、クリップボードの内容で置き換えます。"
+        confirmLabel="置き換える"
+        onCancel={() => setPendingClipboardText(null)}
+        onConfirm={() => {
+          if (pendingClipboardText !== null) applyClipboardText(pendingClipboardText);
+          setPendingClipboardText(null);
+        }}
+      />
     </Layout>
   );
 }

@@ -1,14 +1,24 @@
 import { type PointerEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import type { AppData, Question, QuizResult } from '../types';
 import { BackButton } from '../components/BackButton';
 import { CategoryNoteDrawer } from '../components/CategoryNoteDrawer';
 import { Layout } from '../components/Layout';
 import { getAnswerIndexes, getAnswerText, getChoiceLabel, getChoiceText, getProgress, getVirtualLevel, makeResult } from '../utils/quiz';
+import { resolveQuestionDetailedExplanation } from '../utils/questionView';
 
 type AnswerSheetState = 'expanded' | 'default' | 'hidden';
 
 const ENABLE_TABLET_NOTES = true;
+
+export type AnswerHandlerResult = {
+  isCorrect: boolean;
+  addedToReview: boolean;
+  levelLabel?: string;
+  savePromise: Promise<boolean>;
+};
 
 interface QuizRunnerProps {
   data: AppData;
@@ -19,9 +29,9 @@ interface QuizRunnerProps {
   setId?: string;
   initialIndex?: number;
   onBack: () => void;
-  onAnswer: (question: Question, selectedIndexes: number[], isReviewMode: boolean) => { isCorrect: boolean; addedToReview: boolean; levelLabel?: string };
-  onToggleAmbiguous: (questionId: string) => void;
-  onSaveDetailedExplanation: (questionId: string, detailedExplanation: string) => void;
+  onAnswer: (question: Question, selectedIndexes: number[], isReviewMode: boolean) => AnswerHandlerResult;
+  onToggleAmbiguous: (questionId: string) => Promise<boolean>;
+  onSaveDetailedExplanation: (questionId: string, detailedExplanation: string) => Promise<void>;
   onFinish: (result: QuizResult) => void;
 }
 
@@ -69,6 +79,12 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
   }, [noteAreaOpen]);
 
   const currentQuestion = questions[currentIndex];
+  const currentDetailedExplanation = useMemo(
+    () => resolveQuestionDetailedExplanation(data.questions, currentQuestion),
+    [currentQuestion, data.questions],
+  );
+  const visibleQuestionIdRef = useRef(currentQuestion?.id ?? '');
+  visibleQuestionIdRef.current = currentQuestion?.id ?? '';
   const progress = currentQuestion ? getProgress(data, currentQuestion.id) : null;
   const answered = hasAnswered;
   const answerIndexes = useMemo(() => (currentQuestion ? getAnswerIndexes(currentQuestion) : []), [currentQuestion]);
@@ -137,11 +153,18 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
     if (answered) return;
     const normalizedIndexes = Array.from(new Set(indexes)).sort((a, b) => a - b);
     const result = onAnswer(currentQuestion, normalizedIndexes, mode === 'review');
+    const answeredQuestionId = currentQuestion.id;
     setSelectedIndexes(normalizedIndexes);
     setLastCorrect(result.isCorrect);
     setHasAnswered(true);
     setAnswerSheetState('default');
-    setSavedLevelLabel(result.levelLabel ? `\u4fdd\u5b58\u6e08\u307f\u30fb${result.levelLabel}` : '\u4fdd\u5b58\u6e08\u307f');
+    setSavedLevelLabel(result.levelLabel ? `\u4fdd\u5b58\u4e2d\u2026\u30fb${result.levelLabel}` : '\u4fdd\u5b58\u4e2d\u2026');
+    void result.savePromise.then((saved) => {
+      if (visibleQuestionIdRef.current !== answeredQuestionId) return;
+      setSavedLevelLabel(saved
+        ? (result.levelLabel ? `\u4fdd\u5b58\u6e08\u307f\u30fb${result.levelLabel}` : '\u4fdd\u5b58\u6e08\u307f')
+        : (result.levelLabel ? `\u7aef\u672b\u306b\u672a\u4fdd\u5b58\u30fb${result.levelLabel}` : '\u7aef\u672b\u306b\u672a\u4fdd\u5b58'));
+    });
     setCorrectCount((value) => value + (result.isCorrect ? 1 : 0));
     setWrongCount((value) => value + (result.isCorrect ? 0 : 1));
     setAddedReviewCount((value) => value + (result.addedToReview ? 1 : 0));
@@ -162,7 +185,13 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
 
   const handleNext = () => {
     if (currentIndex + 1 >= questions.length) {
-      onFinish(makeResult(mode, title, setId, correctCount, wrongCount, addedReviewCount));
+      onFinish({
+        ...makeResult(mode, title, setId, correctCount, wrongCount, addedReviewCount),
+        retry: {
+          questionIds: questions.slice(initialIndex).map((question) => question.id),
+          subtitle,
+        },
+      });
       return;
     }
     setCurrentIndex((value) => value + 1);
@@ -174,9 +203,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
     setAnswerMessage('');
   };
 
-  const handleAmbiguous = () => {
-    onToggleAmbiguous(currentQuestion.id);
-  };
+  const handleAmbiguous = () => onToggleAmbiguous(currentQuestion.id);
 
   return (
     <Layout>
@@ -271,7 +298,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
             isCorrect={lastCorrect === true}
             answer={answerText}
             explanation={currentQuestion.explanation}
-            detailedExplanation={currentQuestion.detailedExplanation ?? ''}
+            detailedExplanation={currentDetailedExplanation}
             questionId={currentQuestion.id}
             sourcePage={currentQuestion.sourcePage}
             savedLevelLabel={savedLevelLabel}
@@ -366,6 +393,7 @@ function QuizChoiceButton({
       type="button"
       disabled={disabled}
       onClick={onClick}
+      aria-pressed={!answered ? isSelected : undefined}
       className={`mx-auto flex w-full flex-1 items-center justify-start gap-3 rounded-2xl border px-[14px] py-2.5 text-left font-semibold leading-snug shadow-sm transition active:scale-[0.99] ${sizeClass} ${textSizeClass} ${stateClass}`}
     >
       <span className="shrink-0 self-start pt-[2px] text-[0.9em] font-black leading-snug text-[#333333]">
@@ -480,8 +508,8 @@ function AnswerPanel({
   onExpand: () => void;
   onDefault: () => void;
   onHide: () => void;
-  onToggleAmbiguous: () => void;
-  onSaveDetailedExplanation: (value: string) => void;
+  onToggleAmbiguous: () => Promise<boolean>;
+  onSaveDetailedExplanation: (value: string) => Promise<void>;
   onNext: () => void;
 }) {
   const [isDragging, setIsDragging] = useState(false);
@@ -490,7 +518,15 @@ function AnswerPanel({
   const [savedDetailText, setSavedDetailText] = useState(detailedExplanation);
   const [isEditingDetail, setIsEditingDetail] = useState(false);
   const [detailMessage, setDetailMessage] = useState('');
+  const [detailMessageTone, setDetailMessageTone] = useState<'neutral' | 'success' | 'error'>('neutral');
+  const [isSavingDetail, setIsSavingDetail] = useState(false);
+  const [isSavingAmbiguous, setIsSavingAmbiguous] = useState(false);
   const sheetRef = useRef<HTMLElement | null>(null);
+  const detailOpenRef = useRef<HTMLButtonElement | null>(null);
+  const detailBackRef = useRef<HTMLButtonElement | null>(null);
+  const detailEditRef = useRef<HTMLButtonElement | null>(null);
+  const detailInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const detailPageRef = useRef<HTMLDivElement | null>(null);
   const draggingRef = useRef(false);
   const dragOffsetRef = useRef(0);
   const dragFrameRef = useRef<number | null>(null);
@@ -501,13 +537,40 @@ function AnswerPanel({
   const velocityYRef = useRef(0);
   const startHeightRef = useRef(320);
   const detailSwipeStartRef = useRef<{ x: number; y: number } | null>(null);
+  const wasDragGestureRef = useRef(false);
+  const activeQuestionIdRef = useRef(questionId);
+  const committedDetailRef = useRef<string | null>(null);
 
   useEffect(() => {
-    setDetailText(detailedExplanation);
-    setSavedDetailText(detailedExplanation);
-    setIsEditingDetail(false);
-    setDetailMessage('');
-  }, [questionId, detailedExplanation]);
+    const frame = requestAnimationFrame(() => sheetRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [questionId]);
+
+  useEffect(() => {
+    if (activeQuestionIdRef.current !== questionId) {
+      activeQuestionIdRef.current = questionId;
+      setDetailText(detailedExplanation);
+      setSavedDetailText(detailedExplanation);
+      setIsEditingDetail(false);
+      setDetailMessage('');
+      setDetailMessageTone('neutral');
+      setIsSavingDetail(false);
+      committedDetailRef.current = null;
+      return;
+    }
+
+    if (committedDetailRef.current !== null) {
+      if (detailedExplanation === committedDetailRef.current) committedDetailRef.current = null;
+      else return;
+    }
+
+    if (!isEditingDetail && detailText === savedDetailText && detailedExplanation !== savedDetailText) {
+      setDetailText(detailedExplanation);
+      setSavedDetailText(detailedExplanation);
+      setDetailMessage('');
+      setDetailMessageTone('neutral');
+    }
+  }, [questionId, detailedExplanation, detailText, isEditingDetail, savedDetailText]);
 
   useEffect(() => {
     setPanelPage('answer');
@@ -529,7 +592,7 @@ function AnswerPanel({
     }
 
     const availableHeight = isMobile ? viewportHeight - 104 : viewportHeight - 88;
-    return Math.max(320, Math.min(620, availableHeight));
+    return Math.max(320, isMobile ? availableHeight : Math.min(760, availableHeight));
   };
 
   const clampDragOffset = (deltaY: number) => {
@@ -602,8 +665,11 @@ function AnswerPanel({
 
   const handlePointerDown = (event: PointerEvent<HTMLElement>) => {
     if (event.pointerType === 'mouse' && event.button !== 0) return;
+    const target = event.target;
+    if (target instanceof Element && target.closest('button, a, input, textarea, select, [role="button"]')) return;
 
     const now = performance.now();
+    wasDragGestureRef.current = false;
     dragStartYRef.current = event.clientY;
     dragStartTimeRef.current = now;
     lastPointerYRef.current = event.clientY;
@@ -619,6 +685,7 @@ function AnswerPanel({
   const handlePointerMove = (event: PointerEvent<HTMLElement>) => {
     if (!draggingRef.current) return;
     event.preventDefault();
+    if (Math.abs(event.clientY - dragStartYRef.current) > 5) wasDragGestureRef.current = true;
 
     const now = performance.now();
     const elapsed = now - lastPointerTimeRef.current;
@@ -661,44 +728,149 @@ function AnswerPanel({
     onPointerLeave: cancelDrag,
   };
 
+  const openDetailPage = () => {
+    setPanelPage('detail');
+    requestAnimationFrame(() => detailBackRef.current?.focus());
+  };
+
   const handleDetailPointerDown = (event: PointerEvent<HTMLElement>) => {
-    if (panelPage !== 'answer' || (event.pointerType === 'mouse' && event.button !== 0)) return;
+    if (event.pointerType === 'mouse') return;
+    const target = event.target;
+    if (target instanceof Element && target.closest('button, a, input, textarea, select, pre, [data-no-page-swipe]')) return;
     detailSwipeStartRef.current = { x: event.clientX, y: event.clientY };
   };
 
   const handleDetailPointerUp = (event: PointerEvent<HTMLElement>) => {
     const start = detailSwipeStartRef.current;
     detailSwipeStartRef.current = null;
-    if (!start || state !== 'expanded' || panelPage !== 'answer') return;
+    if (!start || state !== 'expanded') return;
 
     const deltaX = event.clientX - start.x;
     const deltaY = event.clientY - start.y;
     if (Math.abs(deltaX) < 44 || Math.abs(deltaX) < Math.abs(deltaY) * 1.15) return;
-    setPanelPage(deltaX > 0 ? 'detail' : 'answer');
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed && selection.toString().trim()) return;
+    if (panelPage === 'answer' && deltaX > 0) {
+      openDetailPage();
+      return;
+    }
+    if (panelPage === 'detail' && deltaX < 0) {
+      handleLeaveDetailPage();
+    }
   };
 
   const handleClipboardRead = async () => {
     try {
       if (!navigator.clipboard?.readText) throw new Error('clipboard unavailable');
       const value = await navigator.clipboard.readText();
+      if (!value.trim()) {
+        setDetailMessage('\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u304c\u7a7a\u3067\u3059\u3002\u5165\u529b\u4e2d\u306e\u5185\u5bb9\u306f\u305d\u306e\u307e\u307e\u3067\u3059');
+        setDetailMessageTone('error');
+        return;
+      }
+      if (
+        detailText.trim()
+        && value !== detailText
+        && !window.confirm('\u5165\u529b\u4e2d\u306e\u8a73\u7d30\u89e3\u8aac\u3092\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u306e\u5185\u5bb9\u3067\u7f6e\u304d\u63db\u3048\u307e\u3059\u304b\uff1f')
+      ) {
+        setDetailMessage('\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u304b\u3089\u306e\u7f6e\u304d\u63db\u3048\u3092\u30ad\u30e3\u30f3\u30bb\u30eb\u3057\u307e\u3057\u305f');
+        setDetailMessageTone('neutral');
+        return;
+      }
       setDetailText(value);
-      setDetailMessage(value ? '\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u304b\u3089\u8aad\u307f\u8fbc\u307f\u307e\u3057\u305f' : '\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u304c\u7a7a\u3067\u3059');
+      setDetailMessage('\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u304b\u3089\u8aad\u307f\u8fbc\u307f\u307e\u3057\u305f');
+      setDetailMessageTone('success');
     } catch {
       setDetailMessage('\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3092\u8aad\u307f\u8fbc\u3081\u307e\u305b\u3093\u3067\u3057\u305f');
+      setDetailMessageTone('error');
     }
   };
 
-  const handleSaveDetail = () => {
-    onSaveDetailedExplanation(detailText);
-    setSavedDetailText(detailText);
-    setIsEditingDetail(false);
-    setDetailMessage('\u8a73\u7d30\u89e3\u8aac\u3092\u767b\u9332\u3057\u307e\u3057\u305f');
+  const handleSaveDetail = async () => {
+    if (isSavingDetail || detailText === savedDetailText) return;
+    const nextValue = detailText.trim() ? detailText : '';
+    setIsSavingDetail(true);
+    setDetailMessage(nextValue ? '\u8a73\u7d30\u89e3\u8aac\u3092\u4fdd\u5b58\u4e2d\u3067\u3059\u2026' : '\u8a73\u7d30\u89e3\u8aac\u3092\u524a\u9664\u4e2d\u3067\u3059\u2026');
+    setDetailMessageTone('neutral');
+    try {
+      await onSaveDetailedExplanation(nextValue);
+      committedDetailRef.current = nextValue;
+      setDetailText(nextValue);
+      setSavedDetailText(nextValue);
+      setIsEditingDetail(false);
+      setDetailMessage(nextValue ? '\u8a73\u7d30\u89e3\u8aac\u3092\u4fdd\u5b58\u3057\u307e\u3057\u305f' : '\u8a73\u7d30\u89e3\u8aac\u3092\u524a\u9664\u3057\u307e\u3057\u305f');
+      setDetailMessageTone('success');
+      if (detailPageRef.current) detailPageRef.current.scrollTop = 0;
+      requestAnimationFrame(() => {
+        if (nextValue) detailEditRef.current?.focus();
+        else detailBackRef.current?.focus();
+      });
+    } catch {
+      setDetailMessage('\u4fdd\u5b58\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f\u3002\u901a\u4fe1\u3084\u7a7a\u304d\u5bb9\u91cf\u3092\u78ba\u8a8d\u3057\u3066\u3001\u3082\u3046\u4e00\u5ea6\u304a\u8a66\u3057\u304f\u3060\u3055\u3044');
+      setDetailMessageTone('error');
+    } finally {
+      setIsSavingDetail(false);
+    }
+  };
+
+  const handleToggleAmbiguous = async () => {
+    if (isSavingAmbiguous) return;
+    setIsSavingAmbiguous(true);
+    try {
+      await onToggleAmbiguous();
+    } finally {
+      setIsSavingAmbiguous(false);
+    }
   };
 
   const handleCancelDetailEdit = () => {
+    if (isSavingDetail) return;
     setDetailText(savedDetailText);
     setIsEditingDetail(false);
     setDetailMessage('');
+    setDetailMessageTone('neutral');
+    requestAnimationFrame(() => {
+      if (savedDetailText.trim()) detailEditRef.current?.focus();
+      else detailInputRef.current?.focus();
+    });
+  };
+
+  const hasUnsavedDetail = detailText !== savedDetailText;
+
+  useEffect(() => {
+    if (!hasUnsavedDetail) return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedDetail]);
+
+  const confirmDiscardDetail = () => (
+    !hasUnsavedDetail
+    || window.confirm('\u8a73\u7d30\u89e3\u8aac\u306e\u5909\u66f4\u304c\u4fdd\u5b58\u3055\u308c\u3066\u3044\u307e\u305b\u3093\u3002\u5909\u66f4\u3092\u7834\u68c4\u3057\u3066\u79fb\u52d5\u3057\u307e\u3059\u304b\uff1f')
+  );
+
+  const handleLeaveDetailPage = () => {
+    if (isSavingDetail || !confirmDiscardDetail()) return;
+    if (hasUnsavedDetail) handleCancelDetailEdit();
+    setPanelPage('answer');
+    requestAnimationFrame(() => detailOpenRef.current?.focus());
+  };
+
+  const handleNextWithDraftCheck = () => {
+    if (isSavingDetail || !confirmDiscardDetail()) return;
+    onNext();
+  };
+
+  const handleDragHandleClick = () => {
+    if (wasDragGestureRef.current) {
+      wasDragGestureRef.current = false;
+      return;
+    }
+    if (state === 'expanded') onDefault();
+    else onExpand();
   };
 
   const detailSwipeProps = {
@@ -708,9 +880,14 @@ function AnswerPanel({
   };
 
   const hasSavedDetail = savedDetailText.trim().length > 0;
+  const canSaveDetail = hasUnsavedDetail && (detailText.trim().length > 0 || hasSavedDetail) && !isSavingDetail;
 
   const answerPage = (
-    <div className="answer-sheet__content-page">
+    <div
+      className="answer-sheet__content-page"
+      aria-hidden={state === 'expanded' && panelPage !== 'answer'}
+      inert={state === 'expanded' && panelPage !== 'answer'}
+    >
       <div className="answer-sheet__answer-box">
         <p className="answer-sheet__label">{'\u6b63\u89e3'}</p>
         <p className="answer-sheet__answer-text">{answer}</p>
@@ -720,8 +897,13 @@ function AnswerPanel({
         <ExplanationContent text={explanation} className="answer-sheet__explanation-text" />
         {sourcePage ? <p className="answer-sheet__source">{'\u53c2\u7167\uff1a'}{sourcePage}</p> : null}
         {state === 'expanded' ? (
-          <button type="button" className="answer-sheet__detail-open" onClick={() => setPanelPage('detail')}>
-            {'\u8a73\u7d30\u89e3\u8aac'} {'\u203a'}
+          <button
+            ref={detailOpenRef}
+            type="button"
+            className={'answer-sheet__detail-open' + (hasUnsavedDetail ? ' answer-sheet__detail-open--unsaved' : '')}
+            onClick={openDetailPage}
+          >
+            {hasUnsavedDetail ? '\u8a73\u7d30\u89e3\u8aac\uff08\u672a\u4fdd\u5b58\uff09' : '\u8a73\u7d30\u89e3\u8aac\u3092\u898b\u308b'} {'\u203a'}
           </button>
         ) : null}
       </div>
@@ -729,48 +911,93 @@ function AnswerPanel({
   );
 
   const detailPage = (
-    <div className="answer-sheet__content-page answer-sheet__detail-page">
+    <div
+      ref={detailPageRef}
+      className="answer-sheet__content-page answer-sheet__detail-page"
+      aria-hidden={panelPage !== 'detail'}
+      inert={panelPage !== 'detail'}
+    >
       <div className="answer-sheet__detail-heading">
-        <button type="button" className="answer-sheet__detail-back" onClick={() => setPanelPage('answer')}>
+        <button ref={detailBackRef} type="button" className="answer-sheet__detail-back" onClick={handleLeaveDetailPage} disabled={isSavingDetail}>
           {'\u2039'} {'\u89e3\u7b54\u306b\u623b\u308b'}
         </button>
-        <strong>{'\u8a73\u7d30\u89e3\u8aac'}</strong>
-      </div>
-      {hasSavedDetail && !isEditingDetail ? (
-        <div className="answer-sheet__detail-reading">
-          <ExplanationContent text={detailText} className="answer-sheet__explanation-text" />
-          <button type="button" className="answer-sheet__detail-edit" onClick={() => setIsEditingDetail(true)}>
-            {'\u8a73\u7d30\u89e3\u8aac\u3092\u7de8\u96c6'}
+        <h2>{'\u8a73\u7d30\u89e3\u8aac'}</h2>
+        {hasSavedDetail && !isEditingDetail ? (
+          <button
+            type="button"
+            className="answer-sheet__detail-edit"
+            ref={detailEditRef}
+             onClick={() => {
+               setIsEditingDetail(true);
+               setDetailMessage('');
+               setDetailMessageTone('neutral');
+               if (detailPageRef.current) detailPageRef.current.scrollTop = 0;
+               requestAnimationFrame(() => detailInputRef.current?.focus());
+            }}
+          >
+            {'\u7de8\u96c6'}
           </button>
+        ) : <span className="answer-sheet__detail-heading-spacer" aria-hidden="true" />}
+      </div>
+      {detailMessage ? (
+        <p
+          className={'answer-sheet__detail-message answer-sheet__detail-message--' + detailMessageTone}
+          role={detailMessageTone === 'error' ? 'alert' : 'status'}
+          aria-live={detailMessageTone === 'error' ? 'assertive' : 'polite'}
+        >
+          {detailMessage}
+        </p>
+      ) : null}
+      {hasSavedDetail && !isEditingDetail ? (
+        <div className="answer-sheet__detail-reading" data-no-page-swipe>
+          <ExplanationContent text={savedDetailText} className="answer-sheet__explanation-text" />
         </div>
       ) : (
-        <div className="answer-sheet__detail-editor">
+        <div className="answer-sheet__detail-editor" aria-busy={isSavingDetail} data-no-page-swipe>
           {!hasSavedDetail ? <p className="answer-sheet__detail-helper">{'\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u306e\u8a73\u7d30\u89e3\u8aac\u3092\u8aad\u307f\u8fbc\u3093\u3067\u767b\u9332\u3067\u304d\u307e\u3059'}</p> : null}
           {!hasSavedDetail ? (
-            <button type="button" className="answer-sheet__clipboard-button" onClick={() => void handleClipboardRead()}>
+            <button type="button" className="answer-sheet__clipboard-button" onClick={() => void handleClipboardRead()} disabled={isSavingDetail}>
               {'\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u304b\u3089\u30b3\u30d4\u30fc'}
             </button>
           ) : null}
-          <textarea
+           <textarea
+            ref={detailInputRef}
             className="answer-sheet__detail-input"
             value={detailText}
-            onChange={(event) => setDetailText(event.target.value)}
+            onChange={(event) => {
+              setDetailText(event.target.value);
+              setDetailMessage('');
+              setDetailMessageTone('neutral');
+            }}
             placeholder={'\u8a73\u7d30\u89e3\u8aac\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044'}
             aria-label={'\u8a73\u7d30\u89e3\u8aac'}
-          />
-          <div className="answer-sheet__detail-preview">
-            <p className="answer-sheet__label">{'\u8868\u793a\u30d7\u30ec\u30d3\u30e5\u30fc'}</p>
-            {detailText.trim() ? (
-              <ExplanationContent text={detailText} className="answer-sheet__explanation-text" />
-            ) : (
-              <p className="answer-sheet__detail-empty">{'\u8a73\u7d30\u89e3\u8aac\u306f\u307e\u3060\u5165\u529b\u3055\u308c\u3066\u3044\u307e\u305b\u3093'}</p>
-            )}
-          </div>
-          <button type="button" className="answer-sheet__detail-save" onClick={handleSaveDetail} disabled={!detailText.trim()}>
-            {'\u8a73\u7d30\u89e3\u8aac\u3092\u767b\u9332'}
+             disabled={isSavingDetail}
+           />
+          <button
+            type="button"
+            className={'answer-sheet__detail-save' + (!detailText.trim() && hasSavedDetail ? ' answer-sheet__detail-save--delete' : '')}
+            onClick={() => void handleSaveDetail()}
+            disabled={!canSaveDetail}
+          >
+            {isSavingDetail
+              ? '\u4fdd\u5b58\u4e2d\u2026'
+              : (!detailText.trim() && hasSavedDetail ? '\u8a73\u7d30\u89e3\u8aac\u3092\u524a\u9664' : '\u8a73\u7d30\u89e3\u8aac\u3092\u4fdd\u5b58')}
           </button>
-          {hasSavedDetail ? <button type="button" className="answer-sheet__detail-cancel" onClick={handleCancelDetailEdit}>{'\u30ad\u30e3\u30f3\u30bb\u30eb'}</button> : null}
-          {detailMessage ? <p className="answer-sheet__detail-message">{detailMessage}</p> : null}
+          {(hasSavedDetail || hasUnsavedDetail) ? (
+            <button type="button" className="answer-sheet__detail-cancel" onClick={handleCancelDetailEdit} disabled={isSavingDetail}>
+              {hasSavedDetail ? '\u5909\u66f4\u3092\u53d6\u308a\u6d88\u3059' : '\u5165\u529b\u3092\u30af\u30ea\u30a2'}
+            </button>
+          ) : null}
+          <details className="answer-sheet__detail-preview">
+            <summary>{'\u8868\u793a\u30d7\u30ec\u30d3\u30e5\u30fc'}</summary>
+            <div className="answer-sheet__detail-preview-content">
+              {detailText.trim() ? (
+                <ExplanationContent text={detailText} className="answer-sheet__explanation-text" />
+              ) : (
+                <p className="answer-sheet__detail-empty">{'\u8a73\u7d30\u89e3\u8aac\u306f\u307e\u3060\u5165\u529b\u3055\u308c\u3066\u3044\u307e\u305b\u3093'}</p>
+              )}
+            </div>
+          </details>
         </div>
       )}
     </div>
@@ -778,28 +1005,37 @@ function AnswerPanel({
 
   if (state === 'hidden') {
     return (
-      <section ref={sheetRef} className={'answer-sheet answer-sheet--hidden ' + (isDragging ? 'answer-sheet--dragging' : '')} {...dragProps}>
+      <section ref={sheetRef} tabIndex={-1} aria-label={'\u56de\u7b54\u7d50\u679c'} className={'answer-sheet answer-sheet--hidden ' + (isDragging ? 'answer-sheet--dragging' : '')} {...dragProps}>
+        <p className="sr-only" role="status" aria-live="polite">{isCorrect ? '\u6b63\u89e3\u3067\u3059' : '\u4e0d\u6b63\u89e3\u3067\u3059'}{`\u3002\u6b63\u89e3\u306f${answer}\u3067\u3059`}</p>
         <div className="answer-sheet__hidden-handle" />
         <div className="answer-sheet__hidden-bar">
           <span className={'answer-sheet__hidden-result ' + (isCorrect ? 'answer-sheet__hidden-result--correct' : 'answer-sheet__hidden-result--wrong')}>{isCorrect ? '\u6b63\u89e3' : '\u4e0d\u6b63\u89e3'}</span>
           <button type="button" className="answer-sheet__hidden-open" onClick={onDefault}>{'\u89e3\u7b54\u3092\u898b\u308b'}</button>
-          <button type="button" className="answer-sheet__hidden-next" onClick={onNext}>{isLast ? '\u7d50\u679c\u3078' : '\u6b21\u3078'}</button>
+          <button type="button" className="answer-sheet__hidden-next" onClick={handleNextWithDraftCheck} disabled={isSavingDetail}>{isLast ? '\u7d50\u679c\u3078' : '\u6b21\u3078'}</button>
         </div>
       </section>
     );
   }
 
   return (
-    <section ref={sheetRef} className={'answer-sheet answer-sheet--' + state + ' ' + (isDragging ? 'answer-sheet--dragging' : '')}>
-      <div className="answer-sheet__drag-area" {...dragProps}>
+    <section ref={sheetRef} tabIndex={-1} aria-label={'\u56de\u7b54\u7d50\u679c'} className={'answer-sheet answer-sheet--' + state + ' ' + (isDragging ? 'answer-sheet--dragging' : '')}>
+      <p className="sr-only" role="status" aria-live="polite">{isCorrect ? '\u6b63\u89e3\u3067\u3059' : '\u4e0d\u6b63\u89e3\u3067\u3059'}{`\u3002\u6b63\u89e3\u306f${answer}\u3067\u3059`}</p>
+      <button
+        type="button"
+        className="answer-sheet__drag-area"
+        aria-label={state === 'expanded' ? '\u89e3\u7b54\u30d1\u30cd\u30eb\u3092\u6a19\u6e96\u30b5\u30a4\u30ba\u306b\u3059\u308b' : '\u89e3\u7b54\u30d1\u30cd\u30eb\u3092\u5e83\u3052\u308b'}
+        aria-expanded={state === 'expanded'}
+        onClick={handleDragHandleClick}
+        {...dragProps}
+      >
         <div className="answer-sheet__drag-handle" />
-      </div>
+      </button>
       <div className="answer-sheet__fixed">
         <div>
           <div className={'answer-sheet__result ' + (isCorrect ? 'answer-sheet__result--correct' : 'answer-sheet__result--wrong')}>{isCorrect ? '\u6b63\u89e3' : '\u4e0d\u6b63\u89e3'}</div>
           {savedLevelLabel ? <p className="answer-sheet__saved">{savedLevelLabel}</p> : null}
         </div>
-        <button type="button" onClick={onHide} className="answer-sheet__hide-button">{'\u3057\u307e\u3046'}</button>
+          <button type="button" onClick={onHide} className="answer-sheet__hide-button" disabled={isSavingDetail || isSavingAmbiguous}>{'\u3057\u307e\u3046'}</button>
       </div>
       <div className={'answer-sheet__scroll ' + (state === 'expanded' ? 'answer-sheet__scroll--pages' : '')} {...(state === 'expanded' ? detailSwipeProps : {})}>
         {state === 'expanded' ? (
@@ -810,81 +1046,50 @@ function AnswerPanel({
         ) : answerPage}
       </div>
       <div className="answer-sheet__actions">
-        <button type="button" onClick={onToggleAmbiguous} className={'answer-sheet__action answer-sheet__action--secondary' + (isAmbiguous ? ' answer-sheet__action--ambiguous' : '')}>
-          {isAmbiguous ? '\u66d6\u6627\u3092\u89e3\u9664' : '\u66d6\u6627\u3068\u3057\u3066\u767b\u9332'}
+        <button type="button" onClick={() => void handleToggleAmbiguous()} disabled={isSavingDetail || isSavingAmbiguous} className={'answer-sheet__action answer-sheet__action--secondary' + (isAmbiguous ? ' answer-sheet__action--ambiguous' : '')}>
+          {isSavingAmbiguous ? '\u4fdd\u5b58\u4e2d\u2026' : (isAmbiguous ? '\u66d6\u6627\u3092\u89e3\u9664' : '\u66d6\u6627\u3068\u3057\u3066\u767b\u9332')}
         </button>
-        <button type="button" onClick={onNext} className="answer-sheet__action answer-sheet__action--primary">{isLast ? '\u7d50\u679c\u3078' : '\u6b21\u3078'}</button>
+        <button type="button" onClick={handleNextWithDraftCheck} disabled={isSavingDetail || isSavingAmbiguous} className="answer-sheet__action answer-sheet__action--primary">{isLast ? '\u7d50\u679c\u3078' : '\u6b21\u3078'}</button>
       </div>
     </section>
   );
 }
 
 function ExplanationContent({ text, className }: { text: string; className: string }) {
-  const blocks = parseExplanationBlocks(text);
   return (
-    <div className={className}>
-      {blocks.map((block, blockIndex) => block.kind === 'table' ? (
-        <div className="answer-sheet__markdown-table-wrap" key={'table-' + blockIndex}>
-          <table className="answer-sheet__markdown-table">
-            <thead>
-              <tr>{block.headers.map((cell, index) => <th key={'head-' + index}>{cell}</th>)}</tr>
-            </thead>
-            <tbody>
-              {block.rows.map((row, rowIndex) => (
-                <tr key={'row-' + rowIndex}>
-                  {row.map((cell, cellIndex) => <td key={'cell-' + rowIndex + '-' + cellIndex}>{cell}</td>)}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <p className="answer-sheet__markdown-paragraph" key={'paragraph-' + blockIndex}>
-          {block.lines.map((line, lineIndex) => <span key={'line-' + lineIndex}>{line}{lineIndex < block.lines.length - 1 ? <br /> : null}</span>)}
-        </p>
-      ))}
+    <div className={className + ' answer-sheet__markdown'}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        urlTransform={sanitizeMarkdownUrl}
+        components={{
+          table: ({ children }) => (
+            <div
+              className="answer-sheet__markdown-table-wrap"
+              data-no-page-swipe
+              role="region"
+              aria-label={'\u6a2a\u306b\u30b9\u30af\u30ed\u30fc\u30eb\u3067\u304d\u308b\u8868'}
+              tabIndex={0}
+            >
+              <table className="answer-sheet__markdown-table">{children}</table>
+            </div>
+          ),
+          a: ({ href, children }) => href ? (
+            <a href={href} target="_blank" rel="noreferrer noopener" data-no-page-swipe>{children}</a>
+          ) : <span>{children}</span>,
+          input: ({ node: _node, ...props }) => <input {...props} disabled data-no-page-swipe />,
+          img: ({ src, alt }) => src
+            ? <img src={src} alt={alt ?? ''} loading="lazy" data-no-page-swipe />
+            : <span>{alt ?? ''}</span>,
+        }}
+      >
+        {text}
+      </ReactMarkdown>
     </div>
   );
 }
 
-function parseExplanationBlocks(text: string): Array<
-  | { kind: 'paragraph'; lines: string[] }
-  | { kind: 'table'; headers: string[]; rows: string[][] }
-> {
-  const lines = text.replace(/\r\n?/g, '\n').split('\n');
-  const blocks: Array<
-    | { kind: 'paragraph'; lines: string[] }
-    | { kind: 'table'; headers: string[]; rows: string[][] }
-  > = [];
-  let paragraph: string[] = [];
-
-  const flushParagraph = () => {
-    if (paragraph.some((line) => line.trim())) blocks.push({ kind: 'paragraph', lines: paragraph });
-    paragraph = [];
-  };
-
-  const parseRow = (line: string) => line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((cell) => cell.trim());
-
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index];
-    const divider = lines[index + 1] ?? '';
-    if (line.includes('|') && /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(divider)) {
-      flushParagraph();
-      const headers = parseRow(line);
-      const rows: string[][] = [];
-      index += 2;
-      while (index < lines.length && lines[index].includes('|') && lines[index].trim() !== '') {
-        rows.push(parseRow(lines[index]));
-        index += 1;
-      }
-      index -= 1;
-      blocks.push({ kind: 'table', headers, rows });
-      continue;
-    }
-    if (line.trim() === '') flushParagraph();
-    else paragraph.push(line);
-  }
-
-  flushParagraph();
-  return blocks;
+function sanitizeMarkdownUrl(url: string) {
+  const value = url.trim();
+  if (/^(https?:|mailto:)/i.test(value) || value.startsWith('#')) return value;
+  return '';
 }

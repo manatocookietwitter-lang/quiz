@@ -23,6 +23,7 @@ import {
   type SyncPayload,
   type SyncPayloadSummary,
 } from '../utils/syncService';
+import { isStrongSyncId } from '../utils/syncState';
 import './SyncScreen.css';
 
 interface SyncScreenProps {
@@ -43,10 +44,16 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
   const [error, setError] = useState('');
   const [clearBackupsConfirmOpen, setClearBackupsConfirmOpen] = useState(false);
   const [pendingCloudImport, setPendingCloudImport] = useState<{ payload: SyncPayload; summary: SyncPayloadSummary } | null>(null);
+  const [pendingCloudOverwrite, setPendingCloudOverwrite] = useState<{
+    payload: SyncPayload;
+    localHash: string;
+    summary: SyncPayloadSummary;
+  } | null>(null);
 
   const normalizedSyncId = syncId.trim();
-  const canRun = Boolean(normalizedSyncId) && !busy;
-  const autoCanRun = autoEnabled && configured && Boolean(normalizedSyncId);
+  const syncIdValid = isStrongSyncId(normalizedSyncId);
+  const canRun = syncIdValid && !busy;
+  const autoCanRun = autoEnabled && configured && syncIdValid;
 
   useEffect(() => {
     const refreshSyncState = () => {
@@ -91,6 +98,22 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
     updateSyncId(nextId);
     setError('');
     setMessage('同期IDを生成しました。ほかの端末にも同じIDを入力してください。');
+  };
+
+  const handleCopySyncId = async () => {
+    if (!normalizedSyncId) {
+      setMessage('');
+      setError('先に同期IDを生成または入力してください。');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(normalizedSyncId);
+      setError('');
+      setMessage('同期IDをクリップボードへコピーしました。');
+    } catch {
+      setMessage('');
+      setError('同期IDをコピーできませんでした。入力欄を長押ししてコピーしてください。');
+    }
   };
 
   const handleToggleAutoSync = () => {
@@ -140,31 +163,32 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
     setMessage(count > 0 ? `\u540c\u671f\u30d0\u30c3\u30af\u30a2\u30c3\u30d7\u3092${count}\u4ef6\u6574\u7406\u3057\u307e\u3057\u305f\u3002` : '\u6574\u7406\u5bfe\u8c61\u306e\u540c\u671f\u30d0\u30c3\u30af\u30a2\u30c3\u30d7\u306f\u3042\u308a\u307e\u305b\u3093\u3002');
   };
 
-  const handleUpload = async () => {
-    if (!normalizedSyncId) {
-      setError('同期IDを入力してください。');
-      return;
-    }
-
-    setBusy(true);
-    setError('');
-    setMessage('クラウドへ保存しています...');
-
-    const payload = await exportQuizMakeData();
-    const localHash = computePayloadHash(payload);
-    const localSummary = summarizeSyncPayload(payload);
-    const result = await uploadSyncData(normalizedSyncId, payload);
-
+  const uploadAndVerify = async (
+    payload: SyncPayload,
+    localHash: string,
+    localSummary: SyncPayloadSummary,
+    force: boolean,
+  ) => {
+    const syncState = getLastSyncState();
+    const result = await uploadSyncData(normalizedSyncId, payload, {
+      // Only a completed upload/import is a safe base for overwriting. Merely
+      // viewing a newer cloud version must not turn it into an accepted base.
+      expectedRemoteUpdatedAt: syncState.lastSyncAt || null,
+      force,
+    });
     if (!result.ok) {
-      setBusy(false);
       setLastState(getLastSyncState());
       setMessage('');
+      if (result.code === 'conflict' && !force) {
+        setError('');
+        setPendingCloudOverwrite({ payload, localHash, summary: localSummary });
+        return;
+      }
       setError(result.error);
       return;
     }
 
     const verify = await downloadSyncData(normalizedSyncId);
-    setBusy(false);
     setLastState(getLastSyncState());
 
     if (!verify.ok) {
@@ -187,6 +211,55 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
     }
 
     setMessage(`クラウドへ保存しました。更新: ${formatDateTime(verify.value.updatedAt)} / ${formatSyncSummary(remoteSummary)}`);
+  };
+
+  const handleUpload = async () => {
+    if (!normalizedSyncId) {
+      setError('同期IDを入力してください。');
+      return;
+    }
+
+    setBusy(true);
+    setError('');
+    setMessage('クラウドへ保存しています...');
+
+    try {
+      const payload = await exportQuizMakeData();
+      const localHash = computePayloadHash(payload);
+      const localSummary = summarizeSyncPayload(payload);
+      await uploadAndVerify(payload, localHash, localSummary, false);
+    } catch (caughtError) {
+      const detail = caughtError instanceof Error ? caughtError.message : String(caughtError);
+      setMessage('');
+      setError(`クラウドへの保存準備に失敗しました: ${detail}`);
+    } finally {
+      setBusy(false);
+      setLastState(getLastSyncState());
+    }
+  };
+
+  const cancelCloudOverwrite = () => {
+    setPendingCloudOverwrite(null);
+    setMessage('クラウドへの上書きをキャンセルしました。');
+  };
+
+  const confirmCloudOverwrite = async () => {
+    const target = pendingCloudOverwrite;
+    if (!target) return;
+    setPendingCloudOverwrite(null);
+    setBusy(true);
+    setError('');
+    setMessage('確認済みの内容でクラウドを上書きしています...');
+    try {
+      await uploadAndVerify(target.payload, target.localHash, target.summary, true);
+    } catch (caughtError) {
+      const detail = caughtError instanceof Error ? caughtError.message : String(caughtError);
+      setMessage('');
+      setError(`クラウドへの上書きに失敗しました: ${detail}`);
+    } finally {
+      setBusy(false);
+      setLastState(getLastSyncState());
+    }
   };
 
   const handleDownload = async () => {
@@ -221,22 +294,23 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
   };
 
   const cancelCloudImport = () => {
+    if (busy) return;
     setPendingCloudImport(null);
     setMessage('読み込みをキャンセルしました。');
   };
 
   const confirmCloudImport = async () => {
     const target = pendingCloudImport;
-    if (!target) return;
-    setPendingCloudImport(null);
+    if (!target || busy) return;
     setBusy(true);
     setError('');
     setMessage('クラウドデータを反映しています...');
 
     const importResult = await importQuizMakeData(target.payload);
-    setBusy(false);
     setLastState(getLastSyncState());
     if (!importResult.ok) {
+      setBusy(false);
+      setPendingCloudImport(null);
       setMessage('');
       setError(importResult.error);
       return;
@@ -270,7 +344,7 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
   return (
     <div className="sync-screen">
       <header className="sync-screen__header">
-        <BackButton onClick={onBack} label="戻る" className="sync-screen__back" />
+        <BackButton onClick={onBack} label="戻る" className="sync-screen__back" disabled={busy || diagnosticBusy} />
         <div className="sync-screen__header-text">
           <h1>同期設定</h1>
           <p>同期IDで端末間共有</p>
@@ -290,12 +364,23 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
             value={syncId}
             onChange={(event) => updateSyncId(event.target.value)}
             placeholder="同期ID"
+            aria-label="同期ID"
             autoComplete="off"
             spellCheck={false}
           />
-          <button type="button" className="sync-button sync-button--secondary" onClick={handleGenerate} disabled={busy}>
-            同期IDを生成
-          </button>
+          {normalizedSyncId && !syncIdValid ? (
+            <p className="sync-card__error-text" role="alert">
+              安全のため、「同期IDを生成」で作成した36文字のIDを使用してください。
+            </p>
+          ) : null}
+          <div className="sync-id-actions">
+            <button type="button" className="sync-button sync-button--secondary" onClick={handleGenerate} disabled={busy}>
+              同期IDを生成
+            </button>
+            <button type="button" className="sync-button sync-button--secondary" onClick={() => void handleCopySyncId()} disabled={busy || !normalizedSyncId}>
+              同期IDをコピー
+            </button>
+          </div>
         </section>
 
         <section className="sync-card">
@@ -405,17 +490,26 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
           </div>
         ) : null}
 
-        {message ? <div className="sync-alert sync-alert--message">{message}</div> : null}
-        {error ? <div className="sync-alert sync-alert--error">{error}</div> : null}
+        {message ? <div className="sync-alert sync-alert--message" role="status" aria-live="polite">{message}</div> : null}
+        {error ? <div className="sync-alert sync-alert--error" role="alert">{error}</div> : null}
       </main>
 
       <ConfirmDialog
         open={pendingCloudImport !== null}
         title={'クラウドから読み込みますか？'}
         message={pendingCloudImport ? `クラウドのデータでこの端末のデータを上書きします。\n\nクラウド内容: ${formatSyncSummary(pendingCloudImport.summary)}\n\n必要な場合は、先に「現在データをJSONバックアップ」で保存してください。` : ''}
-        confirmLabel={'読み込む'}
+        confirmLabel={busy ? '読み込み中…' : '読み込む'}
+        busy={busy}
         onCancel={cancelCloudImport}
         onConfirm={() => void confirmCloudImport()}
+      />
+      <ConfirmDialog
+        open={pendingCloudOverwrite !== null}
+        title="クラウドに別のデータがあります"
+        message={pendingCloudOverwrite ? `この端末が最後に確認した後で、クラウド側が更新されています。\n\nこの端末の内容で強制的に上書きしますか？\n端末内容: ${formatSyncSummary(pendingCloudOverwrite.summary)}\n\n必要な場合は、先に「現在データをJSONバックアップ」で保存してください。` : ''}
+        confirmLabel="強制上書き"
+        onCancel={cancelCloudOverwrite}
+        onConfirm={() => void confirmCloudOverwrite()}
       />
       <ConfirmDialog
         open={clearBackupsConfirmOpen}

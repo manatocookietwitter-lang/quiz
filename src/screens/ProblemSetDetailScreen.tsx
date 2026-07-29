@@ -11,6 +11,7 @@ import {
   shuffleArray,
   type ReviewLevelFilter,
 } from '../utils/quiz';
+import { isReviewTarget } from '../utils/reviewTargets';
 import './ProblemSetDetailScreen.css';
 
 type CategoryFilter = 'all' | string;
@@ -274,7 +275,10 @@ export function sortQuestionsForProblemList(data: AppData, questions: Question[]
 
 export function buildReviewQuestions(data: AppData, questions: Question[], filter: ReviewLevelFilter = 'all') {
   if (filter !== 'all') {
-    const filtered = questions.filter((question) => matchesReviewLevel(getProgress(data, question.id), filter));
+    const filtered = questions.filter((question) => {
+      const progress = getProgress(data, question.id);
+      return isReviewTarget(progress) && matchesReviewLevel(progress, filter);
+    });
     return shuffleArray(filtered);
   }
 

@@ -1,16 +1,16 @@
 import { useState } from 'react';
 import type { AppData, Question, QuizMode, QuizResult } from '../types';
 import { getQuestionsBySet, shuffleArray } from '../utils/quiz';
-import { QuizRunner } from './QuizRunner';
+import { QuizRunner, type AnswerHandlerResult } from './QuizRunner';
 
 interface QuizScreenProps {
   data: AppData;
   setId: string;
   mode: QuizMode;
   onBack: () => void;
-  onAnswer: (question: Question, selectedIndexes: number[], isReviewMode: boolean) => { isCorrect: boolean; addedToReview: boolean; levelLabel?: string };
-  onToggleAmbiguous: (questionId: string) => void;
-  onSaveDetailedExplanation: (questionId: string, detailedExplanation: string) => void;
+  onAnswer: (question: Question, selectedIndexes: number[], isReviewMode: boolean) => AnswerHandlerResult;
+  onToggleAmbiguous: (questionId: string) => Promise<boolean>;
+  onSaveDetailedExplanation: (questionId: string, detailedExplanation: string) => Promise<void>;
   onFinish: (result: QuizResult) => void;
 }
 

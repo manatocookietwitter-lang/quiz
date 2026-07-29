@@ -116,7 +116,14 @@ export function ProblemListScreen({ data, setId, initialSortMode = 'ordered', on
         </section>
 
         <section className="quiz-list__items" ref={listRef}>
-          {groupedSections.map((section) => (
+          {groupedSections.length === 0 ? (
+            <div className="quiz-list__empty">
+              <div className="quiz-list__empty-icon" aria-hidden="true">0</div>
+              <h2>問題がありません</h2>
+              <p>この問題セットへ問題を追加すると、ここに一覧表示されます。</p>
+              <button type="button" onClick={onBack}>問題セットへ戻る</button>
+            </div>
+          ) : groupedSections.map((section) => (
             <div
               key={section.category}
               className="quiz-list__section"

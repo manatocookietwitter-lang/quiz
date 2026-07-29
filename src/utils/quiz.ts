@@ -1,6 +1,7 @@
 import type { AppData, Folder, ProblemSet, Question, QuestionProgress, QuizResult, StudyStats } from '../types';
 import { createId } from './id';
 import { isToday, nowIso } from './date';
+import { isReviewTarget } from './reviewTargets';
 
 export type ReviewLevelFilter = 'all' | 'level0' | 'level1' | 'level2' | 'level3' | 'ambiguous';
 export type EffectiveReviewLevel = 0 | 1 | 2 | 3 | 'graduated';
@@ -61,7 +62,7 @@ export function calculateStats(data: AppData): StudyStats {
   const totalCount = data.answerLogs.length;
   const correctCount = data.answerLogs.filter((log) => log.isCorrect).length;
   const todayCount = data.answerLogs.filter((log) => isToday(log.answeredAt)).length;
-  const reviewCount = data.progress.filter((progress) => progress.isReview && !progress.isGraduated).length;
+  const reviewCount = data.progress.filter(isReviewTarget).length;
   const ambiguousCount = data.progress.filter((progress) => progress.isAmbiguous).length;
 
   return {
@@ -276,7 +277,7 @@ export function groupReviewQuestionsByLevel(data: AppData, questions: Question[]
 
   questions.forEach((question) => {
     const progress = getProgress(data, question.id);
-    if (!matchesReviewLevel(progress, 'all')) return;
+    if (!isReviewTarget(progress)) return;
     if (progress.isAmbiguous) {
       groups.ambiguous.push(question);
       return;

@@ -1,9 +1,10 @@
-import { useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { AppData, Folder } from '../types';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Layout } from '../components/Layout';
 import { formatDisplayDate } from '../utils/date';
 import { CHATGPT_MATERIAL_TEMPLATE_PROMPT, CHATGPT_PAST_EXAM_TEMPLATE_PROMPT } from '../utils/importValidator';
+import { isReviewTarget } from '../utils/reviewTargets';
 import './HomeScreen.css';
 
 interface HomeScreenProps {
@@ -75,12 +76,19 @@ export function HomeScreen({
         </header>
 
         <section className="quiz-home__actions" aria-label="ホーム操作">
-          <HomeCircleButton active={editMode} icon="✎" label={editMode ? '完了' : '編集'} onClick={() => setEditMode((value) => !value)} />
+          <HomeCircleButton active={editMode} icon={editMode ? '✓' : '−'} label={editMode ? '完了' : '削除'} onClick={() => setEditMode((value) => !value)} />
           <HomeCircleButton icon="＋" label="新規作成" onClick={() => setCreateOpen(true)} />
         </section>
 
         <section className="quiz-home__folder-list" aria-label="フォルダ一覧">
-          {data.folders.map((folder) => {
+          {data.folders.length === 0 ? (
+            <div className="quiz-home__empty">
+              <div className="quiz-home__empty-icon" aria-hidden="true">＋</div>
+              <h2>学習フォルダを作りましょう</h2>
+              <p>科目や試験ごとに整理すると、問題と復習記録を探しやすくなります。</p>
+              <button type="button" onClick={() => setCreateOpen(true)}>最初のフォルダを作る</button>
+            </div>
+          ) : data.folders.map((folder) => {
             const summary = getFolderSummary(data, folder.id);
             return (
               <QuizHomeFolderItem
@@ -233,26 +241,46 @@ function CreateFolderDialog({
   onCancel: () => void;
   onCreate: () => void;
 }) {
+  const dialogRef = useModalFocus<HTMLFormElement>(onCancel);
+  const titleId = useId();
+
   return (
-    <div className="quiz-home__overlay">
-      <div className="quiz-home__sheet">
-        <h2 className="quiz-home__sheet-title">フォルダを新規作成</h2>
+    <div
+      className="quiz-home__overlay"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onCancel();
+      }}
+    >
+      <form
+        ref={dialogRef}
+        className="quiz-home__sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        onSubmit={(event) => {
+          event.preventDefault();
+          onCreate();
+        }}
+      >
+        <h2 id={titleId} className="quiz-home__sheet-title">フォルダを新規作成</h2>
         <input
+          data-dialog-autofocus
           value={folderName}
           onChange={(event) => onChange(event.target.value)}
           className="quiz-home__input"
           placeholder="フォルダ名"
-          autoFocus
+          aria-label="フォルダ名"
         />
         <div className="quiz-home__sheet-actions">
           <button type="button" className="quiz-home__sheet-button" onClick={onCancel}>
             キャンセル
           </button>
-          <button type="button" className="quiz-home__sheet-button quiz-home__sheet-button--primary" disabled={!folderName.trim()} onClick={onCreate}>
+          <button type="submit" className="quiz-home__sheet-button quiz-home__sheet-button--primary" disabled={!folderName.trim()}>
             作成
           </button>
         </div>
-      </div>
+      </form>
     </div>
   );
 }
@@ -278,10 +306,12 @@ function HomeMenu({
   onOpenSync: () => void;
   onClearAll: () => void;
 }) {
+  const dialogRef = useModalFocus<HTMLDivElement>(onClose);
+
   return (
     <div className="quiz-home__overlay" onClick={onClose}>
-      <div className="quiz-home__menu" onClick={(event) => event.stopPropagation()}>
-        <button type="button" className="quiz-home__menu-close" aria-label="閉じる" onClick={onClose}>
+      <div ref={dialogRef} className="quiz-home__menu" role="dialog" aria-modal="true" aria-label="ホームメニュー" onClick={(event) => event.stopPropagation()}>
+        <button data-dialog-autofocus type="button" className="quiz-home__menu-close" aria-label="閉じる" onClick={onClose}>
           ×
         </button>
         <button type="button" className="quiz-home__menu-item" onClick={onExport}>
@@ -309,6 +339,52 @@ function HomeMenu({
   );
 }
 
+function useModalFocus<T extends HTMLElement>(onClose: () => void) {
+  const dialogRef = useRef<T | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const frame = window.requestAnimationFrame(() => {
+      const preferred = dialogRef.current?.querySelector<HTMLElement>('[data-dialog-autofocus]');
+      const first = dialogRef.current?.querySelector<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])');
+      (preferred ?? first)?.focus();
+    });
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), a[href], [tabindex]:not([tabindex="-1"])',
+      ) ?? []);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener('keydown', handleKeyDown);
+      previouslyFocused?.focus();
+    };
+  }, []);
+
+  return dialogRef;
+}
+
 function getFolderSummary(data: AppData, folderId: string) {
   const sets = data.problemSets.filter((set) => set.folderId === folderId);
   const setIds = new Set(sets.map((set) => set.id));
@@ -321,7 +397,7 @@ function getFolderSummary(data: AppData, folderId: string) {
   return {
     setCount: sets.length,
     questionCount: questions.length,
-    reviewCount: progress.filter((item) => item.isReview && !item.isGraduated).length,
+    reviewCount: progress.filter(isReviewTarget).length,
     correctRate: logs.length === 0 ? 0 : Math.round((correct / logs.length) * 100),
   };
 }

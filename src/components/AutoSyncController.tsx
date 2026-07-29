@@ -22,29 +22,42 @@ export function AutoSyncController() {
   const lastRemoteCheckAtRef = useRef(0);
   const promptedRemoteUpdatedAtRef = useRef('');
   const [pendingRemoteImport, setPendingRemoteImport] = useState<{ syncId: string; updatedAt: string } | null>(null);
+  const [remoteImportBusy, setRemoteImportBusy] = useState(false);
 
   const cancelRemoteImport = () => {
+    if (remoteImportBusy) return;
     setPendingRemoteImport(null);
     setLastSyncState({ status: 'クラウド読み込みを保留しました', error: '' });
   };
 
   const confirmRemoteImport = async () => {
     const target = pendingRemoteImport;
-    if (!target) return;
-    setPendingRemoteImport(null);
+    if (!target || remoteImportBusy) return;
+    setRemoteImportBusy(true);
     setLastSyncState({ status: 'クラウドから読み込み中...', error: '' });
 
     const download = await downloadSyncData(target.syncId);
     if (!download.ok) {
       console.warn('Auto sync download failed.', download.error);
       setLastSyncState({ status: 'クラウド読み込み失敗', error: download.error });
+      promptedRemoteUpdatedAtRef.current = '';
+      setPendingRemoteImport(null);
+      setRemoteImportBusy(false);
       return;
     }
-    if (!download.value) return;
+    if (!download.value) {
+      setLastSyncState({ status: 'クラウドデータが見つかりません', error: '' });
+      setPendingRemoteImport(null);
+      setRemoteImportBusy(false);
+      return;
+    }
 
     const imported = await importQuizMakeData(download.value.payload);
     if (!imported.ok) {
       setLastSyncState({ status: 'クラウド読み込み失敗', error: imported.error });
+      promptedRemoteUpdatedAtRef.current = '';
+      setPendingRemoteImport(null);
+      setRemoteImportBusy(false);
       return;
     }
 
@@ -81,10 +94,17 @@ export function AutoSyncController() {
         }
 
         setLastSyncState({ status: '自動保存中...', error: '' });
-        const result = await uploadSyncData(settings.syncId, payload);
+        const result = await uploadSyncData(settings.syncId, payload, {
+          expectedRemoteUpdatedAt: lastState.lastSyncAt || null,
+          force: false,
+        });
         if (!result.ok) {
           console.warn('Auto sync upload failed.', result.error);
-          setLastSyncState({ status: '自動同期失敗', error: result.error });
+          setLastSyncState({
+            status: result.code === 'conflict' ? 'クラウドに新しいデータがあります' : '自動同期失敗',
+            error: result.error,
+          });
+          if (result.code === 'conflict') void checkRemote(true);
           return;
         }
         setLastSyncState({ status: '自動保存しました', error: '' });
@@ -121,13 +141,12 @@ export function AutoSyncController() {
 
         const lastState = getLastSyncState();
         setLastSyncState({ lastRemoteUpdatedAt: meta.value.updatedAt });
-        const remoteTime = Date.parse(meta.value.updatedAt);
-        const localTime = Date.parse(lastState.lastSyncAt);
-        const remoteIsNewer = Number.isFinite(remoteTime) && (!Number.isFinite(localTime) || remoteTime > localTime + 1000);
-        if (!remoteIsNewer) return;
-        if (promptedRemoteUpdatedAtRef.current === meta.value.updatedAt) return;
+        const remoteHasChanged = meta.value.updatedAt !== lastState.lastSyncAt;
+        if (!remoteHasChanged) return;
+        const promptKey = `${settings.syncId}:${meta.value.updatedAt}`;
+        if (promptedRemoteUpdatedAtRef.current === promptKey) return;
 
-        promptedRemoteUpdatedAtRef.current = meta.value.updatedAt;
+        promptedRemoteUpdatedAtRef.current = promptKey;
         setLastSyncState({ status: 'クラウドに新しいデータがあります', error: '' });
         setPendingRemoteImport({ syncId: settings.syncId, updatedAt: meta.value.updatedAt });
       } catch (error) {
@@ -167,7 +186,8 @@ export function AutoSyncController() {
       open={pendingRemoteImport !== null}
       title={'クラウドに新しいデータがあります'}
       message={'この端末のデータをクラウドの内容で上書きします。\n必要な場合は同期設定画面の「現在データをJSONバックアップ」で先に保存してください。'}
-      confirmLabel={'読み込む'}
+      confirmLabel={remoteImportBusy ? '読み込み中…' : '読み込む'}
+      busy={remoteImportBusy}
       onCancel={cancelRemoteImport}
       onConfirm={() => void confirmRemoteImport()}
     />

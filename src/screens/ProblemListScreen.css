@@ -171,6 +171,54 @@
   display: none;
 }
 
+.quiz-list__empty {
+  width: min(100%, 380px);
+  margin: clamp(28px, 10dvh, 76px) auto 0;
+  border: 1px solid #303030;
+  border-radius: 20px;
+  background: #202020;
+  padding: 24px 18px;
+  text-align: center;
+}
+
+.quiz-list__empty-icon {
+  width: 58px;
+  height: 58px;
+  margin: 0 auto 14px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(18, 191, 192, 0.16);
+  color: #67e8f9;
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.quiz-list__empty h2 {
+  margin: 0;
+  color: #ffffff;
+  font-size: 19px;
+  font-weight: 900;
+}
+
+.quiz-list__empty p {
+  margin: 9px 0 18px;
+  color: #a3a3a3;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.6;
+}
+
+.quiz-list__empty button {
+  width: 100%;
+  min-height: 48px;
+  border-radius: 14px;
+  background: #12bfc0;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 900;
+}
+
 .quiz-list__section {
   scroll-margin-top: 8px;
   padding-bottom: 4px;
