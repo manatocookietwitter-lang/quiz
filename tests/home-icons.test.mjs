@@ -7,6 +7,8 @@ const homeSource = readSource('../src/screens/HomeScreen.tsx');
 const folderSource = readSource('../src/screens/FolderScreen.tsx');
 const manifestSource = readSource('../public/manifest.webmanifest');
 const iconSource = readSource('../public/icons/quiz-make-icon.svg');
+const htmlSource = readSource('../index.html');
+const workerSource = readSource('../public/sw.js');
 
 test('home and folder navigation use outline icons while retaining learning counts', () => {
   assert.match(homeSource, /FolderOutlineIcon/);
@@ -25,8 +27,15 @@ test('home and folder navigation use outline icons while retaining learning coun
 });
 
 test('PWA icon manifest points to the light QuizMake mark', () => {
+  const iconRevision = '20260804-2';
   assert.match(manifestSource, /"theme_color": "#f1f7fa"/);
   assert.match(manifestSource, /"background_color": "#ffffff"/);
+  assert.match(manifestSource, new RegExp(`icon-192\\.png\\?v=${iconRevision}`));
+  assert.match(manifestSource, new RegExp(`icon-512\\.png\\?v=${iconRevision}`));
+  assert.match(manifestSource, new RegExp(`maskable-512\\.png\\?v=${iconRevision}`));
+  assert.match(htmlSource, /rel="icon"/);
+  assert.match(htmlSource, new RegExp(`apple-touch-icon[^>]+${iconRevision}`));
+  assert.match(workerSource, new RegExp(`icon-192\\.png\\?v=${iconRevision}`));
   assert.match(iconSource, /#1769ff/);
   assert.match(iconSource, /<circle/);
   for (const file of ['icon-192.png', 'icon-512.png', 'maskable-512.png']) {

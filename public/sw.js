@@ -7,10 +7,10 @@ const INDEX_URL = new URL('index.html', BASE_URL).href;
 const APP_SHELL = [
   BASE_URL.href,
   INDEX_URL,
-  new URL('manifest.webmanifest', BASE_URL).href,
-  new URL('icons/icon-192.png', BASE_URL).href,
-  new URL('icons/icon-512.png', BASE_URL).href,
-  new URL('icons/maskable-512.png', BASE_URL).href,
+  new URL('manifest.webmanifest?v=20260804-2', BASE_URL).href,
+  new URL('icons/icon-192.png?v=20260804-2', BASE_URL).href,
+  new URL('icons/icon-512.png?v=20260804-2', BASE_URL).href,
+  new URL('icons/maskable-512.png?v=20260804-2', BASE_URL).href,
 ];
 
 self.addEventListener('install', (event) => {
