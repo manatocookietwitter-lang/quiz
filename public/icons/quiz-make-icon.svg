@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title>QuizMake</title>
+  <rect width="512" height="512" rx="112" fill="#f7fbff"/>
+  <rect x="190" y="82" width="224" height="304" rx="62" fill="#b9d2ff"/>
+  <rect x="108" y="116" width="292" height="302" rx="62" fill="#ffffff" stroke="#1769ff" stroke-width="28"/>
+  <circle cx="244" cy="267" r="67" fill="#ffffff" stroke="#1769ff" stroke-width="28"/>
+  <path d="m289 312 53 51" fill="none" stroke="#1769ff" stroke-width="28" stroke-linecap="round"/>
+</svg>

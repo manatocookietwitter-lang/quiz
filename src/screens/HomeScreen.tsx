@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import type { AppData, Folder } from '../types';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Layout } from '../components/Layout';
+import { CheckIcon, ChevronRightIcon, FolderOutlineIcon, MenuIcon, PlusIcon, QuizMakeMarkIcon, TrashIcon } from '../components/UiIcons';
 import { formatDisplayDate } from '../utils/date';
 import { CHATGPT_MATERIAL_TEMPLATE_PROMPT, CHATGPT_PAST_EXAM_TEMPLATE_PROMPT } from '../utils/importValidator';
 import { isReviewTarget } from '../utils/reviewTargets';
@@ -69,21 +70,22 @@ export function HomeScreen({
       <div className="quiz-home">
         <header className="quiz-home__header">
           <div className="quiz-home__header-slope" />
+          <span className="quiz-home__brand-icon" aria-hidden="true"><QuizMakeMarkIcon size={30} /></span>
           <h1 className="quiz-home__title">Quiz make</h1>
           <button type="button" className="quiz-home__menu-button" aria-label="メニュー" onClick={() => setMenuOpen(true)}>
-            ≡
+            <MenuIcon />
           </button>
         </header>
 
         <section className="quiz-home__actions" aria-label="ホーム操作">
-          <HomeCircleButton active={editMode} icon={editMode ? '✓' : '−'} label={editMode ? '完了' : '削除'} onClick={() => setEditMode((value) => !value)} />
-          <HomeCircleButton icon="＋" label="新規作成" onClick={() => setCreateOpen(true)} />
+          <HomeCircleButton active={editMode} icon={editMode ? 'done' : 'delete'} label={editMode ? '完了' : '削除'} onClick={() => setEditMode((value) => !value)} />
+          <HomeCircleButton icon="add" label="新規作成" onClick={() => setCreateOpen(true)} />
         </section>
 
         <section className="quiz-home__folder-list" aria-label="フォルダ一覧">
           {data.folders.length === 0 ? (
             <div className="quiz-home__empty">
-              <div className="quiz-home__empty-icon" aria-hidden="true">＋</div>
+              <div className="quiz-home__empty-icon" aria-hidden="true"><PlusIcon size={24} /></div>
               <h2>学習フォルダを作りましょう</h2>
               <p>科目や試験ごとに整理すると、問題と復習記録を探しやすくなります。</p>
               <button type="button" onClick={() => setCreateOpen(true)}>最初のフォルダを作る</button>
@@ -174,10 +176,12 @@ export function HomeScreen({
   );
 }
 
-function HomeCircleButton({ active = false, icon, label, onClick }: { active?: boolean; icon: string; label: string; onClick: () => void }) {
+function HomeCircleButton({ active = false, icon, label, onClick }: { active?: boolean; icon: 'delete' | 'add' | 'done'; label: string; onClick: () => void }) {
   return (
     <button type="button" className="quiz-home__action" onClick={onClick}>
-      <span className={`quiz-home__circle-button${active ? ' quiz-home__circle-button--active' : ''}`}>{icon}</span>
+      <span className={`quiz-home__circle-button${active ? ' quiz-home__circle-button--active' : ''}`}>
+        {icon === 'delete' ? <TrashIcon /> : icon === 'done' ? <CheckIcon /> : <PlusIcon />}
+      </span>
       <span className="quiz-home__action-label">{label}</span>
     </button>
   );
@@ -206,7 +210,7 @@ function QuizHomeFolderItem({
     <article className="quiz-home__folder-card">
       <button type="button" className="quiz-home__folder-main" onClick={onOpen} disabled={editMode}>
         <span className="quiz-home__folder-icon" aria-hidden="true">
-          <span className="quiz-home__folder-tab" />
+          <FolderOutlineIcon />
         </span>
         <span className="quiz-home__folder-body">
           <span className="quiz-home__folder-name">{folder.name}</span>
@@ -218,12 +222,13 @@ function QuizHomeFolderItem({
           </span>
           <span className="quiz-home__folder-date">更新 {formatDisplayDate(folder.updatedAt)}</span>
         </span>
-        {!editMode ? <span className="quiz-home__folder-arrow">›</span> : null}
+        {!editMode ? <span className="quiz-home__folder-arrow"><ChevronRightIcon /></span> : null}
       </button>
 
       {editMode ? (
         <button type="button" className="quiz-home__delete-button" onClick={onDelete}>
-          削除
+          <TrashIcon size={18} />
+          <span>削除</span>
         </button>
       ) : null}
     </article>

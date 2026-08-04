@@ -3,6 +3,7 @@ import type { AppData, ProblemSet } from '../types';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { BackButton } from '../components/BackButton';
 import { Layout } from '../components/Layout';
+import { CheckIcon, ChevronRightIcon, DocumentOutlineIcon, PlusIcon, TrashIcon } from '../components/UiIcons';
 import { formatDisplayDate } from '../utils/date';
 import { getProblemSetsByFolder, getQuestionsBySet } from '../utils/quiz';
 import './FolderScreen.css';
@@ -46,15 +47,15 @@ export function FolderScreen({ data, folderId, onBack, onOpenImport, onOpenProbl
           </section>
         ) : (
           <section className="quiz-folder__actions" aria-label="操作">
-            <FolderCircleButton icon="−" label="削除" onClick={() => setEditMode(true)} />
-            <FolderCircleButton icon="＋" label="新規問題" onClick={() => onOpenImport(folder.id)} />
+            <FolderCircleButton icon="delete" label="削除" onClick={() => setEditMode(true)} />
+            <FolderCircleButton icon="add" label="新規問題" onClick={() => onOpenImport(folder.id)} />
           </section>
         )}
 
         <section className="quiz-folder__set-list" aria-label="一覧">
           {problemSets.length === 0 ? (
             <div className="quiz-folder__empty">
-              <div className="quiz-folder__empty-icon" aria-hidden="true">＋</div>
+              <div className="quiz-folder__empty-icon" aria-hidden="true"><PlusIcon size={24} /></div>
               <h2>問題セットがありません</h2>
               <p>問題を追加すると、ここから演習を始められます。</p>
               <button type="button" onClick={() => onOpenImport(folder.id)}>
@@ -104,10 +105,12 @@ function FolderHeader({ title, onBack }: { title: string; onBack: () => void }) 
   );
 }
 
-function FolderCircleButton({ active = false, icon, label, onClick }: { active?: boolean; icon: string; label: string; onClick: () => void }) {
+function FolderCircleButton({ active = false, icon, label, onClick }: { active?: boolean; icon: 'delete' | 'add' | 'done'; label: string; onClick: () => void }) {
   return (
     <button type="button" className="quiz-folder__action" onClick={onClick}>
-      <span className={`quiz-folder__circle-button${active ? ' quiz-folder__circle-button--active' : ''}`}>{icon}</span>
+      <span className={`quiz-folder__circle-button${active ? ' quiz-folder__circle-button--active' : ''}`}>
+        {icon === 'delete' ? <TrashIcon /> : icon === 'done' ? <CheckIcon /> : <PlusIcon />}
+      </span>
       <span className="quiz-folder__action-label">{label}</span>
     </button>
   );
@@ -134,25 +137,24 @@ function SetCard({
     <article className="quiz-folder__set-card">
       <button type="button" className="quiz-folder__set-main" disabled={editMode} onClick={onOpen}>
         <span className="quiz-folder__set-icon" aria-hidden="true">
-          <span className="quiz-folder__set-icon-line" />
-          <span className="quiz-folder__set-icon-line" />
-          <span className="quiz-folder__set-icon-line" />
+          <DocumentOutlineIcon />
         </span>
         <span className="quiz-folder__set-body">
           <span className="quiz-folder__set-name">{problemSet.title}</span>
           <span className="quiz-folder__set-source">{problemSet.source || `更新 ${formatDisplayDate(problemSet.updatedAt)}`}</span>
           <span className="quiz-folder__set-stats">
-            <span>🏷 {questionCount}</span>
-            <span>🔖 {reviewCount}</span>
-            <span>✅ {correctRate}%</span>
+            <span>問題 {questionCount}</span>
+            <span>復習 {reviewCount}</span>
+            <span>正答 {correctRate}%</span>
           </span>
         </span>
-        {!editMode ? <span className="quiz-folder__set-arrow">›</span> : null}
+        {!editMode ? <span className="quiz-folder__set-arrow"><ChevronRightIcon /></span> : null}
       </button>
 
       {editMode ? (
         <button type="button" className="quiz-folder__delete-button" onClick={onDelete}>
-          削除
+          <TrashIcon size={17} />
+          <span>削除</span>
         </button>
       ) : null}
     </article>

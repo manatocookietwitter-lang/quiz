@@ -5,8 +5,8 @@
   "scope": "/quiz/",
   "display": "standalone",
   "orientation": "portrait",
-  "theme_color": "#000000",
-  "background_color": "#000000",
+  "theme_color": "#f1f7fa",
+  "background_color": "#ffffff",
   "icons": [
     {
       "src": "icons/icon-192.png",
