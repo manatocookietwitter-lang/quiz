@@ -493,7 +493,7 @@ export default function App() {
 
   if (!storageReady) {
     return (
-      <div style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', background: '#000', color: '#fff', fontWeight: 800 }}>
+      <div style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', background: '#f1f7fa', color: '#173042', fontWeight: 800 }}>
         読み込み中...
       </div>
     );

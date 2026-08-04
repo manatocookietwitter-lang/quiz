@@ -921,16 +921,18 @@ button:disabled {
   display: grid;
   place-items: center;
   padding: max(18px, var(--safe-top, 0px)) max(18px, var(--safe-right, 0px)) max(18px, var(--safe-bottom, 0px)) max(18px, var(--safe-left, 0px));
-  background: rgba(0, 0, 0, 0.68);
+  background: rgba(23, 48, 66, 0.38);
+  backdrop-filter: blur(4px);
 }
 
 .quiz-exit-confirm__card {
   width: min(360px, calc(100vw - 36px));
+  border: 1px solid #d6e4ea;
   border-radius: 22px;
-  background: #202020;
+  background: #ffffff;
   padding: 22px;
-  color: #ffffff;
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+  color: #173042;
+  box-shadow: 0 18px 50px rgba(42, 77, 96, 0.24);
 }
 
 .quiz-exit-confirm__card h2 {
@@ -941,7 +943,7 @@ button:disabled {
 
 .quiz-exit-confirm__card p {
   margin: 0;
-  color: #cfcfcf;
+  color: #607586;
   font-size: 14px;
   font-weight: 700;
   line-height: 1.65;
@@ -964,8 +966,9 @@ button:disabled {
 }
 
 .quiz-exit-confirm__button--secondary {
-  background: #2b2b2b;
-  color: #ffffff;
+  border: 1px solid #d6e4ea !important;
+  background: #f7fafc;
+  color: #173042;
 }
 
 .quiz-exit-confirm__button--danger {

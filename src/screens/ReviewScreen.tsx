@@ -22,16 +22,16 @@ export function ReviewScreen({ data, onBack, onAnswer, onToggleAmbiguous, onSave
       <Layout>
         <Header title="復習" subtitle="復習対象はありません" leftLabel="戻る" onLeft={onBack} />
         <div className="mx-4 mt-4 flex min-h-0 flex-1 items-center justify-center">
-          <div className="w-full rounded-[28px] bg-neutral-900 p-6 text-center ring-1 ring-white/10">
+          <div className="w-full rounded-[28px] bg-white p-6 text-center shadow-[0_10px_28px_rgba(42,77,96,0.10)] ring-1 ring-[#D6E4EA]">
             <div className="text-6xl">🎉</div>
-            <h2 className="mt-4 text-lg font-black text-white">復習対象は0件です</h2>
-            <p className="mt-2 text-sm font-bold leading-relaxed text-neutral-400">
+            <h2 className="mt-4 text-lg font-black text-[#173042]">復習対象は0件です</h2>
+            <p className="mt-2 text-sm font-bold leading-relaxed text-[#607586]">
               間違えた問題、または曖昧登録した問題がここに表示されます。
             </p>
             <button
               type="button"
               onClick={onBack}
-              className="mt-5 min-h-[52px] w-full rounded-2xl bg-cyan-500 text-sm font-black text-neutral-950 active:scale-[0.98]"
+              className="mt-5 min-h-[52px] w-full rounded-2xl bg-[#10AEB2] text-sm font-black text-white shadow-[0_7px_18px_rgba(16,174,178,0.22)] active:scale-[0.98]"
             >
               ホームへ戻る
             </button>
