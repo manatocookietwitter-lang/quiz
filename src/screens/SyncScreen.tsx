@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { BackButton } from '../components/BackButton';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { ChevronDownIcon, CopyIcon, DownloadIcon, SyncIcon, UploadIcon } from '../components/UiIcons';
 import {
   clearSyncLocalBackups,
   computePayloadHash,
@@ -352,18 +353,33 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
       </header>
 
       <main className="sync-screen__body">
-        <section className="sync-card">
-          <div className="sync-card__title-row">
-            <h2>同期ID</h2>
+        {!configured ? (
+          <div className="sync-alert sync-alert--warning">
+            クラウド同期の接続設定が完了していません。設定が完了するまで、端末内のJSONバックアップを利用できます。
+          </div>
+        ) : null}
+
+        {message ? <div className="sync-alert sync-alert--message" role="status" aria-live="polite">{message}</div> : null}
+        {error ? <div className="sync-alert sync-alert--error" role="alert">{error}</div> : null}
+
+        <section className="sync-card sync-card--setup">
+          <div className="sync-card__title-row sync-card__title-row--top">
+            <div className="sync-step-title">
+              <span className="sync-step-number" aria-hidden="true">1</span>
+              <div>
+                <h2>同期IDを準備</h2>
+                <p>初めてなら新しいIDを作成。2台目以降は、同じIDを貼り付けます。</p>
+              </div>
+            </div>
             <span className={`sync-status${configured ? ' sync-status--ok' : ' sync-status--unset'}`}>
-              {configured ? 'Supabase設定済み' : 'Supabase未設定'}
+              {configured ? 'クラウド利用可' : 'クラウド未接続'}
             </span>
           </div>
           <input
             className="sync-input"
             value={syncId}
             onChange={(event) => updateSyncId(event.target.value)}
-            placeholder="同期ID"
+            placeholder="36文字の同期IDを入力"
             aria-label="同期ID"
             autoComplete="off"
             spellCheck={false}
@@ -375,17 +391,47 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
           ) : null}
           <div className="sync-id-actions">
             <button type="button" className="sync-button sync-button--secondary" onClick={handleGenerate} disabled={busy}>
-              同期IDを生成
+              <SyncIcon size={19} />
+              <span>新しいIDを作る</span>
             </button>
             <button type="button" className="sync-button sync-button--secondary" onClick={() => void handleCopySyncId()} disabled={busy || !normalizedSyncId}>
-              同期IDをコピー
+              <CopyIcon size={19} />
+              <span>IDをコピー</span>
             </button>
           </div>
         </section>
 
-        <section className="sync-card">
-          <div className="sync-card__title-row sync-card__title-row--center">
-            <h2>自動同期</h2>
+        <section className="sync-card sync-card--transfer">
+          <div className="sync-step-title">
+            <span className="sync-step-number" aria-hidden="true">2</span>
+            <div>
+              <h2>データを同期</h2>
+              <p>データを送る方向を選びます。読み込み前には確認画面が表示されます。</p>
+            </div>
+          </div>
+
+          <div className="sync-transfer-actions">
+            <button type="button" className="sync-transfer-button sync-transfer-button--primary" onClick={handleUpload} disabled={!canRun}>
+              <UploadIcon size={24} />
+              <span>
+                <strong>{busy ? '処理中...' : 'この端末をクラウドへ保存'}</strong>
+                <small>この端末の内容をほかの端末へ渡す</small>
+              </span>
+            </button>
+            <button type="button" className="sync-transfer-button" onClick={handleDownload} disabled={!canRun}>
+              <DownloadIcon size={24} />
+              <span>
+                <strong>{busy ? '処理中...' : 'クラウドからこの端末へ読込'}</strong>
+                <small>クラウドの内容をこの端末へ反映する</small>
+              </span>
+            </button>
+          </div>
+
+          <div className="sync-auto-row">
+            <div>
+              <strong>自動同期</strong>
+              <small>{autoCanRun ? '変更を自動でクラウドへ保存します' : autoEnabled ? '同期IDまたは接続設定が必要です' : '必要なときだけ手動で同期します'}</small>
+            </div>
             <button
               type="button"
               className={`sync-toggle__button${autoEnabled ? ' sync-toggle__button--active' : ''}`}
@@ -395,109 +441,102 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
               {autoEnabled ? 'ON' : 'OFF'}
             </button>
           </div>
-          <div className={`sync-auto-state${autoCanRun ? ' sync-auto-state--ready' : ''}`}>
-            {autoCanRun ? '自動同期は有効です' : autoEnabled ? '同期IDまたはSupabase設定が不足しています' : '自動同期はOFFです'}
+
+          <div className="sync-last-state" aria-label="現在の同期状態">
+            <span>最終同期 {formatDateTime(lastState.lastSyncAt) || '未実行'}</span>
+            <strong>{lastState.status || '待機中'}</strong>
           </div>
         </section>
 
-        <section className="sync-card">
-          <h2>手動同期</h2>
-          <div className="sync-actions">
-            <button type="button" className="sync-button sync-button--primary" onClick={handleUpload} disabled={!canRun}>
-              {busy ? '処理中...' : 'クラウドへ保存'}
-            </button>
-            <button type="button" className="sync-button sync-button--secondary" onClick={handleDownload} disabled={!canRun}>
-              クラウドから読み込み
-            </button>
-            <button type="button" className="sync-button sync-button--secondary" onClick={handleDownloadBackup} disabled={busy}>
-              現在データをJSONバックアップ
-            </button>
-            <button type="button" className="sync-button sync-button--secondary" onClick={handleClearSyncBackups} disabled={busy}>
-              同期バックアップを整理
-            </button>
-          </div>
-          <p className="sync-card__compact-note">ノートが多い場合、同期データが大きくなります。読み込み前はJSON保存がおすすめです。</p>
-          {storageUsage ? <p className="sync-card__compact-note">端末ストレージ使用量：{storageUsage}</p> : null}
-        </section>
+        <details className="sync-advanced">
+          <summary>
+            <span>
+              <strong>バックアップ・診断・詳細</strong>
+              <small>困ったときやJSON保存が必要なときに開く</small>
+            </span>
+            <ChevronDownIcon size={20} />
+          </summary>
 
-        <section className="sync-card">
-          <div className="sync-card__title-row sync-card__title-row--center">
-            <h2>接続診断</h2>
-          </div>
-          <button type="button" className="sync-button sync-button--secondary" onClick={handleDiagnostic} disabled={diagnosticBusy}>
-            {diagnosticBusy ? '診断中...' : '接続診断'}
-          </button>
-          {diagnosticResult ? (
-            <div className="sync-diagnostic" aria-live="polite">
-              <div className={`sync-diagnostic__summary${diagnosticResult.ok ? ' sync-diagnostic__summary--ok' : ' sync-diagnostic__summary--ng'}`}>
-                同期診断結果：{diagnosticResult.ok ? 'OK' : 'NG'}
+          <div className="sync-advanced__body">
+            <section className="sync-advanced__section">
+              <h2>端末内バックアップ</h2>
+              <p>同期とは別に、現在のデータをJSONファイルとして保存できます。</p>
+              <div className="sync-actions">
+                <button type="button" className="sync-button sync-button--secondary" onClick={handleDownloadBackup} disabled={busy}>
+                  <DownloadIcon size={18} />
+                  <span>JSONバックアップを保存</span>
+                </button>
+                <button type="button" className="sync-button sync-button--secondary" onClick={handleClearSyncBackups} disabled={busy}>
+                  同期前の一時バックアップを整理
+                </button>
               </div>
-              <div className="sync-diagnostic__steps">
-                {diagnosticResult.steps.map((step) => (
-                  <div key={step.name} className={`sync-diagnostic__step${step.ok ? ' sync-diagnostic__step--ok' : ' sync-diagnostic__step--ng'}`}>
-                    <div className="sync-diagnostic__step-head">
-                      <span>{step.name}</span>
-                      <strong>{step.ok ? 'OK' : 'NG'}</strong>
-                    </div>
-                    {step.message ? <p>{step.message}</p> : null}
-                    {step.errorCode ? <p>code: {step.errorCode}</p> : null}
-                    {step.errorDetails ? <p>details: {step.errorDetails}</p> : null}
-                    {step.errorHint ? <p>hint: {step.errorHint}</p> : null}
-                    {step.suggestion ? <p className="sync-diagnostic__suggestion">{step.suggestion}</p> : null}
+              {storageUsage ? <p className="sync-card__compact-note">端末ストレージ使用量：{storageUsage}</p> : null}
+            </section>
+
+            <section className="sync-advanced__section">
+              <h2>接続診断</h2>
+              <p>同期できない場合に、クラウドとの接続状態を確認します。</p>
+              <button type="button" className="sync-button sync-button--secondary" onClick={handleDiagnostic} disabled={diagnosticBusy}>
+                {diagnosticBusy ? '診断中...' : '接続を診断する'}
+              </button>
+              {diagnosticResult ? (
+                <div className="sync-diagnostic" aria-live="polite">
+                  <div className={`sync-diagnostic__summary${diagnosticResult.ok ? ' sync-diagnostic__summary--ok' : ' sync-diagnostic__summary--ng'}`}>
+                    同期診断結果：{diagnosticResult.ok ? 'OK' : 'NG'}
                   </div>
-                ))}
+                  <div className="sync-diagnostic__steps">
+                    {diagnosticResult.steps.map((step) => (
+                      <div key={step.name} className={`sync-diagnostic__step${step.ok ? ' sync-diagnostic__step--ok' : ' sync-diagnostic__step--ng'}`}>
+                        <div className="sync-diagnostic__step-head">
+                          <span>{step.name}</span>
+                          <strong>{step.ok ? 'OK' : 'NG'}</strong>
+                        </div>
+                        {step.message ? <p>{step.message}</p> : null}
+                        {step.errorCode ? <p>code: {step.errorCode}</p> : null}
+                        {step.errorDetails ? <p>details: {step.errorDetails}</p> : null}
+                        {step.errorHint ? <p>hint: {step.errorHint}</p> : null}
+                        {step.suggestion ? <p className="sync-diagnostic__suggestion">{step.suggestion}</p> : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </section>
+
+            <section className="sync-advanced__section">
+              <h2>同期の詳細</h2>
+              <div className="sync-meta-grid">
+                <div className="sync-meta-item">
+                  <span>最終同期</span>
+                  <strong>{formatDateTime(lastState.lastSyncAt) || '未実行'}</strong>
+                </div>
+                <div className="sync-meta-item">
+                  <span>クラウド更新</span>
+                  <strong>{formatDateTime(lastState.lastRemoteUpdatedAt) || '未確認'}</strong>
+                </div>
+                <div className="sync-meta-item sync-meta-item--wide">
+                  <span>状態</span>
+                  <strong>{lastState.status || '待機中'}</strong>
+                </div>
+                <div className="sync-meta-item">
+                  <span>クラウドURL</span>
+                  <strong>{environmentStatus.hasUrl ? '設定済み' : '未設定'}</strong>
+                </div>
+                <div className="sync-meta-item">
+                  <span>接続キー</span>
+                  <strong>{environmentStatus.hasAnonKey ? '設定済み' : '未設定'}</strong>
+                </div>
               </div>
-            </div>
-          ) : null}
-        </section>
-
-        <section className="sync-card">
-          <h2>同期状態</h2>
-          <div className="sync-meta-grid">
-            <div className="sync-meta-item">
-              <span>最終同期</span>
-              <strong>{formatDateTime(lastState.lastSyncAt) || '未実行'}</strong>
-            </div>
-            <div className="sync-meta-item">
-              <span>クラウド更新</span>
-              <strong>{formatDateTime(lastState.lastRemoteUpdatedAt) || '未確認'}</strong>
-            </div>
-            <div className="sync-meta-item sync-meta-item--wide">
-              <span>状態</span>
-              <strong>{lastState.status || '待機中'}</strong>
-            </div>
+              {lastState.error ? <p className="sync-card__error-text">{lastState.error}</p> : null}
+            </section>
           </div>
-          {lastState.error ? <p className="sync-card__error-text">{lastState.error}</p> : null}
-        </section>
-
-        <section className="sync-card sync-card--compact-env">
-          <h2>設定</h2>
-          <div className="sync-meta-grid">
-            <div className="sync-meta-item">
-              <span>Supabase URL</span>
-              <strong>{environmentStatus.hasUrl ? '設定済み' : '未設定'}</strong>
-            </div>
-            <div className="sync-meta-item">
-              <span>anon key</span>
-              <strong>{environmentStatus.hasAnonKey ? '設定済み' : '未設定'}</strong>
-            </div>
-          </div>
-        </section>
-
-        {!configured ? (
-          <div className="sync-alert sync-alert--warning">
-            VITE_SUPABASE_URL と VITE_SUPABASE_ANON_KEY が未設定です。設定するまでクラウド同期は実行できません。
-          </div>
-        ) : null}
-
-        {message ? <div className="sync-alert sync-alert--message" role="status" aria-live="polite">{message}</div> : null}
-        {error ? <div className="sync-alert sync-alert--error" role="alert">{error}</div> : null}
+        </details>
       </main>
 
       <ConfirmDialog
         open={pendingCloudImport !== null}
         title={'クラウドから読み込みますか？'}
-        message={pendingCloudImport ? `クラウドのデータでこの端末のデータを上書きします。\n\nクラウド内容: ${formatSyncSummary(pendingCloudImport.summary)}\n\n必要な場合は、先に「現在データをJSONバックアップ」で保存してください。` : ''}
+        message={pendingCloudImport ? `クラウドのデータでこの端末のデータを上書きします。\n\nクラウド内容: ${formatSyncSummary(pendingCloudImport.summary)}\n\n必要な場合は、先に詳細メニューの「JSONバックアップを保存」を実行してください。` : ''}
         confirmLabel={busy ? '読み込み中…' : '読み込む'}
         busy={busy}
         onCancel={cancelCloudImport}
@@ -506,7 +545,7 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
       <ConfirmDialog
         open={pendingCloudOverwrite !== null}
         title="クラウドに別のデータがあります"
-        message={pendingCloudOverwrite ? `この端末が最後に確認した後で、クラウド側が更新されています。\n\nこの端末の内容で強制的に上書きしますか？\n端末内容: ${formatSyncSummary(pendingCloudOverwrite.summary)}\n\n必要な場合は、先に「現在データをJSONバックアップ」で保存してください。` : ''}
+        message={pendingCloudOverwrite ? `この端末が最後に確認した後で、クラウド側が更新されています。\n\nこの端末の内容で強制的に上書きしますか？\n端末内容: ${formatSyncSummary(pendingCloudOverwrite.summary)}\n\n必要な場合は、先に詳細メニューの「JSONバックアップを保存」を実行してください。` : ''}
         confirmLabel="強制上書き"
         onCancel={cancelCloudOverwrite}
         onConfirm={() => void confirmCloudOverwrite()}

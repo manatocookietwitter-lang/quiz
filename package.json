@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test": "node --test tests/pwa-service-worker.test.mjs tests/question-detail-source.test.mjs tests/review-targets.test.mjs tests/navigation-history.test.mjs tests/storage-sync-state.test.mjs tests/light-theme.test.mjs tests/home-icons.test.mjs",
+    "test": "node --test tests/pwa-service-worker.test.mjs tests/question-detail-source.test.mjs tests/review-targets.test.mjs tests/navigation-history.test.mjs tests/storage-sync-state.test.mjs tests/light-theme.test.mjs tests/home-icons.test.mjs tests/usability-ui.test.mjs",
     "test:pwa": "node --test tests/pwa-service-worker.test.mjs"
   },
   "dependencies": {

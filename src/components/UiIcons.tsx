@@ -79,6 +79,48 @@ export function ChevronRightIcon({ size = 22, ...props }: IconProps) {
   );
 }
 
+export function ChevronDownIcon({ size = 22, ...props }: IconProps) {
+  return (
+    <svg {...iconProps(size, props)} aria-hidden={props['aria-hidden'] ?? true}>
+      <path d="m5 9 7 7 7-7" />
+    </svg>
+  );
+}
+
+export function CopyIcon({ size = 22, ...props }: IconProps) {
+  return (
+    <svg {...iconProps(size, props)} aria-hidden={props['aria-hidden'] ?? true}>
+      <rect x="8" y="8" width="11" height="11" rx="2" />
+      <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
+    </svg>
+  );
+}
+
+export function DownloadIcon({ size = 22, ...props }: IconProps) {
+  return (
+    <svg {...iconProps(size, props)} aria-hidden={props['aria-hidden'] ?? true}>
+      <path d="M12 4v10M8 10l4 4 4-4M5 19h14" />
+    </svg>
+  );
+}
+
+export function UploadIcon({ size = 22, ...props }: IconProps) {
+  return (
+    <svg {...iconProps(size, props)} aria-hidden={props['aria-hidden'] ?? true}>
+      <path d="M12 15V5M8 9l4-4 4 4M5 19h14" />
+    </svg>
+  );
+}
+
+export function SyncIcon({ size = 22, ...props }: IconProps) {
+  return (
+    <svg {...iconProps(size, props)} aria-hidden={props['aria-hidden'] ?? true}>
+      <path d="M19 7v4h-4M5 17v-4h4" />
+      <path d="M18 11a6.5 6.5 0 0 0-11-3.5L5 10M6 13a6.5 6.5 0 0 0 11 3.5l2-2.5" />
+    </svg>
+  );
+}
+
 export function QuizMakeMarkIcon({ size = 28, ...props }: IconProps) {
   return (
     <svg {...iconProps(size, props)} strokeWidth={1.7} aria-hidden={props['aria-hidden'] ?? true}>
