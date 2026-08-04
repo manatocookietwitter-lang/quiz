@@ -27,7 +27,7 @@ test('home and folder navigation use outline icons while retaining learning coun
 });
 
 test('PWA icon manifest points to the light QuizMake mark', () => {
-  const iconRevision = '20260804-2';
+  const iconRevision = '20260804-3';
   assert.match(manifestSource, /"theme_color": "#f1f7fa"/);
   assert.match(manifestSource, /"background_color": "#ffffff"/);
   assert.match(manifestSource, new RegExp(`icon-192\\.png\\?v=${iconRevision}`));
@@ -38,6 +38,9 @@ test('PWA icon manifest points to the light QuizMake mark', () => {
   assert.match(workerSource, new RegExp(`icon-192\\.png\\?v=${iconRevision}`));
   assert.match(iconSource, /#1769ff/);
   assert.match(iconSource, /<circle/);
+  const sourceIconPath = new URL('../public/icons/quiz-make-icon-1024.png', import.meta.url);
+  assert.ok(existsSync(sourceIconPath), 'generated QuizMake logo source should exist');
+  assert.ok(statSync(sourceIconPath).size > 100_000, 'generated QuizMake logo source should retain high-resolution detail');
   for (const file of ['icon-192.png', 'icon-512.png', 'maskable-512.png']) {
     const path = new URL(`../public/icons/${file}`, import.meta.url);
     assert.ok(existsSync(path), `${file} should exist`);
