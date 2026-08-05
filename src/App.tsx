@@ -29,6 +29,7 @@ import {
   addFolder,
   deleteFolder,
   deleteProblemSet,
+  getAnswerIndexes,
   recordAnswer,
   toggleAmbiguous,
   updateQuestionDetailedExplanation,
@@ -341,6 +342,19 @@ export default function App() {
     };
   };
 
+  const handlePreviewAnswer = (question: Question, selectedIndexes: number[]) => {
+    const expected = [...getAnswerIndexes(question)].sort((a, b) => a - b);
+    const selected = [...new Set(selectedIndexes)].sort((a, b) => a - b);
+    const isCorrect = expected.length === selected.length && expected.every((value, index) => value === selected[index]);
+    return {
+      isCorrect,
+      addedToReview: false,
+      levelLabel: 'お試し',
+      saveStatusLabel: 'お試しのため学習履歴には記録しません',
+      savePromise: Promise.resolve(true),
+    };
+  };
+
   const handleCreateProblemSet = async (submission: CreateProblemSetSubmission): Promise<string | null> => {
     const timestamp = nowIso();
     const current = dataRef.current;
@@ -491,6 +505,45 @@ export default function App() {
       }))],
     });
     return saved ? setId : null;
+  };
+
+  const handlePracticeSharedProblemSet = (sharedSet: CloudProblemSet): void => {
+    const timestamp = nowIso();
+    const questions: Question[] = (sharedSet.questions ?? []).map((question, index) => {
+      const answerIndexes = [...new Set(question.answerIndexes)].filter((answerIndex) => answerIndex >= 0 && answerIndex < question.choices.length);
+      return {
+        id: `preview_${sharedSet.id}_${index}`,
+        setId: `preview_${sharedSet.id}`,
+        question: question.question,
+        choices: question.choices.slice(0, 5) as Question['choices'],
+        answerIndex: answerIndexes[0] ?? 0,
+        answerIndexes,
+        answerText: question.answerText,
+        explanation: question.explanation,
+        detailedExplanation: question.detailedExplanation,
+        sourcePage: question.sourcePage,
+        category: question.category || '未分類',
+        difficulty: question.difficulty,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+    });
+    if (questions.length === 0) {
+      setStorageError('お試しできる問題がありません。');
+      return;
+    }
+    const backScreen = screenRef.current.name === 'community' ? screenRef.current : { name: 'community', tab: 'discover' } as AppScreen;
+    navigate({
+      name: 'quizSession',
+      session: {
+        title: sharedSet.title,
+        subtitle: '公開問題セットのお試し',
+        questions,
+        mode: 'quiz',
+        backScreen,
+        isPreview: true,
+      },
+    });
   };
 
   const handlePublishedProblemSet = async (localSetId: string, result: CloudPublishResult): Promise<void> => {
@@ -660,20 +713,30 @@ export default function App() {
       backScreen = { name: 'home' };
     }
 
-    navigate({
-      name: 'result',
-      result: result.retry && backScreen
-        ? { ...result, retry: { ...result.retry, backScreen } }
-        : result,
-    });
+    let nextResult = result.retry && backScreen
+      ? { ...result, retry: { ...result.retry, backScreen } }
+      : result;
+    if (current.name === 'quizSession' && current.session.isPreview && nextResult.retry) {
+      nextResult = {
+        ...nextResult,
+        retry: {
+          ...nextResult.retry,
+          previewQuestions: current.session.questions,
+          isPreview: true,
+        },
+      };
+    }
+    navigate({ name: 'result', result: nextResult });
   };
 
   const handleRetry = (result: QuizResult) => {
     if (result.retry) {
       const questionsById = new Map(dataRef.current.questions.map((question) => [question.id, question]));
-      const retryQuestions = result.retry.questionIds
-        .map((questionId) => questionsById.get(questionId))
-        .filter((question): question is Question => Boolean(question));
+      const retryQuestions = result.retry.previewQuestions?.length
+        ? result.retry.previewQuestions
+        : result.retry.questionIds
+            .map((questionId) => questionsById.get(questionId))
+            .filter((question): question is Question => Boolean(question));
       if (retryQuestions.length > 0) {
         navigate({
           name: 'quizSession',
@@ -685,6 +748,7 @@ export default function App() {
             setId: result.setId,
             initialIndex: 0,
             backScreen: result.retry.backScreen ?? { name: 'home' },
+            isPreview: result.retry.isPreview,
           },
         });
         return;
@@ -737,6 +801,7 @@ export default function App() {
           onOpenLocalSet={(setId) => navigate({ name: 'problemSetDetail', setId })}
           onOpenReview={() => navigate({ name: 'review' })}
           onCopySharedSet={handleCopySharedProblemSet}
+          onPracticeSharedSet={handlePracticeSharedProblemSet}
           onPublished={handlePublishedProblemSet}
           onUnpublished={handleUnpublishedProblemSet}
         />
@@ -838,9 +903,9 @@ export default function App() {
         setId={screen.session.setId}
         initialIndex={screen.session.initialIndex}
         onBack={() => goBackTo(screen.session.backScreen)}
-        onAnswer={handleAnswer}
-        onToggleAmbiguous={handleToggleAmbiguous}
-        onSaveDetailedExplanation={handleSaveDetailedExplanation}
+        onAnswer={screen.session.isPreview ? handlePreviewAnswer : handleAnswer}
+        onToggleAmbiguous={screen.session.isPreview ? async () => true : handleToggleAmbiguous}
+        onSaveDetailedExplanation={screen.session.isPreview ? async () => undefined : handleSaveDetailedExplanation}
         onFinish={handleFinish}
       />
     );

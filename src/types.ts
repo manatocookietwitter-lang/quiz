@@ -114,6 +114,8 @@ export interface QuizResult {
     questionIds: string[];
     subtitle?: string;
     backScreen?: AppScreen;
+    previewQuestions?: Question[];
+    isPreview?: boolean;
   };
   answered: number;
   correct: number;
@@ -141,6 +143,7 @@ export interface QuizSession {
   setId?: string;
   initialIndex?: number;
   backScreen: AppScreen;
+  isPreview?: boolean;
 }
 
 export type AppScreen =

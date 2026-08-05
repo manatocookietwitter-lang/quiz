@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const [appSource, screenSource, serviceSource, typesSource, storageSource, collaborationMigration, groupManagementMigration, accountDeletionMigration] = await Promise.all([
+const [appSource, screenSource, serviceSource, typesSource, storageSource, collaborationMigration, groupManagementMigration, accountDeletionMigration, reportReasonsMigration] = await Promise.all([
   readFile(new URL('../src/App.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/screens/CommunityScreen.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/utils/cloudService.ts', import.meta.url), 'utf8'),
@@ -11,8 +11,9 @@ const [appSource, screenSource, serviceSource, typesSource, storageSource, colla
   readFile(new URL('../supabase/migrations/20260806_create_collaboration_mvp.sql', import.meta.url), 'utf8'),
   readFile(new URL('../supabase/migrations/20260807_add_group_member_management.sql', import.meta.url), 'utf8'),
   readFile(new URL('../supabase/migrations/20260808_add_account_deletion.sql', import.meta.url), 'utf8'),
+  readFile(new URL('../supabase/migrations/20260809_expand_report_reasons.sql', import.meta.url), 'utf8'),
 ]);
-const migration = [collaborationMigration, groupManagementMigration, accountDeletionMigration].join('\n');
+const migration = [collaborationMigration, groupManagementMigration, accountDeletionMigration, reportReasonsMigration].join('\n');
 
 test('local AppData stays version 1 and cloud metadata is backward-compatible', () => {
   assert.match(typesSource, /version:\s*1/);
@@ -27,6 +28,17 @@ test('the primary navigation exposes mine, groups, discovery and review', () => 
   }
   assert.match(screenSource, /共有するときだけログイン/);
   assert.match(screenSource, /問題作成と学習だけならログインは不要/);
+});
+
+test('public discovery supports required filters, detail preview and both primary actions', () => {
+  assert.match(screenSource, />科目<select/);
+  assert.match(screenSource, />難易度<select/);
+  assert.match(screenSource, /問題の内容を確認/);
+  assert.match(screenSource, /このまま解く/);
+  assert.match(screenSource, /自分の問題に追加/);
+  const previewAnswerBody = appSource.slice(appSource.indexOf('const handlePreviewAnswer'), appSource.indexOf('const handleCreateProblemSet'));
+  assert.doesNotMatch(previewAnswerBody, /commitData|persistThenCommitData|recordAnswer/);
+  assert.match(previewAnswerBody, /学習履歴には記録しません/);
 });
 
 test('a copied cloud set gets new local ids and source attribution', () => {
@@ -73,6 +85,13 @@ test('owners can stop sharing and users can delete only their own cloud account'
   assert.match(serviceSource, /unpublishCloudProblemSet/);
   assert.match(migration, /delete from auth\.users where id = current_user_id/);
   assert.match(screenSource, /端末内の問題セット、回答履歴、復習状態は削除されません/);
+});
+
+test('quality reports expose every required reason', () => {
+  for (const reason of ['incorrect_answer', 'incorrect_explanation', 'unclear_question', 'duplicate', 'copyright', 'other']) {
+    assert.match(screenSource, new RegExp(`value="${reason}"`));
+    assert.match(migration, new RegExp(`'${reason}'`));
+  }
 });
 
 test('the client uses only Vite public Supabase settings and never a service key', () => {

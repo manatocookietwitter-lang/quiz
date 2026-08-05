@@ -136,16 +136,21 @@
 .community-group-actions button { align-self: end; height: 44px; padding: 0 16px; border: 0; border-radius: 12px; background: #e2f6f3; color: #087d78; font-weight: 900; }
 
 .community-search { display: grid; grid-template-columns: minmax(0, 1fr) 104px; gap: 8px; }
+.community-filters { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.community-filters label { display: grid; gap: 5px; color: #667b85; font-size: 11px; font-weight: 850; }
 .community-search input,
 .community-search select,
+.community-filters select,
 .community-sheet input,
 .community-sheet select,
 .community-sheet textarea { width: 100%; min-width: 0; border: 1px solid #cedde1; border-radius: 13px; background: #fff; color: #183241; outline: none; }
 .community-search input,
 .community-search select,
+.community-filters select,
 .community-sheet input,
 .community-sheet select { height: 46px; padding: 0 13px; }
 .community-search input:focus,
+.community-filters select:focus,
 .community-sheet input:focus,
 .community-sheet select:focus,
 .community-sheet textarea:focus { border-color: #39b9b3; box-shadow: 0 0 0 3px rgba(57, 185, 179, .12); }
@@ -163,8 +168,11 @@
 .community-public-card__top small { flex: 0 0 auto; color: #8a9aa2; font-size: 11px; }
 .community-public-card > p { margin: 10px 0; color: #607580; font-size: 13px; line-height: 1.65; }
 .community-public-card__meta { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 12px; color: #758892; font-size: 12px; }
-.community-public-card__actions { display: flex; gap: 8px; margin-top: 16px; }
-.community-public-card__actions button:last-child { min-width: 66px; border: 0; background: transparent; color: #809098; }
+.community-public-card__actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 16px; }
+.community-public-card__actions button:last-child { min-height: 46px; padding: 0 10px; border: 1px solid #8acdc9; border-radius: 14px; background: #f2fbfa; color: #147d78; font-weight: 900; }
+.community-public-card__actions button:disabled { opacity: .45; }
+.community-public-card__minor-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.community-public-card__minor-actions button { padding: 7px 9px; border: 0; background: transparent; color: #758992; font-size: 12px; }
 .community-public-card details { margin-top: 14px; padding: 12px; border-radius: 14px; background: #f7fafb; }
 .community-public-card summary { color: #3f5965; font-size: 13px; font-weight: 900; cursor: pointer; }
 .community-question-preview { display: grid; gap: 4px; padding: 10px 0; border-top: 1px solid #e2eaec; font-size: 12px; }
@@ -244,5 +252,5 @@
   .community-group-actions { grid-template-columns: minmax(0, 1fr) 72px; }
   .community-set-card__actions { width: 76px; }
   .community-public-card { padding: 15px; }
-  .community-public-card__actions .community-primary { flex: 1; padding: 0 10px; }
+  .community-public-card__actions button { padding: 0 8px; font-size: 12px; }
 }

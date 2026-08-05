@@ -18,6 +18,7 @@ export type AnswerHandlerResult = {
   isCorrect: boolean;
   addedToReview: boolean;
   levelLabel?: string;
+  saveStatusLabel?: string;
   savePromise: Promise<boolean>;
 };
 
@@ -159,9 +160,14 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
     setLastCorrect(result.isCorrect);
     setHasAnswered(true);
     setAnswerSheetState('default');
-    setSavedLevelLabel(result.levelLabel ? `\u4fdd\u5b58\u4e2d\u2026\u30fb${result.levelLabel}` : '\u4fdd\u5b58\u4e2d\u2026');
+    if (result.saveStatusLabel) {
+      setSavedLevelLabel(result.saveStatusLabel);
+    } else {
+      setSavedLevelLabel(result.levelLabel ? `\u4fdd\u5b58\u4e2d\u2026\u30fb${result.levelLabel}` : '\u4fdd\u5b58\u4e2d\u2026');
+    }
     void result.savePromise.then((saved) => {
       if (visibleQuestionIdRef.current !== answeredQuestionId) return;
+      if (result.saveStatusLabel) return;
       setSavedLevelLabel(saved
         ? (result.levelLabel ? `\u4fdd\u5b58\u6e08\u307f\u30fb${result.levelLabel}` : '\u4fdd\u5b58\u6e08\u307f')
         : (result.levelLabel ? `\u7aef\u672b\u306b\u672a\u4fdd\u5b58\u30fb${result.levelLabel}` : '\u7aef\u672b\u306b\u672a\u4fdd\u5b58'));

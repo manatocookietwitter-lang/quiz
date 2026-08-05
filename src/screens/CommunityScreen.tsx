@@ -46,6 +46,7 @@ interface CommunityScreenProps {
   onOpenLocalSet: (setId: string) => void;
   onOpenReview: () => void;
   onCopySharedSet: (set: CloudProblemSet) => Promise<string | null>;
+  onPracticeSharedSet: (set: CloudProblemSet) => void;
   onPublished: (localSetId: string, result: CloudPublishResult) => Promise<void>;
   onUnpublished: (localSetId: string) => Promise<void>;
 }
@@ -60,6 +61,7 @@ export function CommunityScreen({
   onOpenLocalSet,
   onOpenReview,
   onCopySharedSet,
+  onPracticeSharedSet,
   onPublished,
   onUnpublished,
 }: CommunityScreenProps) {
@@ -79,15 +81,18 @@ export function CommunityScreen({
   const [groupMembers, setGroupMembers] = useState<CloudGroupMember[]>([]);
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<'new' | 'popular'>('new');
+  const [subjectFilter, setSubjectFilter] = useState('all');
+  const [difficultyFilter, setDifficultyFilter] = useState('all');
   const [shareLocalSetId, setShareLocalSetId] = useState(() => initialSetId && !shareToken ? initialSetId : '');
   const [shareVisibility, setShareVisibility] = useState<Exclude<ProblemSetVisibility, 'private'>>('link');
   const [shareGroupIds, setShareGroupIds] = useState<string[]>([]);
   const [shareResult, setShareResult] = useState<{ url: string; visibility: ProblemSetVisibility } | null>(null);
   const [directSet, setDirectSet] = useState<CloudProblemSet | null>(null);
+  const [detailBackTab, setDetailBackTab] = useState<'discover' | 'groups'>('discover');
   const [newGroupName, setNewGroupName] = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [reportTarget, setReportTarget] = useState<CloudProblemSet | null>(null);
-  const [reportReason, setReportReason] = useState('incorrect');
+  const [reportReason, setReportReason] = useState('incorrect_answer');
   const [reportDetails, setReportDetails] = useState('');
   const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
 
@@ -97,6 +102,11 @@ export function CommunityScreen({
   );
   const selectedGroup = groups.find((group) => group.id === selectedGroupId);
   const canManageSelectedGroup = selectedGroup?.role === 'owner' || selectedGroup?.role === 'admin';
+  const subjectOptions = useMemo(() => [...new Set(publicSets.map((set) => set.subject).filter(Boolean))].sort(), [publicSets]);
+  const visiblePublicSets = useMemo(() => publicSets.filter((set) => (
+    (subjectFilter === 'all' || set.subject === subjectFilter)
+    && (difficultyFilter === 'all' || set.difficulty === difficultyFilter)
+  )), [publicSets, subjectFilter, difficultyFilter]);
 
   useEffect(() => {
     let active = true;
@@ -226,6 +236,33 @@ export function CommunityScreen({
         setPublicSets((items) => items.map((item) => item.id === detail.id ? { ...item, addCount: item.addCount + 1 } : item));
         onOpenLocalSet(localSetId);
       }
+    } catch (reason) {
+      setError(getErrorMessage(reason));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const practiceSharedSet = async (summary: CloudProblemSet, token = '') => {
+    setBusy(true);
+    setError('');
+    try {
+      const detail = summary.questions ? summary : await getSharedProblemSet(summary.id, token);
+      onPracticeSharedSet(detail);
+    } catch (reason) {
+      setError(getErrorMessage(reason));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openSharedDetail = async (summary: CloudProblemSet, backTab: 'discover' | 'groups') => {
+    setBusy(true);
+    setError('');
+    try {
+      setDirectSet(await getSharedProblemSet(summary.id));
+      setDetailBackTab(backTab);
+      setTab('discover');
     } catch (reason) {
       setError(getErrorMessage(reason));
     } finally {
@@ -448,7 +485,7 @@ export function CommunityScreen({
                           </div>
                         ))}
                       </section>
-                      <ProblemSetCards sets={groupSets} busy={busy} onCopy={(set) => void copySharedSet(set)} onReport={setReportTarget} />
+                      <ProblemSetCards sets={groupSets} busy={busy} onCopy={(set) => void copySharedSet(set)} onPractice={(set) => void practiceSharedSet(set)} onDetail={(set) => void openSharedDetail(set, 'groups')} onReport={setReportTarget} />
                     </>
                   ) : null}
                 </>
@@ -458,15 +495,19 @@ export function CommunityScreen({
 
           {tab === 'discover' ? (
             <section className="community-section">
-              <div className="community-section__heading"><div><h2>{directSet ? '共有された問題セット' : '見つける'}</h2><p>追加すると自分用の独立したコピーになります。</p></div></div>
-              {directSet ? <ProblemSetCards sets={[directSet]} busy={busy} onCopy={(set) => void copySharedSet(set, shareToken)} onReport={setReportTarget} detailed /> : (
+              <div className="community-section__heading"><div><h2>{directSet ? '共有された問題セット' : '見つける'}</h2><p>追加すると自分用の独立したコピーになります。</p></div>{directSet && !shareToken ? <button type="button" onClick={() => { setDirectSet(null); setTab(detailBackTab); }}>一覧へ戻る</button> : null}</div>
+              {directSet ? <ProblemSetCards sets={[directSet]} busy={busy} onCopy={(set) => void copySharedSet(set, shareToken)} onPractice={(set) => void practiceSharedSet(set, shareToken)} onReport={setReportTarget} detailed /> : (
                 <>
                   <div className="community-search">
                     <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="タイトル・科目から検索" aria-label="公開問題セットを検索" />
                     <select value={sort} onChange={(event) => setSort(event.target.value as 'new' | 'popular')} aria-label="並び順"><option value="new">新着順</option><option value="popular">人気順</option></select>
                   </div>
-                  <ProblemSetCards sets={publicSets} busy={busy} onCopy={(set) => void copySharedSet(set)} onReport={setReportTarget} />
-                  {cloudConfigured && publicSets.length === 0 && !busy ? <EmptyState title="公開中のセットはまだありません" body="検索条件を変えるか、自分のセットを最初に公開してみましょう。" /> : null}
+                  <div className="community-filters" aria-label="絞り込み">
+                    <label>科目<select value={subjectFilter} onChange={(event) => setSubjectFilter(event.target.value)}><option value="all">すべて</option>{subjectOptions.map((subject) => <option key={subject} value={subject}>{subject}</option>)}</select></label>
+                    <label>難易度<select value={difficultyFilter} onChange={(event) => setDifficultyFilter(event.target.value)}><option value="all">すべて</option><option value="basic">基礎</option><option value="standard">標準</option><option value="advanced">発展</option></select></label>
+                  </div>
+                  <ProblemSetCards sets={visiblePublicSets} busy={busy} onCopy={(set) => void copySharedSet(set)} onPractice={(set) => void practiceSharedSet(set)} onDetail={(set) => void openSharedDetail(set, 'discover')} onReport={setReportTarget} />
+                  {cloudConfigured && visiblePublicSets.length === 0 && !busy ? <EmptyState title="条件に合うセットはありません" body="検索条件を変えるか、自分のセットを最初に公開してみましょう。" /> : null}
                 </>
               )}
             </section>
@@ -524,7 +565,7 @@ export function CommunityScreen({
           <div className="community-overlay" onMouseDown={(event) => event.target === event.currentTarget && setReportTarget(null)}>
             <section className="community-sheet" role="dialog" aria-modal="true" aria-label="問題セットを通報">
               <h2>問題セットを通報</h2><p>{reportTarget.title}</p>
-              <label>理由<select value={reportReason} onChange={(event) => setReportReason(event.target.value)}><option value="incorrect">内容に重大な誤り</option><option value="copyright">著作権の問題</option><option value="inappropriate">不適切な内容</option><option value="spam">スパム</option><option value="other">その他</option></select></label>
+              <label>理由<select value={reportReason} onChange={(event) => setReportReason(event.target.value)}><option value="incorrect_answer">正解が誤っている</option><option value="incorrect_explanation">解説が誤っている</option><option value="unclear_question">問題文が不明確</option><option value="duplicate">重複している</option><option value="copyright">著作権上の問題</option><option value="other">その他</option></select></label>
               <label>詳細<textarea value={reportDetails} onChange={(event) => setReportDetails(event.target.value)} placeholder="確認に必要な情報（任意）" /></label>
               <div className="community-sheet__actions"><button type="button" onClick={() => setReportTarget(null)}>キャンセル</button><button type="button" className="community-danger" disabled={busy} onClick={() => void submitReport()}>通報する</button></div>
             </section>
@@ -545,14 +586,15 @@ export function CommunityScreen({
   );
 }
 
-function ProblemSetCards({ sets, busy, onCopy, onReport, detailed = false }: { sets: CloudProblemSet[]; busy: boolean; onCopy: (set: CloudProblemSet) => void; onReport: (set: CloudProblemSet) => void; detailed?: boolean }) {
+function ProblemSetCards({ sets, busy, onCopy, onPractice, onDetail, onReport, detailed = false }: { sets: CloudProblemSet[]; busy: boolean; onCopy: (set: CloudProblemSet) => void; onPractice: (set: CloudProblemSet) => void; onDetail?: (set: CloudProblemSet) => void; onReport: (set: CloudProblemSet) => void; detailed?: boolean }) {
   return <div className="community-public-list">{sets.map((set) => (
     <article key={set.id} className="community-public-card">
-      <div className="community-public-card__top"><div><span>{set.subject || '未分類'}</span><h3>{set.title}</h3></div><small>{formatDate(set.publishedAt)}</small></div>
+      <div className="community-public-card__top"><div><span>{set.subject || '未分類'}</span><h3>{set.title}</h3></div><small>更新 {formatDate(set.updatedAt)}</small></div>
       {set.description ? <p>{set.description}</p> : null}
       <div className="community-public-card__meta"><span>{set.questionCount}問</span><span>{difficultyLabel(set.difficulty)}</span><span>追加 {set.addCount}</span><span>作成：{set.authorName}</span></div>
       {detailed && set.questions ? <details><summary>問題の内容を確認</summary>{set.questions.slice(0, 5).map((question, index) => <div className="community-question-preview" key={`${index}_${question.question}`}><strong>{index + 1}. {question.question}</strong><span>{question.choices.join(' / ')}</span></div>)}</details> : null}
-      <div className="community-public-card__actions"><button type="button" className="community-primary" disabled={busy} onClick={() => onCopy(set)}>自分のセットに追加</button><button type="button" onClick={() => onReport(set)}>通報</button></div>
+      <div className="community-public-card__actions"><button type="button" className="community-primary" disabled={busy} onClick={() => onPractice(set)}>このまま解く</button><button type="button" disabled={busy} onClick={() => onCopy(set)}>自分の問題に追加</button></div>
+      <div className="community-public-card__minor-actions">{onDetail && !detailed ? <button type="button" onClick={() => onDetail(set)}>詳細を見る</button> : null}<button type="button" onClick={() => onReport(set)}>誤りを報告</button></div>
     </article>
   ))}</div>;
 }
