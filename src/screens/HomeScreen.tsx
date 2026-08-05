@@ -33,6 +33,8 @@ interface HomeScreenProps {
   onClearAll: () => void;
   onOpenSync: () => void;
   onOpenPrivacy: () => void;
+  onCreateProblemSet: () => void;
+  onOpenCommunity: () => void;
 }
 
 export function HomeScreen({
@@ -46,6 +48,8 @@ export function HomeScreen({
   onClearAll,
   onOpenSync,
   onOpenPrivacy,
+  onCreateProblemSet,
+  onOpenCommunity,
 }: HomeScreenProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [folderName, setFolderName] = useState('');
@@ -95,9 +99,21 @@ export function HomeScreen({
           </button>
         </header>
 
+        <button type="button" className="quiz-home__create-set" onClick={onCreateProblemSet}>
+          <span aria-hidden="true"><PlusIcon size={22} /></span>
+          <span><strong>問題セットを作る</strong><small>1問ずつ・まとめて貼り付け・コピー</small></span>
+          <ChevronRightIcon />
+        </button>
+
+        <button type="button" className="quiz-home__community-link" onClick={onOpenCommunity}>
+          <span aria-hidden="true">⌕</span>
+          <span><strong>問題セットを見つける・共有する</strong><small>公開セット、グループ、復習</small></span>
+          <ChevronRightIcon />
+        </button>
+
         <section className="quiz-home__actions" aria-label="ホーム操作">
           <HomeCircleButton active={editMode} icon={editMode ? 'done' : 'delete'} label={editMode ? '完了' : '削除'} onClick={() => setEditMode((value) => !value)} />
-          <HomeCircleButton icon="add" label="新規作成" onClick={() => setCreateOpen(true)} />
+          <HomeCircleButton icon="add" label="フォルダ" onClick={() => setCreateOpen(true)} />
         </section>
 
         <section className="quiz-home__folder-list" aria-label="フォルダ一覧">

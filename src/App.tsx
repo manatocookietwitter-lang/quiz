@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import type { AppData, AppScreen, ProblemSet, Question, QuizMode, QuizResult, QuizSession } from './types';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import type { AppData, AppScreen, Folder, ProblemSet, Question, QuizMode, QuizResult, QuizSession } from './types';
 import {
   createEmptyAppData,
   loadAppDataAsync,
@@ -19,6 +19,7 @@ import { ReviewScreen } from './screens/ReviewScreen';
 import { ResultScreen } from './screens/ResultScreen';
 import { SyncScreen } from './screens/SyncScreen';
 import { PrivacyScreen } from './screens/PrivacyScreen';
+import type { CreateProblemSetSubmission } from './screens/CreateProblemSetScreen';
 import { AutoSyncController } from './components/AutoSyncController';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { createId } from './utils/id';
@@ -37,6 +38,9 @@ import { exportQuizMakeData, importQuizMakeData, summarizeSyncPayload, validateS
 import { waitForPendingCategoryNoteSaves } from './utils/noteStorage';
 import { saveJsonBackup } from './utils/nativePlatform';
 import { createSampleAppData } from './utils/sampleData';
+import type { CloudProblemSet, CloudPublishResult } from './utils/cloudService';
+const CommunityScreen = lazy(() => import('./screens/CommunityScreen').then((module) => ({ default: module.CommunityScreen })));
+const CreateProblemSetScreen = lazy(() => import('./screens/CreateProblemSetScreen').then((module) => ({ default: module.CreateProblemSetScreen })));
 type PendingBackupImport =
   | { kind: 'sync'; payload: SyncPayload; summary: SyncPayloadSummary }
   | { kind: 'legacy'; data: AppData };
@@ -67,6 +71,15 @@ export default function App() {
       if (cancelled) return;
       dataRef.current = loadedData;
       setData(loadedData);
+      const url = new URL(window.location.href);
+      const sharedSetId = url.searchParams.get('sharedSet') ?? '';
+      const shareToken = url.searchParams.get('token') ?? '';
+      if (sharedSetId) {
+        const sharedScreen: AppScreen = { name: 'community', tab: 'discover', shareSetId: sharedSetId, shareToken };
+        navigationStackRef.current = [sharedScreen];
+        screenRef.current = sharedScreen;
+        setScreen(sharedScreen);
+      }
       setStorageReady(true);
     });
     return () => {
@@ -227,7 +240,15 @@ export default function App() {
     applyBackNavigation(target, 0);
   };
 
-  const goHome = () => goBackTo({ name: 'home' });
+  const goHome = () => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.has('sharedSet') || url.searchParams.has('token')) {
+      url.searchParams.delete('sharedSet');
+      url.searchParams.delete('token');
+      window.history.replaceState({ quizMake: true }, '', `${url.pathname}${url.search}${url.hash}`);
+    }
+    goBackTo({ name: 'home' });
+  };
 
   const handleCreateFolder = (name: string) => {
     void commitData(addFolder(dataRef.current, name));
@@ -318,6 +339,201 @@ export default function App() {
       levelLabel,
       savePromise,
     };
+  };
+
+  const handleCreateProblemSet = async (submission: CreateProblemSetSubmission): Promise<string | null> => {
+    const timestamp = nowIso();
+    const current = dataRef.current;
+    let folderId = submission.folderId;
+    let folders = current.folders;
+    if (!folderId) {
+      folderId = createId('folder');
+      const folder: Folder = {
+        id: folderId,
+        name: submission.newFolderName.trim() || 'マイ問題セット',
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      folders = [folder, ...folders];
+    } else {
+      folders = folders.map((folder) => folder.id === folderId ? { ...folder, updatedAt: timestamp } : folder);
+    }
+
+    const setId = createId('set');
+    const questions: Question[] = submission.questions.map((question) => ({
+      id: createId('q'),
+      setId,
+      question: question.question.trim(),
+      choices: question.choices.map((choice) => choice.trim()) as Question['choices'],
+      answerIndex: question.answerIndex ?? 0,
+      answerText: question.answerIndex === null ? '' : question.choices[question.answerIndex]?.trim() ?? '',
+      explanation: question.explanation.trim(),
+      detailedExplanation: '',
+      sourcePage: question.sourcePage.trim(),
+      category: question.category.trim() || '未分類',
+      difficulty: submission.difficulty,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }));
+    const problemSet: ProblemSet = {
+      id: setId,
+      folderId,
+      title: makeUniqueProblemSetTitle(current, folderId, submission.title),
+      source: submission.source.trim(),
+      description: submission.description.trim(),
+      subject: submission.subject.trim(),
+      audience: submission.audience.trim(),
+      difficulty: submission.difficulty,
+      creationMethod: submission.creationMethod,
+      visibility: 'private',
+      sourceSetId: submission.sourceSetId,
+      copiedAt: submission.sourceSetId ? timestamp : undefined,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    const saved = await persistThenCommitData({
+      ...current,
+      folders,
+      problemSets: [problemSet, ...current.problemSets],
+      questions: [...questions, ...current.questions],
+      progress: [...current.progress, ...questions.map((question) => ({
+        questionId: question.id,
+        answeredCount: 0,
+        correctCount: 0,
+        wrongCount: 0,
+        lastSelectedIndex: null,
+        lastAnswerCorrect: null,
+        lastAnsweredAt: null,
+        isReview: false,
+        isAmbiguous: false,
+        reviewLevel: null,
+        isGraduated: false,
+      }))],
+    });
+    if (!saved) return '問題セットを端末へ保存できませんでした。空き容量や保存設定を確認してください。';
+    replaceScreen({ name: 'problemSetDetail', setId });
+    return null;
+  };
+
+  const handleCopySharedProblemSet = async (sharedSet: CloudProblemSet): Promise<string | null> => {
+    const importedQuestions = sharedSet.questions ?? [];
+    if (importedQuestions.length === 0) {
+      setStorageError('追加できる問題がありません。');
+      return null;
+    }
+    if (importedQuestions.some((question) => question.choices.length < 4 || question.choices.length > 5 || question.answerIndexes.length === 0)) {
+      setStorageError('共有された問題セットの形式を確認できませんでした。');
+      return null;
+    }
+
+    const timestamp = nowIso();
+    const current = dataRef.current;
+    const existingFolder = current.folders.find((folder) => folder.name === '追加した問題セット');
+    const targetFolderId = existingFolder?.id ?? createId('folder');
+    const folders = existingFolder
+      ? current.folders.map((folder) => folder.id === targetFolderId ? { ...folder, updatedAt: timestamp } : folder)
+      : [{ id: targetFolderId, name: '追加した問題セット', createdAt: timestamp, updatedAt: timestamp }, ...current.folders];
+    const setId = createId('set');
+    const problemSet: ProblemSet = {
+      id: setId,
+      folderId: targetFolderId,
+      title: makeUniqueProblemSetTitle(current, targetFolderId, sharedSet.title),
+      source: sharedSet.source,
+      description: sharedSet.description,
+      subject: sharedSet.subject,
+      audience: sharedSet.audience,
+      difficulty: sharedSet.difficulty,
+      creationMethod: 'public-copy',
+      visibility: 'private',
+      sourceSetId: sharedSet.id,
+      sourceOwnerId: sharedSet.ownerId,
+      sourceOwnerName: sharedSet.authorName,
+      copiedAt: timestamp,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    const questions: Question[] = importedQuestions.map((question) => {
+      const answerIndexes = [...new Set(question.answerIndexes)].filter((index) => index >= 0 && index < question.choices.length);
+      return {
+        id: createId('q'),
+        setId,
+        question: question.question,
+        choices: question.choices.slice(0, 5) as Question['choices'],
+        answerIndex: answerIndexes[0] ?? 0,
+        answerIndexes,
+        answerText: question.answerText || answerIndexes.map((index) => question.choices[index]).filter(Boolean).join(' / '),
+        explanation: question.explanation,
+        detailedExplanation: question.detailedExplanation,
+        sourcePage: question.sourcePage,
+        category: question.category || '未分類',
+        difficulty: question.difficulty,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+    });
+    const saved = await persistThenCommitData({
+      ...current,
+      folders,
+      problemSets: [problemSet, ...current.problemSets],
+      questions: [...questions, ...current.questions],
+      progress: [...current.progress, ...questions.map((question) => ({
+        questionId: question.id,
+        answeredCount: 0,
+        correctCount: 0,
+        wrongCount: 0,
+        lastSelectedIndex: null,
+        lastAnswerCorrect: null,
+        lastAnsweredAt: null,
+        isReview: false,
+        isAmbiguous: false,
+        reviewLevel: null,
+        isGraduated: false,
+      }))],
+    });
+    return saved ? setId : null;
+  };
+
+  const handlePublishedProblemSet = async (localSetId: string, result: CloudPublishResult): Promise<void> => {
+    const current = dataRef.current;
+    const saved = await persistThenCommitData({
+      ...current,
+      problemSets: current.problemSets.map((set) => set.id === localSetId ? {
+        ...set,
+        cloudSetId: result.id,
+        visibility: result.visibility,
+        updatedAt: nowIso(),
+      } : set),
+    });
+    if (!saved) throw new Error('共有状態を端末に保存できませんでした。');
+  };
+
+  const handleUnpublishedProblemSet = async (localSetId: string): Promise<void> => {
+    const current = dataRef.current;
+    const saved = await persistThenCommitData({
+      ...current,
+      problemSets: current.problemSets.map((set) => set.id === localSetId ? {
+        ...set,
+        cloudSetId: undefined,
+        visibility: 'private',
+        updatedAt: nowIso(),
+      } : set),
+    });
+    if (!saved) throw new Error('共有停止の状態を端末に保存できませんでした。');
+  };
+
+  const handleOpenLegacyImport = async (requestedFolderId: string) => {
+    let folderId = requestedFolderId;
+    if (!folderId) {
+      const timestamp = nowIso();
+      folderId = createId('folder');
+      const current = dataRef.current;
+      const saved = await persistThenCommitData({
+        ...current,
+        folders: [{ id: folderId, name: 'マイ問題セット', createdAt: timestamp, updatedAt: timestamp }, ...current.folders],
+      });
+      if (!saved) return;
+    }
+    navigate({ name: 'import', folderId, backScreen: { name: 'createProblemSet' } });
   };
 
   const handleToggleAmbiguous = async (questionId: string) => {
@@ -496,7 +712,37 @@ export default function App() {
 
   let content;
 
-  if (screen.name === 'folder') {
+  if (screen.name === 'createProblemSet') {
+    content = (
+      <Suspense fallback={<div className="quiz-app-loading">作成画面を読み込み中...</div>}>
+        <CreateProblemSetScreen
+          data={data}
+          onBack={goHome}
+          onSave={handleCreateProblemSet}
+          onOpenLegacyImport={(folderId) => void handleOpenLegacyImport(folderId)}
+          onImportBackup={handleImportBackup}
+        />
+      </Suspense>
+    );
+  } else if (screen.name === 'community') {
+    content = (
+      <Suspense fallback={<div className="quiz-app-loading">共有機能を読み込み中...</div>}>
+        <CommunityScreen
+          data={data}
+          initialTab={screen.tab}
+          initialSetId={screen.shareSetId}
+          shareToken={screen.shareToken}
+          onBack={goHome}
+          onCreateProblemSet={() => navigate({ name: 'createProblemSet' })}
+          onOpenLocalSet={(setId) => navigate({ name: 'problemSetDetail', setId })}
+          onOpenReview={() => navigate({ name: 'review' })}
+          onCopySharedSet={handleCopySharedProblemSet}
+          onPublished={handlePublishedProblemSet}
+          onUnpublished={handleUnpublishedProblemSet}
+        />
+      </Suspense>
+    );
+  } else if (screen.name === 'folder') {
     content = (
       <FolderScreen
         data={data}
@@ -517,6 +763,7 @@ export default function App() {
         onOpenImport={(folderId) => navigate({ name: 'import', folderId, backScreen: { name: 'problemSetDetail', setId: screen.setId } })}
         onOpenProblemList={() => navigate({ name: 'problemList', setId: screen.setId })}
         onOpenNoteList={() => navigate({ name: 'noteList', setId: screen.setId })}
+        onShare={() => navigate({ name: 'community', tab: 'mine', shareSetId: screen.setId })}
         onStartSession={({ questions, mode, initialIndex, title, subtitle, setId }) => handleStartQuizSession({
           title,
           subtitle,
@@ -634,6 +881,8 @@ export default function App() {
       onClearAll={handleClearAll}
       onOpenSync={() => navigate({ name: 'sync' })}
       onOpenPrivacy={() => navigate({ name: 'privacy' })}
+      onCreateProblemSet={() => navigate({ name: 'createProblemSet' })}
+      onOpenCommunity={() => navigate({ name: 'community', tab: 'discover' })}
     />
   );
   }

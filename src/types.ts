@@ -1,5 +1,8 @@
 export type Difficulty = 'basic' | 'standard' | 'advanced' | string;
 
+export type ProblemSetCreationMethod = 'manual' | 'bulk' | 'chatgpt' | 'copy' | 'import' | 'public-copy';
+export type ProblemSetVisibility = 'private' | 'group' | 'link' | 'public';
+
 export type ChoiceList =
   | [string, string, string, string]
   | [string, string, string, string, string];
@@ -25,6 +28,17 @@ export interface ProblemSet {
   folderId: string;
   title: string;
   source: string;
+  description?: string;
+  subject?: string;
+  audience?: string;
+  difficulty?: Difficulty;
+  creationMethod?: ProblemSetCreationMethod;
+  visibility?: ProblemSetVisibility;
+  sourceSetId?: string;
+  sourceOwnerId?: string;
+  sourceOwnerName?: string;
+  cloudSetId?: string;
+  copiedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -131,8 +145,10 @@ export interface QuizSession {
 
 export type AppScreen =
   | { name: 'home' }
+  | { name: 'community'; tab?: 'mine' | 'groups' | 'discover' | 'review'; shareSetId?: string; shareToken?: string }
   | { name: 'sync' }
   | { name: 'privacy' }
+  | { name: 'createProblemSet' }
   | { name: 'folder'; folderId: string }
   | { name: 'problemSetDetail'; setId: string }
   | { name: 'problemList'; setId: string; sortMode?: ProblemSortMode }

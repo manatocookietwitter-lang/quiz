@@ -85,6 +85,28 @@
   gap: 10px;
 }
 
+.quiz-detail button.quiz-detail__share-button {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 10px;
+  width: calc(100% - 24px);
+  min-height: 58px;
+  margin: 12px 12px 0;
+  padding: 10px 13px;
+  border: 1px solid #bddfdc;
+  border-radius: 15px;
+  background: #eaf8f6;
+  color: #1d5758;
+  text-align: left;
+}
+
+.quiz-detail__share-button > span:first-child { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 11px; background: #fff; color: #07827c; font-size: 20px; }
+.quiz-detail__share-button > span:nth-child(2) { display: grid; gap: 2px; min-width: 0; }
+.quiz-detail__share-button strong { font-size: 14px; }
+.quiz-detail__share-button small { color: #668383; font-size: 11px; }
+.quiz-detail__share-button b { color: #3c8d89; font-size: 22px; }
+
 .quiz-detail__metric {
   min-height: 66px;
   border-radius: 14px;

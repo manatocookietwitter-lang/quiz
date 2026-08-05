@@ -10,9 +10,8 @@
     "mobile:sync": "npm run build:native && cap sync && node scripts/fix-capacitor-spm-paths.mjs",
     "mobile:android": "npm run mobile:sync && cap open android",
     "mobile:ios": "npm run mobile:sync && cap open ios",
-    "mobile:assets": "capacitor-assets generate --ios --android",
     "preview": "vite preview",
-    "test": "node --test tests/pwa-service-worker.test.mjs tests/question-detail-source.test.mjs tests/review-targets.test.mjs tests/navigation-history.test.mjs tests/storage-sync-state.test.mjs tests/light-theme.test.mjs tests/home-icons.test.mjs tests/usability-ui.test.mjs tests/store-readiness.test.mjs",
+    "test": "node --test tests/pwa-service-worker.test.mjs tests/question-detail-source.test.mjs tests/review-targets.test.mjs tests/navigation-history.test.mjs tests/storage-sync-state.test.mjs tests/light-theme.test.mjs tests/home-icons.test.mjs tests/usability-ui.test.mjs tests/store-readiness.test.mjs tests/problem-set-creation.test.mjs tests/collaboration-mvp.test.mjs",
     "test:pwa": "node --test tests/pwa-service-worker.test.mjs"
   },
   "dependencies": {
@@ -22,6 +21,7 @@
     "@capacitor/filesystem": "^8.1.2",
     "@capacitor/ios": "^8.5.0",
     "@capacitor/share": "^8.0.1",
+    "@supabase/supabase-js": "^2.112.1",
     "@vitejs/plugin-react": "latest",
     "react": "latest",
     "react-dom": "latest",
@@ -31,7 +31,6 @@
     "vite": "latest"
   },
   "devDependencies": {
-    "@capacitor/assets": "^3.0.5",
     "@capacitor/cli": "^8.5.0",
     "@tailwindcss/postcss": "^4.3.0",
     "@types/react": "^19.2.17",
@@ -40,5 +39,10 @@
     "postcss": "^8.5.25",
     "supabase": "^2.108.0",
     "tailwindcss": "latest"
+  },
+  "overrides": {
+    "xcode": {
+      "uuid": "^11.1.1"
+    }
   }
 }

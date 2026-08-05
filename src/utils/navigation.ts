@@ -2,6 +2,7 @@ import type { AppScreen } from '../types';
 
 export function getScreenKey(screen: AppScreen): string {
   if (screen.name === 'folder') return `folder-${screen.folderId}`;
+  if (screen.name === 'community') return `community-${screen.tab ?? 'mine'}-${screen.shareSetId ?? ''}`;
   if (screen.name === 'problemSetDetail') return `detail-${screen.setId}`;
   if (screen.name === 'problemList') return `problem-list-${screen.setId}-${screen.sortMode ?? 'ordered'}`;
   if (screen.name === 'noteList') return `note-list-${screen.setId}`;

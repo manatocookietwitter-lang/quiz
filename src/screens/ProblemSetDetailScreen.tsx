@@ -36,6 +36,7 @@ interface ProblemSetDetailScreenProps {
   onOpenImport: (folderId: string) => void;
   onOpenProblemList: () => void;
   onOpenNoteList: () => void;
+  onShare: () => void;
   onStartSession: (params: {
     questions: Question[];
     mode: 'quiz' | 'review';
@@ -53,6 +54,7 @@ export function ProblemSetDetailScreen({
   onOpenImport,
   onOpenProblemList,
   onOpenNoteList,
+  onShare,
   onStartSession,
 }: ProblemSetDetailScreenProps) {
   const problemSet = data.problemSets.find((set) => set.id === setId);
@@ -127,6 +129,11 @@ export function ProblemSetDetailScreen({
 
         <div className="quiz-detail__content-grid">
           <div className="quiz-detail__main-column">
+        <button type="button" className="quiz-detail__share-button" onClick={onShare}>
+          <span aria-hidden="true">↗</span>
+          <span><strong>この問題セットを共有</strong><small>リンク・グループ・全体公開</small></span>
+          <b aria-hidden="true">›</b>
+        </button>
         <section className="quiz-detail__summary">
           <div className="quiz-detail__metric">
             <span>{'\u554f\u984c\u6570'}</span>

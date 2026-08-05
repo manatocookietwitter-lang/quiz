@@ -240,6 +240,17 @@ function isProblemSet(value: unknown): boolean {
     && isNonEmptyString(value.folderId)
     && typeof value.title === 'string'
     && typeof value.source === 'string'
+    && (value.description === undefined || typeof value.description === 'string')
+    && (value.subject === undefined || typeof value.subject === 'string')
+    && (value.audience === undefined || typeof value.audience === 'string')
+    && (value.difficulty === undefined || typeof value.difficulty === 'string')
+    && (value.creationMethod === undefined || typeof value.creationMethod === 'string')
+    && (value.visibility === undefined || ['private', 'group', 'link', 'public'].includes(String(value.visibility)))
+    && (value.sourceSetId === undefined || typeof value.sourceSetId === 'string')
+    && (value.sourceOwnerId === undefined || typeof value.sourceOwnerId === 'string')
+    && (value.sourceOwnerName === undefined || typeof value.sourceOwnerName === 'string')
+    && (value.cloudSetId === undefined || typeof value.cloudSetId === 'string')
+    && (value.copiedAt === undefined || typeof value.copiedAt === 'string')
     && typeof value.createdAt === 'string'
     && typeof value.updatedAt === 'string';
 }
