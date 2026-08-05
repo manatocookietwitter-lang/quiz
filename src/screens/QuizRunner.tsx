@@ -8,6 +8,7 @@ import { CategoryNoteDrawer } from '../components/CategoryNoteDrawer';
 import { Layout } from '../components/Layout';
 import { getAnswerIndexes, getAnswerText, getChoiceLabel, getChoiceText, getProgress, getVirtualLevel, makeResult } from '../utils/quiz';
 import { resolveQuestionDetailedExplanation } from '../utils/questionView';
+import { readClipboardText } from '../utils/nativePlatform';
 
 type AnswerSheetState = 'expanded' | 'default' | 'hidden';
 
@@ -762,7 +763,7 @@ function AnswerPanel({
   const handleClipboardRead = async () => {
     try {
       if (!navigator.clipboard?.readText) throw new Error('clipboard unavailable');
-      const value = await navigator.clipboard.readText();
+      const value = await readClipboardText();
       if (!value.trim()) {
         setDetailMessage('\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u304c\u7a7a\u3067\u3059\u3002\u5165\u529b\u4e2d\u306e\u5185\u5bb9\u306f\u305d\u306e\u307e\u307e\u3067\u3059');
         setDetailMessageTone('error');

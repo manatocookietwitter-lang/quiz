@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f1f7fa" />
+    <title>QuizMake プライバシーポリシー</title>
+    <style>
+      :root { color: #18202a; background: #f3f8fb; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      body { margin: 0; }
+      main { width: min(760px, calc(100% - 32px)); margin: 0 auto; padding: 36px 0 60px; }
+      h1 { margin: 0 0 8px; font-size: clamp(1.55rem, 5vw, 2rem); }
+      .lead, .updated { color: #667681; }
+      section { margin-top: 14px; padding: 20px; border: 1px solid #dce7ed; border-radius: 16px; background: #fff; }
+      h2 { margin: 0 0 8px; font-size: 1.05rem; }
+      p { margin: 0 0 8px; line-height: 1.8; color: #44515d; }
+      p:last-child { margin-bottom: 0; }
+      a { color: #1769ff; font-weight: 700; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>QuizMake プライバシーポリシー</h1>
+      <p class="lead">QuizMakeで扱うデータについて説明します。</p>
+      <p class="updated">制定日・最終更新日：2026年8月5日</p>
+      <section><h2>1. 基本方針</h2><p>QuizMakeは、問題作成と学習記録をできるだけ端末内で完結させます。広告、アクセス解析、行動追跡は使用していません。</p></section>
+      <section><h2>2. 端末内に保存するデータ</h2><p>フォルダ、問題セット、問題・解説、回答履歴、正答状況、復習状態、詳細解説、カテゴリーノート、同期設定を端末内に保存します。</p></section>
+      <section><h2>3. 任意のクラウド同期</h2><p>利用者が同期機能を有効にして保存操作を行った場合だけ、問題データ、学習履歴、ノート、設定、ランダムに生成した同期ID、更新日時をSupabaseへ送信します。氏名、メールアドレス、連絡先、正確な位置情報、広告識別子は取得しません。</p><p>同期IDはクラウドデータを読み書きするための秘密情報です。第三者へ共有しないでください。通信はHTTPSで暗号化されます。</p></section>
+      <section><h2>4. クリップボードとファイル</h2><p>テンプレートのコピー、同期IDのコピー、利用者が明示的に実行した貼り付けのためにクリップボードへアクセスします。選択したJSONファイルはバックアップの読み込みに使用し、バックアップの書き出し時には端末の共有・保存画面を開きます。これらを自動送信することはありません。</p></section>
+      <section><h2>5. 保存期間と削除</h2><p>端末内データは、アプリ内の「全データを削除」、端末のアプリデータ消去、またはアンインストールまで保存されます。クラウドデータは、同期設定の「クラウドデータを削除」を実行するまで保存されます。</p></section>
+      <section><h2>6. 外部サービス</h2><p>任意同期の保存先としてSupabaseを使用します。ChatGPT用テンプレートはクリップボードへコピーするだけで、QuizMakeからOpenAIへデータを直接送信しません。</p></section>
+      <section><h2>7. お問い合わせ</h2><p>運営者：QuizMake開発者（GitHub: manatocookietwitter-lang）</p><p><a href="https://github.com/manatocookietwitter-lang/quiz/issues">サポート・お問い合わせ</a></p></section>
+    </main>
+  </body>
+</html>

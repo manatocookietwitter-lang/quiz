@@ -1,3 +1,5 @@
+import { Capacitor } from '@capacitor/core';
+
 declare global {
   interface WindowEventMap {
     'quiz-make-sw-update': CustomEvent<{ worker: ServiceWorker }>;
@@ -16,7 +18,7 @@ const observedWorkers = new WeakSet<ServiceWorker>();
 const observedRegistrations = new WeakSet<ServiceWorkerRegistration>();
 
 export function registerServiceWorker() {
-  if (!('serviceWorker' in navigator) || !import.meta.env.PROD) return;
+  if (!('serviceWorker' in navigator) || !import.meta.env.PROD || Capacitor.isNativePlatform()) return;
   const wasControlledAtStartup = Boolean(navigator.serviceWorker.controller);
 
   navigator.serviceWorker.addEventListener('controllerchange', async () => {

@@ -1,0 +1,69 @@
+.privacy-screen {
+  min-height: 100dvh;
+  background: #f3f8fb;
+  color: #18202a;
+}
+
+.privacy-screen__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: calc(var(--safe-top) + 14px) max(18px, var(--safe-right)) 16px max(18px, var(--safe-left));
+  background: #ffffff;
+  border-bottom: 1px solid #dce7ed;
+}
+
+.privacy-screen__header h1 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.privacy-screen__header p {
+  margin: 3px 0 0;
+  color: #65727e;
+  font-size: 0.82rem;
+}
+
+.privacy-screen__body {
+  width: min(720px, 100%);
+  margin: 0 auto;
+  padding: 20px max(18px, var(--safe-right)) calc(32px + var(--safe-bottom)) max(18px, var(--safe-left));
+}
+
+.privacy-screen__updated {
+  margin: 0 0 14px;
+  color: #687884;
+  font-size: 0.82rem;
+}
+
+.privacy-screen__body section {
+  margin-bottom: 12px;
+  padding: 17px 18px;
+  border: 1px solid #dce7ed;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(41, 67, 82, 0.05);
+}
+
+.privacy-screen__body h2 {
+  margin: 0 0 8px;
+  font-size: 1rem;
+}
+
+.privacy-screen__body p {
+  margin: 0 0 8px;
+  color: #44515d;
+  font-size: 0.9rem;
+  line-height: 1.75;
+}
+
+.privacy-screen__body p:last-child {
+  margin-bottom: 0;
+}
+
+.privacy-screen__body a {
+  display: inline-flex;
+  margin-top: 4px;
+  color: #1769ff;
+  font-weight: 700;
+}

@@ -217,6 +217,17 @@
   border: 1px solid #3a3a3a;
 }
 
+.sync-button--danger {
+  border-color: #f1b8c2;
+  background: #fff0f3;
+  color: #b4233b;
+}
+
+.sync-advanced__section--danger {
+  border-color: #f1cbd2;
+  background: #fffafb;
+}
+
 .sync-button:disabled {
   background: #2a2a2a;
   color: #777777;

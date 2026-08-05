@@ -12,10 +12,10 @@ const buildVersionPlugin = {
   },
 };
 
-export default defineConfig({
-  base: "/quiz/",
+export default defineConfig(({ mode }) => ({
+  base: mode === "native" ? "./" : "/quiz/",
   plugins: [react(), buildVersionPlugin],
   define: {
     __QUIZ_BUILD_ID__: JSON.stringify(buildId),
   },
-});
+}));

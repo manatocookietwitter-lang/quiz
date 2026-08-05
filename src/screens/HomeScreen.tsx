@@ -6,6 +6,7 @@ import {
   CheckIcon,
   ChevronRightIcon,
   CopyIcon,
+  DocumentOutlineIcon,
   DownloadIcon,
   FolderOutlineIcon,
   MenuIcon,
@@ -18,28 +19,33 @@ import {
 import { formatDisplayDate } from '../utils/date';
 import { CHATGPT_MATERIAL_TEMPLATE_PROMPT, CHATGPT_PAST_EXAM_TEMPLATE_PROMPT } from '../utils/importValidator';
 import { isReviewTarget } from '../utils/reviewTargets';
+import { writeClipboardText } from '../utils/nativePlatform';
 import './HomeScreen.css';
 
 interface HomeScreenProps {
   data: AppData;
   onCreateFolder: (name: string) => void;
+  onCreateSample: () => void;
   onDeleteFolder: (folderId: string) => void;
   onOpenFolder: (folderId: string) => void;
   onExport: () => void;
   onImportBackup: (file: File) => Promise<string | null>;
   onClearAll: () => void;
   onOpenSync: () => void;
+  onOpenPrivacy: () => void;
 }
 
 export function HomeScreen({
   data,
   onCreateFolder,
+  onCreateSample,
   onDeleteFolder,
   onOpenFolder,
   onExport,
   onImportBackup,
   onClearAll,
   onOpenSync,
+  onOpenPrivacy,
 }: HomeScreenProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [folderName, setFolderName] = useState('');
@@ -69,7 +75,7 @@ export function HomeScreen({
 
   const handleCopyTemplate = async (template: string, label: string) => {
     try {
-      await navigator.clipboard.writeText(template);
+      await writeClipboardText(template);
       setCopied(label);
       window.setTimeout(() => setCopied(''), 1600);
     } catch {
@@ -100,7 +106,10 @@ export function HomeScreen({
               <div className="quiz-home__empty-icon" aria-hidden="true"><PlusIcon size={24} /></div>
               <h2>学習フォルダを作りましょう</h2>
               <p>科目や試験ごとに整理すると、問題と復習記録を探しやすくなります。</p>
-              <button type="button" onClick={() => setCreateOpen(true)}>最初のフォルダを作る</button>
+              <div className="quiz-home__empty-actions">
+                <button type="button" onClick={onCreateSample}>サンプルで試す</button>
+                <button type="button" className="quiz-home__empty-secondary" onClick={() => setCreateOpen(true)}>自分のフォルダを作る</button>
+              </div>
             </div>
           ) : data.folders.map((folder) => {
             const summary = getFolderSummary(data, folder.id);
@@ -152,6 +161,10 @@ export function HomeScreen({
             onOpenSync={() => {
               setMenuOpen(false);
               onOpenSync();
+            }}
+            onOpenPrivacy={() => {
+              setMenuOpen(false);
+              onOpenPrivacy();
             }}
             onClearAll={() => {
               setMenuOpen(false);
@@ -311,6 +324,7 @@ function HomeMenu({
   onCopyMaterialTemplate,
   onCopyPastExamTemplate,
   onOpenSync,
+  onOpenPrivacy,
   onClearAll,
 }: {
   copied: string;
@@ -321,6 +335,7 @@ function HomeMenu({
   onCopyMaterialTemplate: () => void;
   onCopyPastExamTemplate: () => void;
   onOpenSync: () => void;
+  onOpenPrivacy: () => void;
   onClearAll: () => void;
 }) {
   const dialogRef = useModalFocus<HTMLDivElement>(onClose);
@@ -357,6 +372,18 @@ function HomeMenu({
               <small>複数年度の過去問を整理する場合</small>
             </span>
             <span className="quiz-home__menu-item-state">{copied === '過去問を集約' ? 'コピー済み' : 'コピー'}</span>
+          </button>
+        </section>
+
+        <section className="quiz-home__menu-section" aria-labelledby="app-info-menu-title">
+          <h3 id="app-info-menu-title">アプリ情報</h3>
+          <button type="button" className="quiz-home__menu-item" onClick={onOpenPrivacy}>
+            <span className="quiz-home__menu-item-icon"><DocumentOutlineIcon /></span>
+            <span className="quiz-home__menu-item-text">
+              <strong>プライバシーポリシー</strong>
+              <small>保存されるデータと削除方法を確認</small>
+            </span>
+            <ChevronRightIcon size={18} />
           </button>
         </section>
 

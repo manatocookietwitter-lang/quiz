@@ -18,6 +18,7 @@ import { QuizRunner } from './screens/QuizRunner';
 import { ReviewScreen } from './screens/ReviewScreen';
 import { ResultScreen } from './screens/ResultScreen';
 import { SyncScreen } from './screens/SyncScreen';
+import { PrivacyScreen } from './screens/PrivacyScreen';
 import { AutoSyncController } from './components/AutoSyncController';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { createId } from './utils/id';
@@ -34,6 +35,8 @@ import {
 import { validateImportJson } from './utils/importValidator';
 import { exportQuizMakeData, importQuizMakeData, summarizeSyncPayload, validateSyncPayload, type SyncPayload, type SyncPayloadSummary } from './utils/syncService';
 import { waitForPendingCategoryNoteSaves } from './utils/noteStorage';
+import { saveJsonBackup } from './utils/nativePlatform';
+import { createSampleAppData } from './utils/sampleData';
 type PendingBackupImport =
   | { kind: 'sync'; payload: SyncPayload; summary: SyncPayloadSummary }
   | { kind: 'legacy'; data: AppData };
@@ -339,15 +342,7 @@ export default function App() {
   const handleExport = async () => {
     try {
       const payload = await exportQuizMakeData();
-      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement('a');
-      anchor.href = url;
-      anchor.download = `quiz-make-backup-${formatBackupDate()}.json`;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      URL.revokeObjectURL(url);
+      await saveJsonBackup(`quiz-make-backup-${formatBackupDate()}.json`, JSON.stringify(payload, null, 2));
     } catch (error) {
       setBackupImportError(error instanceof Error ? `バックアップの作成に失敗しました: ${error.message}` : 'バックアップの作成に失敗しました。');
     }
@@ -624,17 +619,21 @@ export default function App() {
     );
   } else if (screen.name === 'sync') {
     content = <SyncScreen onBack={goHome} />;
+  } else if (screen.name === 'privacy') {
+    content = <PrivacyScreen onBack={goHome} />;
   } else {
     content = (
     <HomeScreen
       data={data}
       onCreateFolder={handleCreateFolder}
+      onCreateSample={() => void commitData(createSampleAppData())}
       onDeleteFolder={handleDeleteFolder}
       onOpenFolder={(folderId) => navigate({ name: 'folder', folderId })}
       onExport={handleExport}
       onImportBackup={handleImportBackup}
       onClearAll={handleClearAll}
       onOpenSync={() => navigate({ name: 'sync' })}
+      onOpenPrivacy={() => navigate({ name: 'privacy' })}
     />
   );
   }

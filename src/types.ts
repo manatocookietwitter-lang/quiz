@@ -132,6 +132,7 @@ export interface QuizSession {
 export type AppScreen =
   | { name: 'home' }
   | { name: 'sync' }
+  | { name: 'privacy' }
   | { name: 'folder'; folderId: string }
   | { name: 'problemSetDetail'; setId: string }
   | { name: 'problemList'; setId: string; sortMode?: ProblemSortMode }

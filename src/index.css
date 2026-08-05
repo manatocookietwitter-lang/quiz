@@ -1069,7 +1069,7 @@ button:disabled {
 
 .answer-sheet__content-rail {
   display: flex;
-  width: 200%;
+  width: 100%;
   height: 100%;
   transform: translateX(0);
   transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
@@ -1077,12 +1077,12 @@ button:disabled {
 }
 
 .answer-sheet__content-rail--detail {
-  transform: translateX(-50%);
+  transform: translateX(-100%);
 }
 
 .answer-sheet__content-page {
-  flex: 0 0 50%;
-  width: 50%;
+  flex: 0 0 100%;
+  width: 100%;
   min-width: 0;
   min-height: 0;
   box-sizing: border-box;
@@ -1747,6 +1747,19 @@ body,
 .quiz-folder__empty-icon {
   background: var(--ui-accent-soft);
   color: var(--ui-accent-dark);
+}
+
+.quiz-home__empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 9px;
+}
+
+.quiz-home button.quiz-home__empty-secondary {
+  border: 1px solid var(--ui-border-strong);
+  background: #ffffff;
+  color: var(--ui-text);
 }
 
 .quiz-home__delete-button,

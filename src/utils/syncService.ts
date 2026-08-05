@@ -99,6 +99,7 @@ export const SYNC_BACKUP_PREFIX = 'quizMake:sync:backup:';
 const SUPABASE_READ_RPC = 'quiz_sync_read';
 const SUPABASE_UPSERT_RPC = 'quiz_sync_upsert';
 const SUPABASE_PROBE_RPC = 'quiz_sync_probe';
+const SUPABASE_DELETE_RPC = 'quiz_sync_delete';
 const SUPABASE_TABLE = 'quiz_sync_data';
 let syncDataOperationQueue: Promise<void> = Promise.resolve();
 let localDataRevision = 0;
@@ -679,6 +680,33 @@ export function validateSyncPayload(value: unknown): SyncResult<SyncPayload> {
       indexedDbNotes: sortRecord(indexedDbNotes),
     },
   };
+}
+
+export async function deleteRemoteSyncData(syncId: string): Promise<SyncResult<boolean>> {
+  const normalizedSyncId = syncId.trim();
+  if (!normalizedSyncId) return { ok: false, error: '同期IDを入力してください。' };
+  if (!isStrongSyncId(normalizedSyncId)) return { ok: false, error: '同期IDは「同期IDを生成」で作成した36文字のIDを使用してください。' };
+
+  const config = getRemoteSyncConfig();
+  if (!config) return { ok: false, error: 'クラウド同期が設定されていません。' };
+
+  try {
+    const response = await fetch(`${config.url}/rest/v1/rpc/${SUPABASE_DELETE_RPC}`, {
+      method: 'POST',
+      headers: createSupabaseHeaders(config.anonKey),
+      body: JSON.stringify({ p_sync_id: normalizedSyncId }),
+    });
+    if (!response.ok) return { ok: false, error: await responseError(response, 'クラウドデータの削除に失敗しました。') };
+    const deleted = await response.json() as unknown;
+    setAutoSyncEnabled(false);
+    setLastSyncState({ lastRemoteUpdatedAt: '', lastUploadHash: '', status: 'クラウドデータ削除済み', error: '' });
+    return { ok: true, value: deleted === true };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? `クラウドデータの削除に失敗しました: ${error.message}` : 'クラウドデータの削除に失敗しました。',
+    };
+  }
 }
 
 async function responseToDiagnosticStep(response: Response, name: string, successMessage: string): Promise<SyncDiagnosticStep> {

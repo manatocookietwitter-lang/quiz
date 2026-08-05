@@ -3,6 +3,7 @@ import { BackButton } from '../components/BackButton';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Layout } from '../components/Layout';
 import { CHATGPT_MATERIAL_TEMPLATE_PROMPT, CHATGPT_PAST_EXAM_TEMPLATE_PROMPT } from '../utils/importValidator';
+import { readClipboardText, writeClipboardText } from '../utils/nativePlatform';
 import './ImportScreen.css';
 
 interface ImportScreenProps {
@@ -44,7 +45,7 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
 
   const handleCopyTemplate = async (template: string, label: string) => {
     try {
-      await navigator.clipboard.writeText(template);
+      await writeClipboardText(template);
       setCopied(label);
       setNotice(`${label}テンプレートをクリップボードにコピーしました`);
       window.setTimeout(() => setCopied(''), 1600);
@@ -57,7 +58,7 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
     setError('');
     setNotice('');
     try {
-      const text = await navigator.clipboard.readText();
+      const text = await readClipboardText();
       if (!text.trim()) {
         setError('クリップボードが空です。現在の入力内容は変更していません。');
         return;

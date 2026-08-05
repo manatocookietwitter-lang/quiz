@@ -5,6 +5,7 @@ import { ChevronDownIcon, CopyIcon, DownloadIcon, SyncIcon, UploadIcon } from '.
 import {
   clearSyncLocalBackups,
   computePayloadHash,
+  deleteRemoteSyncData,
   downloadSyncData,
   exportQuizMakeData,
   generateSyncId,
@@ -25,6 +26,7 @@ import {
   type SyncPayloadSummary,
 } from '../utils/syncService';
 import { isStrongSyncId } from '../utils/syncState';
+import { saveJsonBackup, writeClipboardText } from '../utils/nativePlatform';
 import './SyncScreen.css';
 
 interface SyncScreenProps {
@@ -44,6 +46,7 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [clearBackupsConfirmOpen, setClearBackupsConfirmOpen] = useState(false);
+  const [deleteCloudConfirmOpen, setDeleteCloudConfirmOpen] = useState(false);
   const [pendingCloudImport, setPendingCloudImport] = useState<{ payload: SyncPayload; summary: SyncPayloadSummary } | null>(null);
   const [pendingCloudOverwrite, setPendingCloudOverwrite] = useState<{
     payload: SyncPayload;
@@ -108,7 +111,7 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
       return;
     }
     try {
-      await navigator.clipboard.writeText(normalizedSyncId);
+      await writeClipboardText(normalizedSyncId);
       setError('');
       setMessage('同期IDをクリップボードへコピーしました。');
     } catch {
@@ -135,21 +138,33 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
   const handleDownloadBackup = async () => {
     try {
       const payload = await exportQuizMakeData();
-      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement('a');
-      anchor.href = url;
-      anchor.download = `quiz-make-backup-${formatBackupFileDate(new Date())}.json`;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      await saveJsonBackup(`quiz-make-backup-${formatBackupFileDate(new Date())}.json`, JSON.stringify(payload, null, 2));
       setError('');
       setMessage('現在データのJSONバックアップを作成しました。');
     } catch (caughtError) {
       const detail = caughtError instanceof Error ? caughtError.message : String(caughtError);
       setMessage('');
       setError(`JSONバックアップの作成に失敗しました: ${detail}`);
+    }
+  };
+
+  const confirmDeleteCloudData = async () => {
+    if (!syncIdValid || busy) return;
+    setBusy(true);
+    setMessage('');
+    setError('');
+    try {
+      const result = await deleteRemoteSyncData(normalizedSyncId);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setAutoEnabledState(false);
+      setLastState(getLastSyncState());
+      setMessage(result.value ? 'クラウド上の同期データを削除しました。この端末のデータは残っています。' : '削除対象のクラウドデータはありませんでした。');
+      setDeleteCloudConfirmOpen(false);
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -529,6 +544,19 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
               </div>
               {lastState.error ? <p className="sync-card__error-text">{lastState.error}</p> : null}
             </section>
+
+            <section className="sync-advanced__section sync-advanced__section--danger">
+              <h2>クラウドデータの削除</h2>
+              <p>現在の同期IDに保存されたクラウド上のデータだけを削除します。この端末の問題や学習履歴は残ります。</p>
+              <button
+                type="button"
+                className="sync-button sync-button--danger"
+                onClick={() => setDeleteCloudConfirmOpen(true)}
+                disabled={!canRun || !configured}
+              >
+                クラウドデータを削除
+              </button>
+            </section>
           </div>
         </details>
       </main>
@@ -557,6 +585,15 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
         confirmLabel={'\u6574\u7406\u3059\u308b'}
         onCancel={() => setClearBackupsConfirmOpen(false)}
         onConfirm={confirmClearSyncBackups}
+      />
+      <ConfirmDialog
+        open={deleteCloudConfirmOpen}
+        title="クラウドデータを削除しますか？"
+        message={'この同期IDでクラウドに保存された問題、学習履歴、ノートを削除します。\nこの端末内のデータは削除されません。削除後は元に戻せません。'}
+        confirmLabel={busy ? '削除中…' : 'クラウドから削除'}
+        busy={busy}
+        onCancel={() => setDeleteCloudConfirmOpen(false)}
+        onConfirm={() => void confirmDeleteCloudData()}
       />
     </div>
   );
