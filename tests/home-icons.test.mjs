@@ -5,6 +5,7 @@ import test from 'node:test';
 const readSource = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 const homeSource = readSource('../src/screens/HomeScreen.tsx');
 const folderSource = readSource('../src/screens/FolderScreen.tsx');
+const primaryNavSource = readSource('../src/components/PrimaryBottomNav.tsx');
 const manifestSource = readSource('../public/manifest.webmanifest');
 const iconSource = readSource('../public/icons/quiz-make-icon.svg');
 const htmlSource = readSource('../index.html');
@@ -12,12 +13,16 @@ const workerSource = readSource('../public/sw.js');
 
 test('home and folder navigation use outline icons while retaining learning counts', () => {
   assert.match(homeSource, /FolderOutlineIcon/);
-  assert.match(homeSource, /QuizMakeMarkIcon/);
+  assert.doesNotMatch(homeSource, /QuizMakeMarkIcon|MenuIcon|quiz-home__menu-button/);
+  assert.match(homeSource, /MY LIBRARY/);
   assert.match(homeSource, /セット \{setCount\}/);
   assert.match(homeSource, /問題 \{questionCount\}/);
   assert.match(homeSource, /復習 \{reviewCount\}/);
   assert.match(homeSource, /正答 \{correctRate\}%/);
   assert.doesNotMatch(homeSource, /quiz-home__folder-tab/);
+  for (const icon of ['HomeIcon', 'SearchIcon', 'GroupIcon', 'AddSquareIcon', 'SettingsIcon']) {
+    assert.match(primaryNavSource, new RegExp(icon));
+  }
 
   assert.match(folderSource, /DocumentOutlineIcon/);
   assert.match(folderSource, /問題 \{questionCount\}/);

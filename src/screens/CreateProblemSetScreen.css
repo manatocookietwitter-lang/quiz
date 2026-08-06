@@ -58,10 +58,10 @@
 .create-set__review-card .create-set__question-fields { border-top: 1px solid #e3ebef; padding: 14px; }
 .create-set__issues { margin: 8px 0 0; border-radius: 12px; background: #fff2e2; padding: 10px 10px 10px 30px; color: #9b531e; font-size: .8rem; }
 .create-set__delete-draft { margin: 0 14px 14px; border: 0; background: transparent; color: #b34f46; font-weight: 800; }
-.create-set__save-bar { position: sticky; bottom: 10px; z-index: 4; width: min(100%,760px); display: flex; justify-content: space-between; align-items: center; margin: 4px auto 0; border: 1px solid rgba(207,224,231,.9); border-radius: 18px; background: rgba(255,255,255,.94); padding: 10px; box-shadow: 0 12px 28px rgba(34,72,90,.16); backdrop-filter: blur(10px); }
+.create-set__save-bar { position: sticky; bottom: calc(var(--primary-nav-height) + var(--safe-bottom) + 10px); z-index: 4; width: min(100%,760px); display: flex; justify-content: space-between; align-items: center; margin: 4px auto 0; border: 1px solid rgba(207,224,231,.9); border-radius: 18px; background: rgba(255,255,255,.94); padding: 10px; box-shadow: 0 12px 28px rgba(34,72,90,.16); backdrop-filter: blur(10px); }
 .create-set__save-bar span { padding-left: 8px; color: #60727d; font-weight: 900; }
 .create-set__notice { width: min(100%,760px); margin: 0 auto; border-radius: 14px; background: #e8f7f7; padding: 12px 14px; color: #176f72; font-size: .85rem; font-weight: 800; }
-.create-set__error { position: fixed; right: 14px; bottom: 18px; left: 14px; z-index: 9; max-width: 720px; margin: auto; border-radius: 14px; background: #9d443c; padding: 12px 14px; color: #fff; font-weight: 800; box-shadow: 0 12px 30px rgba(86,36,32,.25); }
+.create-set__error { position: fixed; right: 14px; bottom: calc(var(--primary-nav-height) + var(--safe-bottom) + 18px); left: 14px; z-index: 9; max-width: 720px; margin: auto; border-radius: 14px; background: #9d443c; padding: 12px 14px; color: #fff; font-weight: 800; box-shadow: 0 12px 30px rgba(86,36,32,.25); }
 .create-set__hidden-input { display: none; }
 @media (max-width: 560px) {
   .create-set { padding-right: 12px; padding-left: 12px; }

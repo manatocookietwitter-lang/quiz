@@ -4,15 +4,25 @@ import test from 'node:test';
 
 const readSource = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 const homeSource = readSource('../src/screens/HomeScreen.tsx');
+const settingsSource = readSource('../src/screens/SettingsScreen.tsx');
 const syncSource = readSource('../src/screens/SyncScreen.tsx');
 const globalCss = readSource('../src/index.css');
+const layoutSource = readSource('../src/components/Layout.tsx');
+const createCss = readSource('../src/screens/CreateProblemSetScreen.css');
 
 test('template actions explain what is copied and what to do next', () => {
-  assert.match(homeSource, /ChatGPTで問題を作る/);
-  assert.match(homeSource, /指示文をコピーしたあと、ChatGPTの入力欄に貼り付け/);
-  assert.match(homeSource, /資料から問題を作る/);
-  assert.match(homeSource, /過去問をまとめる/);
-  assert.match(homeSource, /コピーしました。次にChatGPTを開き/);
+  assert.match(settingsSource, /ChatGPTで問題を作る/);
+  assert.match(settingsSource, /用途を選んで指示文をコピーし、ChatGPTの入力欄へ貼り付け/);
+  assert.match(settingsSource, /資料から問題を作る/);
+  assert.match(settingsSource, /過去問をまとめる/);
+  assert.match(settingsSource, /コピーしました。次にChatGPTを開き/);
+  assert.doesNotMatch(homeSource, /ChatGPTで問題を作る|quiz-home__menu-button/);
+});
+
+test('shared layout scrolls long screens and create actions stay above the primary navigation', () => {
+  assert.match(layoutSource, /overflow-y-auto/);
+  assert.doesNotMatch(layoutSource, /flex-col overflow-hidden/);
+  assert.match(createCss, /bottom:\s*calc\(var\(--primary-nav-height\)/);
 });
 
 test('sync screen shows two primary steps and keeps maintenance options collapsed', () => {

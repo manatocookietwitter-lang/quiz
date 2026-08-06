@@ -121,6 +121,52 @@ export function SyncIcon({ size = 22, ...props }: IconProps) {
   );
 }
 
+export function HomeIcon({ size = 24, ...props }: IconProps) {
+  return (
+    <svg {...iconProps(size, props)} aria-hidden={props['aria-hidden'] ?? true}>
+      <path d="m3.75 10.5 8.25-7 8.25 7" />
+      <path d="M5.75 9.1v10.15h12.5V9.1M9.5 19.25v-6h5v6" />
+    </svg>
+  );
+}
+
+export function SearchIcon({ size = 24, ...props }: IconProps) {
+  return (
+    <svg {...iconProps(size, props)} aria-hidden={props['aria-hidden'] ?? true}>
+      <circle cx="10.75" cy="10.75" r="6.25" />
+      <path d="m15.4 15.4 4.1 4.1" />
+    </svg>
+  );
+}
+
+export function GroupIcon({ size = 24, ...props }: IconProps) {
+  return (
+    <svg {...iconProps(size, props)} aria-hidden={props['aria-hidden'] ?? true}>
+      <circle cx="9" cy="8.25" r="3.25" />
+      <path d="M3.25 19c.35-3.25 2.2-5 5.75-5s5.4 1.75 5.75 5" />
+      <path d="M15.25 5.65a3 3 0 0 1 0 5.2M16 14c2.9.25 4.4 1.9 4.75 4.5" />
+    </svg>
+  );
+}
+
+export function AddSquareIcon({ size = 24, ...props }: IconProps) {
+  return (
+    <svg {...iconProps(size, props)} aria-hidden={props['aria-hidden'] ?? true}>
+      <rect x="3.75" y="3.75" width="16.5" height="16.5" rx="4" />
+      <path d="M12 8v8M8 12h8" />
+    </svg>
+  );
+}
+
+export function SettingsIcon({ size = 24, ...props }: IconProps) {
+  return (
+    <svg {...iconProps(size, props)} aria-hidden={props['aria-hidden'] ?? true}>
+      <circle cx="12" cy="12" r="3.25" />
+      <path d="M19.1 13.7a7.9 7.9 0 0 0 0-3.4l1.55-1.2-1.8-3.1-1.85.75a7.5 7.5 0 0 0-2.9-1.7L13.8 3h-3.6l-.3 2.05A7.5 7.5 0 0 0 7 6.75L5.15 6l-1.8 3.1 1.55 1.2a7.9 7.9 0 0 0 0 3.4l-1.55 1.2 1.8 3.1L7 17.25a7.5 7.5 0 0 0 2.9 1.7l.3 2.05h3.6l.3-2.05a7.5 7.5 0 0 0 2.9-1.7l1.85.75 1.8-3.1z" />
+    </svg>
+  );
+}
+
 export function QuizMakeMarkIcon({ size = 28, ...props }: IconProps) {
   return (
     <svg {...iconProps(size, props)} strokeWidth={1.7} aria-hidden={props['aria-hidden'] ?? true}>

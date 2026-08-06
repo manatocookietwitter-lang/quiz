@@ -5,21 +5,12 @@ import { Layout } from '../components/Layout';
 import {
   CheckIcon,
   ChevronRightIcon,
-  CopyIcon,
-  DocumentOutlineIcon,
-  DownloadIcon,
   FolderOutlineIcon,
-  MenuIcon,
   PlusIcon,
-  QuizMakeMarkIcon,
-  SyncIcon,
   TrashIcon,
-  UploadIcon,
 } from '../components/UiIcons';
 import { formatDisplayDate } from '../utils/date';
-import { CHATGPT_MATERIAL_TEMPLATE_PROMPT, CHATGPT_PAST_EXAM_TEMPLATE_PROMPT } from '../utils/importValidator';
 import { isReviewTarget } from '../utils/reviewTargets';
-import { writeClipboardText } from '../utils/nativePlatform';
 import './HomeScreen.css';
 
 interface HomeScreenProps {
@@ -28,13 +19,7 @@ interface HomeScreenProps {
   onCreateSample: () => void;
   onDeleteFolder: (folderId: string) => void;
   onOpenFolder: (folderId: string) => void;
-  onExport: () => void;
-  onImportBackup: (file: File) => Promise<string | null>;
-  onClearAll: () => void;
-  onOpenSync: () => void;
-  onOpenPrivacy: () => void;
-  onCreateProblemSet: () => void;
-  onOpenCommunity: () => void;
+  onOpenReview: () => void;
 }
 
 export function HomeScreen({
@@ -43,23 +28,13 @@ export function HomeScreen({
   onCreateSample,
   onDeleteFolder,
   onOpenFolder,
-  onExport,
-  onImportBackup,
-  onClearAll,
-  onOpenSync,
-  onOpenPrivacy,
-  onCreateProblemSet,
-  onOpenCommunity,
+  onOpenReview,
 }: HomeScreenProps) {
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [folderName, setFolderName] = useState('');
   const [editMode, setEditMode] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Folder | null>(null);
-  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
-  const [importError, setImportError] = useState('');
-  const [copied, setCopied] = useState('');
+  const reviewCount = data.progress.filter(isReviewTarget).length;
 
   const handleCreateFolder = () => {
     const name = folderName.trim();
@@ -69,45 +44,19 @@ export function HomeScreen({
     setCreateOpen(false);
   };
 
-  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-    const error = await onImportBackup(file);
-    setImportError(error ?? '');
-  };
-
-  const handleCopyTemplate = async (template: string, label: string) => {
-    try {
-      await writeClipboardText(template);
-      setCopied(label);
-      window.setTimeout(() => setCopied(''), 1600);
-    } catch {
-      setImportError('テンプレートのコピーに失敗しました。');
-    }
-  };
-
   return (
     <Layout>
       <div className="quiz-home">
         <header className="quiz-home__header">
-          <div className="quiz-home__header-slope" />
-          <span className="quiz-home__brand-icon" aria-hidden="true"><QuizMakeMarkIcon size={30} /></span>
-          <h1 className="quiz-home__title">Quiz make</h1>
-          <button type="button" className="quiz-home__menu-button" aria-label="メニュー" onClick={() => setMenuOpen(true)}>
-            <MenuIcon />
-          </button>
+          <div>
+            <p>MY LIBRARY</p>
+            <h1 className="quiz-home__title">Quiz Make</h1>
+          </div>
         </header>
 
-        <button type="button" className="quiz-home__create-set" onClick={onCreateProblemSet}>
-          <span aria-hidden="true"><PlusIcon size={22} /></span>
-          <span><strong>問題セットを作る</strong><small>1問ずつ・まとめて貼り付け・コピー</small></span>
-          <ChevronRightIcon />
-        </button>
-
-        <button type="button" className="quiz-home__community-link" onClick={onOpenCommunity}>
-          <span aria-hidden="true">⌕</span>
-          <span><strong>問題セットを見つける・共有する</strong><small>公開セット、グループ、復習</small></span>
+        <button type="button" className="quiz-home__review-card" onClick={onOpenReview} disabled={reviewCount === 0}>
+          <span className="quiz-home__review-count">{reviewCount}</span>
+          <span><strong>復習する</strong><small>{reviewCount ? '間違えた問題・曖昧な問題' : '復習対象はありません'}</small></span>
           <ChevronRightIcon />
         </button>
 
@@ -145,8 +94,6 @@ export function HomeScreen({
           })}
         </section>
 
-        <input ref={fileInputRef} type="file" accept="application/json,.json" className="quiz-home__file-input" onChange={handleFileChange} />
-
         {createOpen ? (
           <CreateFolderDialog
             folderName={folderName}
@@ -156,36 +103,6 @@ export function HomeScreen({
               setFolderName('');
             }}
             onCreate={handleCreateFolder}
-          />
-        ) : null}
-
-        {menuOpen ? (
-          <HomeMenu
-            copied={copied}
-            importError={importError}
-            onClose={() => setMenuOpen(false)}
-            onExport={() => {
-              setMenuOpen(false);
-              onExport();
-            }}
-            onImport={() => {
-              setMenuOpen(false);
-              fileInputRef.current?.click();
-            }}
-            onCopyMaterialTemplate={() => handleCopyTemplate(CHATGPT_MATERIAL_TEMPLATE_PROMPT, '資料から問題作成')}
-            onCopyPastExamTemplate={() => handleCopyTemplate(CHATGPT_PAST_EXAM_TEMPLATE_PROMPT, '過去問を集約')}
-            onOpenSync={() => {
-              setMenuOpen(false);
-              onOpenSync();
-            }}
-            onOpenPrivacy={() => {
-              setMenuOpen(false);
-              onOpenPrivacy();
-            }}
-            onClearAll={() => {
-              setMenuOpen(false);
-              setClearConfirmOpen(true);
-            }}
           />
         ) : null}
 
@@ -201,17 +118,6 @@ export function HomeScreen({
           }}
         />
 
-        <ConfirmDialog
-          open={clearConfirmOpen}
-          title="削除しますか？"
-          message="フォルダ、問題セット、問題、回答記録、復習Level、曖昧登録をすべて削除します。"
-          confirmLabel="全データ削除"
-          onCancel={() => setClearConfirmOpen(false)}
-          onConfirm={() => {
-            onClearAll();
-            setClearConfirmOpen(false);
-          }}
-        />
       </div>
     </Layout>
   );
@@ -327,122 +233,6 @@ function CreateFolderDialog({
           </button>
         </div>
       </form>
-    </div>
-  );
-}
-
-function HomeMenu({
-  copied,
-  importError,
-  onClose,
-  onExport,
-  onImport,
-  onCopyMaterialTemplate,
-  onCopyPastExamTemplate,
-  onOpenSync,
-  onOpenPrivacy,
-  onClearAll,
-}: {
-  copied: string;
-  importError: string;
-  onClose: () => void;
-  onExport: () => void;
-  onImport: () => void;
-  onCopyMaterialTemplate: () => void;
-  onCopyPastExamTemplate: () => void;
-  onOpenSync: () => void;
-  onOpenPrivacy: () => void;
-  onClearAll: () => void;
-}) {
-  const dialogRef = useModalFocus<HTMLDivElement>(onClose);
-  const titleId = useId();
-
-  return (
-    <div className="quiz-home__overlay" onClick={onClose}>
-      <div ref={dialogRef} className="quiz-home__menu" role="dialog" aria-modal="true" aria-labelledby={titleId} onClick={(event) => event.stopPropagation()}>
-        <div className="quiz-home__menu-header">
-          <div>
-            <h2 id={titleId}>メニュー</h2>
-            <p>問題作成とデータ管理</p>
-          </div>
-          <button data-dialog-autofocus type="button" className="quiz-home__menu-close" aria-label="閉じる" onClick={onClose}>
-            ×
-          </button>
-        </div>
-
-        <section className="quiz-home__menu-section" aria-labelledby="template-menu-title">
-          <h3 id="template-menu-title">ChatGPTで問題を作る</h3>
-          <p className="quiz-home__menu-help">指示文をコピーしたあと、ChatGPTの入力欄に貼り付けて資料や過去問を送ります。</p>
-          <button type="button" className="quiz-home__menu-item quiz-home__menu-item--template" onClick={onCopyMaterialTemplate}>
-            <span className="quiz-home__menu-item-icon"><CopyIcon /></span>
-            <span className="quiz-home__menu-item-text">
-              <strong>資料から問題を作る</strong>
-              <small>教科書・講義資料・文章向け</small>
-            </span>
-            <span className="quiz-home__menu-item-state">{copied === '資料から問題作成' ? 'コピー済み' : 'コピー'}</span>
-          </button>
-          <button type="button" className="quiz-home__menu-item quiz-home__menu-item--template" onClick={onCopyPastExamTemplate}>
-            <span className="quiz-home__menu-item-icon"><CopyIcon /></span>
-            <span className="quiz-home__menu-item-text">
-              <strong>過去問をまとめる</strong>
-              <small>複数年度の過去問を整理する場合</small>
-            </span>
-            <span className="quiz-home__menu-item-state">{copied === '過去問を集約' ? 'コピー済み' : 'コピー'}</span>
-          </button>
-        </section>
-
-        <section className="quiz-home__menu-section" aria-labelledby="app-info-menu-title">
-          <h3 id="app-info-menu-title">アプリ情報</h3>
-          <button type="button" className="quiz-home__menu-item" onClick={onOpenPrivacy}>
-            <span className="quiz-home__menu-item-icon"><DocumentOutlineIcon /></span>
-            <span className="quiz-home__menu-item-text">
-              <strong>プライバシーポリシー</strong>
-              <small>保存されるデータと削除方法を確認</small>
-            </span>
-            <ChevronRightIcon size={18} />
-          </button>
-        </section>
-
-        <section className="quiz-home__menu-section" aria-labelledby="data-menu-title">
-          <h3 id="data-menu-title">データ管理</h3>
-          <button type="button" className="quiz-home__menu-item" onClick={onOpenSync}>
-            <span className="quiz-home__menu-item-icon"><SyncIcon /></span>
-            <span className="quiz-home__menu-item-text">
-              <strong>端末間の同期</strong>
-              <small>スマホやPCで同じデータを使う</small>
-            </span>
-            <ChevronRightIcon size={18} />
-          </button>
-          <button type="button" className="quiz-home__menu-item" onClick={onExport}>
-            <span className="quiz-home__menu-item-icon"><DownloadIcon /></span>
-            <span className="quiz-home__menu-item-text">
-              <strong>バックアップを書き出す</strong>
-              <small>現在のデータをJSONで保存</small>
-            </span>
-          </button>
-          <button type="button" className="quiz-home__menu-item" onClick={onImport}>
-            <span className="quiz-home__menu-item-icon"><UploadIcon /></span>
-            <span className="quiz-home__menu-item-text">
-              <strong>バックアップを読み込む</strong>
-              <small>保存したJSONから復元</small>
-            </span>
-          </button>
-        </section>
-
-        <details className="quiz-home__menu-more">
-          <summary>その他</summary>
-          <button type="button" className="quiz-home__menu-item quiz-home__menu-item--danger" onClick={onClearAll}>
-            <span className="quiz-home__menu-item-icon"><TrashIcon /></span>
-            <span className="quiz-home__menu-item-text">
-              <strong>全データを削除</strong>
-              <small>フォルダ・問題・学習記録を消去</small>
-            </span>
-          </button>
-        </details>
-
-        {copied ? <div className="quiz-home__menu-notice">コピーしました。次にChatGPTを開き、入力欄へ貼り付けてください。</div> : null}
-        {importError ? <div className="quiz-home__menu-error">{importError}</div> : null}
-      </div>
     </div>
   );
 }

@@ -35,11 +35,11 @@ test('detailed explanation pages use a full-width mobile carousel', () => {
 });
 
 test('privacy policy, support page, deletion path and iOS privacy manifest exist', () => {
-  const home = readSource('../src/screens/HomeScreen.tsx');
+  const settings = readSource('../src/screens/SettingsScreen.tsx');
   const sync = readSource('../src/screens/SyncScreen.tsx');
   const migration = readSource('../supabase/migrations/20260805_add_quiz_sync_delete_rpc.sql');
   const privacyManifest = readSource('../ios/App/App/PrivacyInfo.xcprivacy');
-  assert.match(home, /プライバシーポリシー/);
+  assert.match(settings, /プライバシーポリシー/);
   assert.match(sync, /クラウドデータを削除/);
   assert.match(migration, /quiz_sync_delete/);
   assert.match(privacyManifest, /NSPrivacyAccessedAPICategoryFileTimestamp/);

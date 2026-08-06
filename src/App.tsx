@@ -19,9 +19,11 @@ import { ReviewScreen } from './screens/ReviewScreen';
 import { ResultScreen } from './screens/ResultScreen';
 import { SyncScreen } from './screens/SyncScreen';
 import { PrivacyScreen } from './screens/PrivacyScreen';
+import { SettingsScreen } from './screens/SettingsScreen';
 import type { CreateProblemSetSubmission } from './screens/CreateProblemSetScreen';
 import { AutoSyncController } from './components/AutoSyncController';
 import { ConfirmDialog } from './components/ConfirmDialog';
+import { PrimaryBottomNav, type PrimaryNavItem } from './components/PrimaryBottomNav';
 import { createId } from './utils/id';
 import { formatBackupDate, nowIso } from './utils/date';
 import { getBackNavigationSteps, getScreenKey } from './utils/navigation';
@@ -249,6 +251,24 @@ export default function App() {
       window.history.replaceState({ quizMake: true }, '', `${url.pathname}${url.search}${url.hash}`);
     }
     goBackTo({ name: 'home' });
+  };
+
+  const navigatePrimary = (item: PrimaryNavItem) => {
+    const next: AppScreen = item === 'home'
+      ? { name: 'home' }
+      : item === 'discover'
+        ? { name: 'community', tab: 'discover' }
+        : item === 'groups'
+          ? { name: 'community', tab: 'groups' }
+          : item === 'create'
+            ? { name: 'createProblemSet' }
+            : { name: 'settings' };
+    if (getScreenKey(screenRef.current) === getScreenKey(next)) return;
+    if (item === 'home') {
+      goHome();
+      return;
+    }
+    replaceScreen(next);
   };
 
   const handleCreateFolder = (name: string) => {
@@ -929,10 +949,20 @@ export default function App() {
         onRetry={() => handleRetry(screen.result)}
       />
     );
+  } else if (screen.name === 'settings') {
+    content = (
+      <SettingsScreen
+        onExport={handleExport}
+        onImportBackup={handleImportBackup}
+        onClearAll={handleClearAll}
+        onOpenSync={() => navigate({ name: 'sync' })}
+        onOpenPrivacy={() => navigate({ name: 'privacy' })}
+      />
+    );
   } else if (screen.name === 'sync') {
-    content = <SyncScreen onBack={goHome} />;
+    content = <SyncScreen onBack={() => goBackTo({ name: 'settings' })} />;
   } else if (screen.name === 'privacy') {
-    content = <PrivacyScreen onBack={goHome} />;
+    content = <PrivacyScreen onBack={() => goBackTo({ name: 'settings' })} />;
   } else {
     content = (
     <HomeScreen
@@ -941,13 +971,7 @@ export default function App() {
       onCreateSample={() => void commitData(createSampleAppData())}
       onDeleteFolder={handleDeleteFolder}
       onOpenFolder={(folderId) => navigate({ name: 'folder', folderId })}
-      onExport={handleExport}
-      onImportBackup={handleImportBackup}
-      onClearAll={handleClearAll}
-      onOpenSync={() => navigate({ name: 'sync' })}
-      onOpenPrivacy={() => navigate({ name: 'privacy' })}
-      onCreateProblemSet={() => navigate({ name: 'createProblemSet' })}
-      onOpenCommunity={() => navigate({ name: 'community', tab: 'discover' })}
+      onOpenReview={() => navigate({ name: 'review' })}
     />
   );
   }
@@ -958,6 +982,9 @@ export default function App() {
       <div key={getScreenKey(screen)} className={`quiz-screen-transition quiz-screen-transition--${transitionDirection}`}>
         {content}
       </div>
+      {getPrimaryNavItem(screen) ? (
+        <PrimaryBottomNav active={getPrimaryNavItem(screen)!} onSelect={navigatePrimary} />
+      ) : null}
       <ConfirmDialog
         open={pendingBackupImport !== null}
         title={'バックアップを読み込みますか？'}
@@ -1015,6 +1042,17 @@ function formatBackupImportSummary(summary: SyncPayloadSummary) {
 
 function isQuizInProgressScreen(screen: AppScreen) {
   return screen.name === 'quiz' || screen.name === 'quizSession' || screen.name === 'review';
+}
+
+function getPrimaryNavItem(screen: AppScreen): PrimaryNavItem | null {
+  if (screen.name === 'home') return 'home';
+  if (screen.name === 'settings') return 'settings';
+  if (screen.name === 'createProblemSet') return 'create';
+  if (screen.name === 'community' && !screen.shareSetId && !screen.shareToken) {
+    if (screen.tab === 'groups') return 'groups';
+    if (screen.tab === 'discover') return 'discover';
+  }
+  return null;
 }
 
 function makeUniqueProblemSetTitle(data: AppData, folderId: string, rawTitle: string) {

@@ -1,4 +1,5 @@
 import { BackButton } from '../components/BackButton';
+import { Layout } from '../components/Layout';
 import './PrivacyScreen.css';
 
 interface PrivacyScreenProps {
@@ -7,9 +8,9 @@ interface PrivacyScreenProps {
 
 export function PrivacyScreen({ onBack }: PrivacyScreenProps) {
   return (
-    <div className="privacy-screen">
+    <Layout><div className="privacy-screen">
       <header className="privacy-screen__header">
-        <BackButton onClick={onBack} label="ホームへ戻る" />
+        <BackButton onClick={onBack} label="設定へ戻る" />
         <div>
           <h1>プライバシーポリシー</h1>
           <p>QuizMakeで扱うデータについて</p>
@@ -63,6 +64,6 @@ export function PrivacyScreen({ onBack }: PrivacyScreenProps) {
           <a href="https://github.com/manatocookietwitter-lang/quiz/issues" target="_blank" rel="noreferrer">サポート・お問い合わせ</a>
         </section>
       </main>
-    </div>
+    </div></Layout>
   );
 }

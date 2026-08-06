@@ -3,6 +3,7 @@ import type { Session } from '@supabase/supabase-js';
 import type { AppData, ProblemSetVisibility } from '../types';
 import { BackButton } from '../components/BackButton';
 import { Layout } from '../components/Layout';
+import { DocumentOutlineIcon } from '../components/UiIcons';
 import { writeClipboardText } from '../utils/nativePlatform';
 import {
   buildShareUrl,
@@ -95,6 +96,7 @@ export function CommunityScreen({
   const [reportReason, setReportReason] = useState('incorrect_answer');
   const [reportDetails, setReportDetails] = useState('');
   const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
+  const isPrimaryRoot = !initialSetId && !shareToken && (initialTab === 'discover' || initialTab === 'groups');
 
   const reviewCount = useMemo(
     () => data.progress.filter(isReviewTarget).length,
@@ -409,9 +411,9 @@ export function CommunityScreen({
     <Layout>
       <div className="community-screen">
         <header className="community-screen__header">
-          <BackButton onClick={onBack} label="戻る" />
-          <div><p>Quiz Make</p><h1>問題セット</h1></div>
-          <button type="button" className="community-screen__header-create" onClick={onCreateProblemSet}>＋ 作る</button>
+          {isPrimaryRoot ? <span className="community-screen__header-spacer" aria-hidden="true" /> : <BackButton onClick={onBack} label="戻る" />}
+          <div><p>QUIZ MAKE</p><h1>{tab === 'groups' ? 'グループ' : tab === 'discover' ? '見つける' : '問題セット'}</h1></div>
+          <span className="community-screen__header-spacer" aria-hidden="true" />
         </header>
 
         {!cloudConfigured ? <div className="community-notice community-notice--warning">共有機能の接続設定が未完了です。端末内の作成・学習機能はそのまま使えます。</div> : null}
@@ -436,7 +438,7 @@ export function CommunityScreen({
                   return (
                     <article key={set.id} className="community-set-card">
                       <button type="button" className="community-set-card__main" onClick={() => onOpenLocalSet(set.id)}>
-                        <span className="community-set-card__icon" aria-hidden="true">□</span>
+                        <span className="community-set-card__icon" aria-hidden="true"><DocumentOutlineIcon size={23} /></span>
                         <span><strong>{set.title}</strong><small>{count}問{set.subject ? ` · ${set.subject}` : ''}</small></span>
                       </button>
                       <div className="community-set-card__actions">
@@ -521,13 +523,6 @@ export function CommunityScreen({
           ) : null}
         </main>
 
-        <nav className="community-tabs" aria-label="メインメニュー">
-          <TabButton active={tab === 'mine'} label="自分" icon="□" onClick={() => setTab('mine')} />
-          <TabButton active={tab === 'groups'} label="グループ" icon="♙" onClick={() => setTab('groups')} />
-          <TabButton active={tab === 'discover'} label="見つける" icon="⌕" onClick={() => setTab('discover')} />
-          <TabButton active={tab === 'review'} label="復習" icon="↻" badge={reviewCount} onClick={() => setTab('review')} />
-        </nav>
-
         {loginOpen ? (
           <div className="community-overlay" onMouseDown={(event) => event.target === event.currentTarget && setLoginOpen(false)}>
             <section className="community-sheet" role="dialog" aria-modal="true" aria-label="ログイン">
@@ -599,12 +594,8 @@ function ProblemSetCards({ sets, busy, onCopy, onPractice, onDetail, onReport, d
   ))}</div>;
 }
 
-function TabButton({ active, label, icon, badge = 0, onClick }: { active: boolean; label: string; icon: string; badge?: number; onClick: () => void }) {
-  return <button type="button" className={active ? 'community-tabs__active' : ''} aria-current={active ? 'page' : undefined} onClick={onClick}><span aria-hidden="true">{icon}</span><small>{label}</small>{badge > 0 ? <b>{badge > 99 ? '99+' : badge}</b> : null}</button>;
-}
-
 function EmptyState({ title, body, action, onAction }: { title: string; body: string; action?: string; onAction?: () => void }) {
-  return <div className="community-empty"><span aria-hidden="true">□</span><h3>{title}</h3><p>{body}</p>{action && onAction ? <button type="button" className="community-primary" onClick={onAction}>{action}</button> : null}</div>;
+  return <div className="community-empty"><span aria-hidden="true"><DocumentOutlineIcon size={30} /></span><h3>{title}</h3><p>{body}</p>{action && onAction ? <button type="button" className="community-primary" onClick={onAction}>{action}</button> : null}</div>;
 }
 
 function formatDate(value: string) {

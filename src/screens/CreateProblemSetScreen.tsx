@@ -89,7 +89,7 @@ export function CreateProblemSetScreen({ data, onBack, onSave, onOpenLegacyImpor
     if (!target) return;
     setQuestionEditor({ ...target, choices: [...target.choices] });
     setEditingIndex(index);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    document.querySelector<HTMLElement>('.app-layout__scroll')?.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const parsePastedContent = () => {

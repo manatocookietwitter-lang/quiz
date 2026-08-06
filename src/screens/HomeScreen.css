@@ -504,3 +504,53 @@
 .quiz-home__create-set > span:nth-child(2) { display: grid; gap: 3px; min-width: 0; }
 .quiz-home__create-set strong { font-size: 1rem; }
 .quiz-home__create-set small { color: rgba(255, 255, 255, .86); font-size: .76rem; }
+
+/* Primary-navigation home layout */
+.quiz-home {
+  height: 100%;
+  min-height: 100%;
+  background: #f1f5f9;
+}
+
+.quiz-home__header {
+  display: flex;
+  height: calc(76px + var(--safe-top));
+  flex: 0 0 calc(76px + var(--safe-top));
+  align-items: flex-end;
+  overflow: visible;
+  padding: calc(12px + var(--safe-top)) 20px 13px;
+  border-bottom: 1px solid #dce5ef;
+  background: #ffffff;
+}
+
+.quiz-home__header p,
+.quiz-home__header h1 { margin: 0; }
+.quiz-home__header p { color: #7b8897; font-size: 10px; font-weight: 850; letter-spacing: .11em; }
+.quiz-home__title { display: block; height: auto; margin-top: 3px; color: #172033; font-size: 25px; font-weight: 800; line-height: 1.05; }
+
+.quiz-home button.quiz-home__review-card {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 20px;
+  align-items: center;
+  gap: 12px;
+  width: calc(100% - 28px);
+  min-height: 64px;
+  margin: 14px 14px 0;
+  border: 1px solid #dce5ef;
+  border-radius: 18px;
+  background: #ffffff;
+  padding: 10px 14px;
+  color: #172033;
+  text-align: left;
+  box-shadow: 0 7px 22px rgba(40, 57, 87, .06);
+}
+
+.quiz-home button.quiz-home__review-card:disabled { opacity: .65; }
+.quiz-home__review-count { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 13px; background: #fff2e8; color: #d97732; font-size: 18px; font-weight: 900; }
+.quiz-home__review-card > span:nth-child(2) { display: grid; gap: 3px; min-width: 0; }
+.quiz-home__review-card strong { font-size: 14px; }
+.quiz-home__review-card small { color: #718091; font-size: 11px; }
+.quiz-home__review-card > svg { color: #9aa6b3; }
+
+.quiz-home__actions { height: 76px; flex: 0 0 76px; padding-top: 8px; padding-right: 14px; background: #f1f5f9; }
+.quiz-home__folder-list { flex: 1 1 auto; max-height: none; margin: 0 12px; padding: 0 0 calc(var(--primary-nav-height) + var(--safe-bottom) + 18px); background: transparent; }

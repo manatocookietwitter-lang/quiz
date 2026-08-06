@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const [appSource, screenSource, serviceSource, typesSource, storageSource, collaborationMigration, groupManagementMigration, accountDeletionMigration, reportReasonsMigration] = await Promise.all([
+const [appSource, screenSource, primaryNavSource, serviceSource, typesSource, storageSource, collaborationMigration, groupManagementMigration, accountDeletionMigration, reportReasonsMigration] = await Promise.all([
   readFile(new URL('../src/App.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/screens/CommunityScreen.tsx', import.meta.url), 'utf8'),
+  readFile(new URL('../src/components/PrimaryBottomNav.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/utils/cloudService.ts', import.meta.url), 'utf8'),
   readFile(new URL('../src/types.ts', import.meta.url), 'utf8'),
   readFile(new URL('../src/storage.ts', import.meta.url), 'utf8'),
@@ -22,10 +23,11 @@ test('local AppData stays version 1 and cloud metadata is backward-compatible', 
   assert.match(appSource, /createEmptyAppData/);
 });
 
-test('the primary navigation exposes mine, groups, discovery and review', () => {
-  for (const label of ['自分', 'グループ', '見つける', '復習']) {
-    assert.match(screenSource, new RegExp(`label="${label}"`));
+test('the primary navigation exposes the five global destinations', () => {
+  for (const label of ['ホーム', '見つける', 'グループ', '問題セットを作る', '設定']) {
+    assert.match(primaryNavSource, new RegExp(`label: '${label}'`));
   }
+  assert.doesNotMatch(screenSource, /community-tabs/);
   assert.match(screenSource, /共有するときだけログイン/);
   assert.match(screenSource, /問題作成と学習だけならログインは不要/);
 });

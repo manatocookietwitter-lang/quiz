@@ -148,6 +148,7 @@ export interface QuizSession {
 
 export type AppScreen =
   | { name: 'home' }
+  | { name: 'settings' }
   | { name: 'community'; tab?: 'mine' | 'groups' | 'discover' | 'review'; shareSetId?: string; shareToken?: string }
   | { name: 'sync' }
   | { name: 'privacy' }
