@@ -15,7 +15,6 @@ import { NoteListScreen } from './screens/NoteListScreen';
 import { ImportScreen } from './screens/ImportScreen';
 import { QuizScreen } from './screens/QuizScreen';
 import { QuizRunner } from './screens/QuizRunner';
-import { ReviewScreen } from './screens/ReviewScreen';
 import { ResultScreen } from './screens/ResultScreen';
 import { SyncScreen } from './screens/SyncScreen';
 import { PrivacyScreen } from './screens/PrivacyScreen';
@@ -729,8 +728,6 @@ export default function App() {
       backScreen = current.session.backScreen;
     } else if (current.name === 'quiz' && result.setId) {
       backScreen = { name: 'problemSetDetail', setId: result.setId };
-    } else if (current.name === 'review') {
-      backScreen = { name: 'home' };
     }
 
     let nextResult = result.retry && backScreen
@@ -775,8 +772,8 @@ export default function App() {
       }
     }
 
-    if (result.mode === 'review') {
-      navigate({ name: 'review' });
+    if (result.mode === 'review' && result.setId) {
+      goBackTo({ name: 'problemSetDetail', setId: result.setId });
       return;
     }
     if (result.setId) {
@@ -819,7 +816,6 @@ export default function App() {
           onBack={goHome}
           onCreateProblemSet={() => navigate({ name: 'createProblemSet' })}
           onOpenLocalSet={(setId) => navigate({ name: 'problemSetDetail', setId })}
-          onOpenReview={() => navigate({ name: 'review' })}
           onCopySharedSet={handleCopySharedProblemSet}
           onPracticeSharedSet={handlePracticeSharedProblemSet}
           onPublished={handlePublishedProblemSet}
@@ -929,18 +925,6 @@ export default function App() {
         onFinish={handleFinish}
       />
     );
-  } else if (screen.name === 'review') {
-    content = (
-      <ReviewScreen
-        key="review"
-        data={data}
-        onBack={goHome}
-        onAnswer={handleAnswer}
-        onToggleAmbiguous={handleToggleAmbiguous}
-        onSaveDetailedExplanation={handleSaveDetailedExplanation}
-        onFinish={handleFinish}
-      />
-    );
   } else if (screen.name === 'result') {
     content = (
       <ResultScreen
@@ -971,7 +955,6 @@ export default function App() {
       onCreateSample={() => void commitData(createSampleAppData())}
       onDeleteFolder={handleDeleteFolder}
       onOpenFolder={(folderId) => navigate({ name: 'folder', folderId })}
-      onOpenReview={() => navigate({ name: 'review' })}
     />
   );
   }
@@ -1041,7 +1024,7 @@ function formatBackupImportSummary(summary: SyncPayloadSummary) {
 }
 
 function isQuizInProgressScreen(screen: AppScreen) {
-  return screen.name === 'quiz' || screen.name === 'quizSession' || screen.name === 'review';
+  return screen.name === 'quiz' || screen.name === 'quizSession';
 }
 
 function getPrimaryNavItem(screen: AppScreen): PrimaryNavItem | null {

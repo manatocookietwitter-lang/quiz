@@ -12,8 +12,6 @@
   padding: 0 var(--safe-right) var(--safe-bottom) var(--safe-left);
   border-top: 1px solid #dce5ef;
   background: rgba(255, 255, 255, 0.97);
-  box-shadow: 0 -8px 28px rgba(39, 62, 92, 0.08);
-  backdrop-filter: blur(18px);
 }
 
 .primary-bottom-nav__inner {
@@ -34,7 +32,7 @@
   align-content: center;
   gap: 3px;
   border: 0;
-  border-radius: 14px;
+  border-radius: 0;
   background: transparent;
   color: #758493;
   font: inherit;
@@ -58,8 +56,19 @@
 }
 
 .primary-bottom-nav__item--active {
-  background: #eef3ff;
+  position: relative;
+  background: transparent;
   color: #4167f5;
+}
+
+.primary-bottom-nav__item--active::before {
+  content: '';
+  position: absolute;
+  top: -5px;
+  width: 28px;
+  height: 2px;
+  border-radius: 0 0 2px 2px;
+  background: #4167f5;
 }
 
 .primary-bottom-nav__item:focus-visible {

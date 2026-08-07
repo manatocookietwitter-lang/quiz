@@ -4,7 +4,12 @@ import { BackButton } from '../components/BackButton';
 import { Layout } from '../components/Layout';
 import { ChevronRightIcon, CopyIcon, DocumentOutlineIcon, PlusIcon, UploadIcon } from '../components/UiIcons';
 import { parseBulkQuestionText, parseQuestionCsv, getDraftIssues, type BulkQuestionDraft } from '../utils/bulkQuestionParser';
-import { validateImportJson } from '../utils/importValidator';
+import {
+  CHATGPT_MATERIAL_TEMPLATE_PROMPT,
+  CHATGPT_PAST_EXAM_TEMPLATE_PROMPT,
+  validateImportJson,
+} from '../utils/importValidator';
+import { writeClipboardText } from '../utils/nativePlatform';
 import './CreateProblemSetScreen.css';
 
 export interface CreateProblemSetSubmission {
@@ -52,6 +57,7 @@ export function CreateProblemSetScreen({ data, onBack, onSave, onOpenLegacyImpor
   const [sourceSetId, setSourceSetId] = useState<string | undefined>();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [copiedTemplate, setCopiedTemplate] = useState<'material' | 'past-exam' | ''>('');
   const csvInputRef = useRef<HTMLInputElement | null>(null);
   const backupInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -172,13 +178,22 @@ export function CreateProblemSetScreen({ data, onBack, onSave, onOpenLegacyImpor
     setError('');
   };
 
+  const copyChatGptTemplate = async (template: string, kind: 'material' | 'past-exam') => {
+    try {
+      await writeClipboardText(template);
+      setCopiedTemplate(kind);
+      window.setTimeout(() => setCopiedTemplate(''), 2200);
+    } catch {
+      setError('指示文をコピーできませんでした。');
+    }
+  };
+
   return (
     <Layout>
       <main className="create-set">
         <header className="create-set__header">
           <BackButton onClick={view === 'methods' ? onBack : () => goTo('methods')} label={view === 'methods' ? 'ホームへ戻る' : '作成方法へ戻る'} />
           <div>
-            <p className="create-set__eyebrow">問題セット作成</p>
             <h1>{getViewTitle(view, sourceSetId)}</h1>
           </div>
         </header>
@@ -206,6 +221,26 @@ export function CreateProblemSetScreen({ data, onBack, onSave, onOpenLegacyImpor
 
         {(view === 'bulk' || view === 'chatgpt') ? (
           <div className="create-set__flow">
+            {view === 'chatgpt' ? (
+              <section className="create-set__panel create-set__template-panel" aria-labelledby="create-template-title">
+                <div className="create-set__template-heading">
+                  <span>1</span>
+                  <div>
+                    <h2 id="create-template-title">指示文をコピー</h2>
+                    <p>用途を選び、コピーした指示文と資料をChatGPTへ貼り付けます。</p>
+                  </div>
+                </div>
+                <div className="create-set__template-actions">
+                  <button type="button" onClick={() => void copyChatGptTemplate(CHATGPT_MATERIAL_TEMPLATE_PROMPT, 'material')}>
+                    <CopyIcon /><span><strong>資料から問題を作る</strong><small>{copiedTemplate === 'material' ? 'コピーしました' : '教科書・講義資料・文章向け'}</small></span>
+                  </button>
+                  <button type="button" onClick={() => void copyChatGptTemplate(CHATGPT_PAST_EXAM_TEMPLATE_PROMPT, 'past-exam')}>
+                    <CopyIcon /><span><strong>過去問をまとめる</strong><small>{copiedTemplate === 'past-exam' ? 'コピーしました' : '複数年度の過去問向け'}</small></span>
+                  </button>
+                </div>
+                <p className="create-set__template-next"><b>2</b> ChatGPTで作成したら、下の入力欄へ結果を貼り付けてください。</p>
+              </section>
+            ) : null}
             <SetMetaFields data={data} value={meta} onChange={setMeta} />
             <section className="create-set__panel">
               <h2>{view === 'chatgpt' ? '作成された内容を貼り付ける' : '複数の問題を貼り付ける'}</h2>

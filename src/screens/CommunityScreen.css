@@ -4,7 +4,7 @@
 .community-screen {
   min-height: 100%;
   padding-bottom: calc(var(--primary-nav-height) + var(--safe-bottom) + 18px);
-  background: linear-gradient(180deg, #f7fbfd 0, #eef6f8 100%);
+  background: #f1f5f9;
   color: #183241;
 }
 
@@ -29,12 +29,9 @@
   padding: calc(10px + env(safe-area-inset-top)) 18px 10px;
   border-bottom: 1px solid #dfeaed;
   background: rgba(255, 255, 255, .94);
-  backdrop-filter: blur(18px);
 }
 
-.community-screen__header p,
 .community-screen__header h1 { margin: 0; }
-.community-screen__header p { color: #80939d; font-size: 11px; font-weight: 800; letter-spacing: .08em; }
 .community-screen__header h1 { font-size: 21px; letter-spacing: -.03em; }
 
 .community-screen__header-create,
@@ -42,7 +39,7 @@
   min-height: 40px;
   padding: 0 15px;
   border: 0;
-  border-radius: 14px;
+  border-radius: 9px;
   background: #e3f7f5;
   color: #087d78;
   font-weight: 900;
@@ -80,9 +77,8 @@
 .community-review-card {
   padding: 16px;
   border: 1px solid #dbe8eb;
-  border-radius: 20px;
+  border-radius: 12px;
   background: #fff;
-  box-shadow: 0 8px 22px rgba(50, 86, 101, .06);
 }
 .community-account { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #637984; font-size: 13px; }
 .community-account button { padding: 7px 10px; border: 0; border-radius: 10px; background: #f0f5f6; color: #4f6570; font-weight: 800; }
@@ -98,9 +94,8 @@
   min-width: 0;
   overflow: hidden;
   border: 1px solid #dce8eb;
-  border-radius: 18px;
+  border-radius: 12px;
   background: #fff;
-  box-shadow: 0 6px 18px rgba(50, 86, 101, .05);
 }
 .community-set-card__main,
 .community-group-card__main { display: flex; flex: 1; align-items: center; gap: 12px; min-width: 0; padding: 15px; border: 0; background: transparent; color: inherit; text-align: left; }
@@ -114,13 +109,13 @@
 .community-group-card strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .community-set-card small,
 .community-group-card small { margin-top: 4px; color: #80929b; font-size: 12px; }
-.community-set-card__icon { display: grid; place-items: center; width: 38px; height: 38px; flex: 0 0 auto; border: 2px solid #279b9a; border-radius: 10px; color: #279b9a; }
+.community-set-card__icon { display: grid; place-items: center; width: 32px; height: 38px; flex: 0 0 auto; color: #279b9a; }
 .community-group-card > button { width: 92px; border: 0; border-left: 1px solid #e4edef; background: #f7fbfb; color: #17817e; font-size: 13px; font-weight: 900; }
 .community-set-card__actions { display: grid; width: 82px; flex: 0 0 auto; border-left: 1px solid #e4edef; }
 .community-set-card__actions button { border: 0; background: #f7fbfb; color: #17817e; font-size: 12px; font-weight: 900; }
 .community-set-card__actions button + button { border-top: 1px solid #e4edef; color: #a85555; }
 .community-set-card__actions button:disabled { opacity: .45; }
-.community-group-card--active { border-color: #4ec6bf; box-shadow: 0 0 0 2px rgba(78, 198, 191, .15); }
+.community-group-card--active { border-color: #4ec6bf; }
 
 .community-members { padding: 14px 16px; border: 1px solid #dbe8eb; border-radius: 18px; background: #fff; }
 .community-members h3 { margin: 0 0 7px; font-size: 15px; }
@@ -160,9 +155,8 @@
 .community-public-card {
   padding: 18px;
   border: 1px solid #dbe7ea;
-  border-radius: 20px;
+  border-radius: 12px;
   background: #fff;
-  box-shadow: 0 8px 22px rgba(50, 86, 101, .06);
 }
 .community-public-card__top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .community-public-card__top span { display: inline-block; padding: 4px 8px; border-radius: 999px; background: #e9f8f6; color: #147d78; font-size: 11px; font-weight: 900; }
@@ -183,7 +177,7 @@
 
 .community-primary,
 .community-danger { min-height: 46px; padding: 0 18px; border: 0; border-radius: 14px; font-weight: 900; }
-.community-primary { background: linear-gradient(135deg, #22b4ad, #1895aa); color: #fff; box-shadow: 0 8px 18px rgba(31, 163, 163, .18); }
+.community-primary { background: #168f96; color: #fff; }
 .community-danger { background: #c34d4d; color: #fff; }
 .community-primary:disabled,
 .community-danger:disabled { opacity: .45; cursor: default; }

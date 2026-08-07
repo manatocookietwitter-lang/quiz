@@ -19,7 +19,6 @@ interface HomeScreenProps {
   onCreateSample: () => void;
   onDeleteFolder: (folderId: string) => void;
   onOpenFolder: (folderId: string) => void;
-  onOpenReview: () => void;
 }
 
 export function HomeScreen({
@@ -28,13 +27,11 @@ export function HomeScreen({
   onCreateSample,
   onDeleteFolder,
   onOpenFolder,
-  onOpenReview,
 }: HomeScreenProps) {
   const [folderName, setFolderName] = useState('');
   const [editMode, setEditMode] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Folder | null>(null);
-  const reviewCount = data.progress.filter(isReviewTarget).length;
 
   const handleCreateFolder = () => {
     const name = folderName.trim();
@@ -48,17 +45,8 @@ export function HomeScreen({
     <Layout>
       <div className="quiz-home">
         <header className="quiz-home__header">
-          <div>
-            <p>MY LIBRARY</p>
-            <h1 className="quiz-home__title">Quiz Make</h1>
-          </div>
+          <h1 className="quiz-home__title">Quiz Make</h1>
         </header>
-
-        <button type="button" className="quiz-home__review-card" onClick={onOpenReview} disabled={reviewCount === 0}>
-          <span className="quiz-home__review-count">{reviewCount}</span>
-          <span><strong>復習する</strong><small>{reviewCount ? '間違えた問題・曖昧な問題' : '復習対象はありません'}</small></span>
-          <ChevronRightIcon />
-        </button>
 
         <section className="quiz-home__actions" aria-label="ホーム操作">
           <HomeCircleButton active={editMode} icon={editMode ? 'done' : 'delete'} label={editMode ? '完了' : '削除'} onClick={() => setEditMode((value) => !value)} />

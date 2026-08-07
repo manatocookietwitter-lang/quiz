@@ -6,7 +6,7 @@ const readSource = (path) => readFileSync(new URL(path, import.meta.url), 'utf8'
 
 const layoutSource = readSource('../src/components/Layout.tsx');
 const headerSource = readSource('../src/components/Header.tsx');
-const reviewSource = readSource('../src/screens/ReviewScreen.tsx');
+const detailSource = readSource('../src/screens/ProblemSetDetailScreen.tsx');
 const appSource = readSource('../src/App.tsx');
 const globalCss = readSource('../src/index.css');
 
@@ -18,11 +18,12 @@ test('shared layout and loading state use the light application palette', () => 
   assert.match(appSource, /background:\s*'#f1f7fa'/);
 });
 
-test('empty review UI and its shared header do not fall back to dark cards', () => {
+test('set-scoped review UI and its shared header use restrained light surfaces', () => {
   assert.doesNotMatch(headerSource, /bg-\[#202020\]|bg-\[#2B2B2B\]|text-white/);
-  assert.match(headerSource, /from-white/);
-  assert.doesNotMatch(reviewSource, /bg-neutral-900|ring-white|text-neutral-400/);
-  assert.match(reviewSource, /bg-white/);
+  assert.match(headerSource, /bg-white/);
+  assert.doesNotMatch(headerSource, /bg-gradient|skew/);
+  assert.match(detailSource, /この問題セットを復習/);
+  assert.match(detailSource, /mode: 'review'/);
 });
 
 test('quiz exit confirmation uses the light surface palette', () => {

@@ -12,33 +12,29 @@
   position: sticky;
   z-index: 4;
   top: 0;
-  min-height: calc(76px + var(--safe-top));
-  padding: calc(14px + var(--safe-top)) 20px 12px;
+  min-height: calc(64px + var(--safe-top));
+  padding: calc(16px + var(--safe-top)) 18px 14px;
   border-bottom: 1px solid #dce5ef;
   background: rgba(255, 255, 255, 0.96);
-  backdrop-filter: blur(18px);
 }
 
-.settings-screen__header p,
 .settings-screen__header h1 { margin: 0; }
-.settings-screen__header p { color: #7b8897; font-size: 10px; font-weight: 850; letter-spacing: 0.11em; }
-.settings-screen__header h1 { margin-top: 3px; font-size: 25px; letter-spacing: -0.04em; }
+.settings-screen__header h1 { font-size: 24px; letter-spacing: -0.025em; }
 
 .settings-screen__body {
   display: grid;
-  gap: 16px;
+  gap: 20px;
   padding: 18px 14px calc(var(--primary-nav-height) + var(--safe-bottom) + 28px);
 }
 
 .settings-section {
   overflow: hidden;
   border: 1px solid #dce5ef;
-  border-radius: 20px;
+  border-radius: 12px;
   background: #ffffff;
-  box-shadow: 0 7px 22px rgba(40, 57, 87, 0.06);
 }
 
-.settings-section__heading { padding: 16px 16px 12px; }
+.settings-section__heading { padding: 14px 14px 12px; border-bottom: 1px solid #e8edf3; }
 .settings-section__heading h2,
 .settings-section__heading p { margin: 0; }
 .settings-section__heading h2 { font-size: 15px; }
@@ -61,7 +57,7 @@
 }
 
 .settings-row:active { background: #f6f8fc; }
-.settings-row__icon { display: grid; width: 38px; height: 38px; flex: 0 0 38px; place-items: center; border-radius: 12px; background: #eef3ff; color: #4167f5; }
+.settings-row__icon { display: grid; width: 30px; height: 38px; flex: 0 0 30px; place-items: center; color: #4167f5; }
 .settings-row__icon svg { width: 21px; height: 21px; }
 .settings-row__text { display: grid; flex: 1; min-width: 0; gap: 3px; }
 .settings-row__text strong { font-size: 14px; line-height: 1.3; }
@@ -70,8 +66,23 @@
 .settings-row > svg { flex: 0 0 auto; color: #9aa6b3; }
 .settings-section--danger { border-color: #f1ccd4; }
 .settings-row--danger { color: #bd3753; }
-.settings-row--danger .settings-row__icon { background: #fff0f3; color: #bd3753; }
+.settings-row--danger .settings-row__icon { color: #bd3753; }
 
-.settings-screen__notice { position: sticky; bottom: calc(var(--primary-nav-height) + var(--safe-bottom) + 10px); z-index: 3; border: 1px solid #c9d7ff; border-radius: 14px; background: #eef3ff; padding: 12px 14px; color: #3654bf; font-size: 12px; font-weight: 750; line-height: 1.5; box-shadow: 0 8px 20px rgba(40, 57, 87, 0.1); }
+.settings-account { display: flex; align-items: flex-start; gap: 12px; padding: 14px; }
+.settings-account__icon { display: grid; width: 30px; height: 34px; flex: 0 0 30px; place-items: center; color: #4167f5; }
+.settings-account__content { min-width: 0; flex: 1; display: grid; gap: 4px; }
+.settings-account__content > strong { overflow-wrap: anywhere; font-size: 14px; }
+.settings-account__content > small { color: #718091; font-size: 11px; line-height: 1.45; }
+.settings-account__field { display: grid; gap: 6px; margin-top: 10px; color: #657487; font-size: 11px; font-weight: 750; }
+.settings-account__field input { width: 100%; min-height: 43px; border: 1px solid #d5dee8; border-radius: 9px; background: #fff; padding: 0 11px; color: #172033; font: inherit; font-size: 14px; }
+.settings-account__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 7px; }
+.settings-account button { min-height: 42px; border: 1px solid #d5dee8; border-radius: 9px; background: #fff; padding: 0 13px; color: #536579; font: inherit; font-size: 12px; font-weight: 800; }
+.settings-account button.settings-account__primary { border-color: #4167f5; background: #4167f5; color: #fff; }
+.settings-account button.settings-account__delete { justify-self: start; min-height: auto; margin-top: 8px; border: 0; background: transparent; padding: 6px 0; color: #bd3753; }
+.settings-account button:disabled { opacity: .5; }
+.settings-account__notice { margin: 0; border-top: 1px solid #dce5ef; background: #f4f7ff; padding: 10px 14px; color: #3654bf; font-size: 11px; line-height: 1.5; }
+.settings-account__notice--error { background: #fff2f4; color: #a92f49; }
+
+.settings-screen__notice { position: sticky; bottom: calc(var(--primary-nav-height) + var(--safe-bottom) + 10px); z-index: 3; border: 1px solid #c9d7ff; border-radius: 10px; background: #eef3ff; padding: 12px 14px; color: #3654bf; font-size: 12px; font-weight: 750; line-height: 1.5; }
 .settings-screen__notice--error { border-color: #f1c3cc; background: #fff0f3; color: #a92f49; }
 .settings-screen__file-input { display: none; }

@@ -1,17 +1,26 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { Session } from '@supabase/supabase-js';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Layout } from '../components/Layout';
 import {
   ChevronRightIcon,
-  CopyIcon,
   DocumentOutlineIcon,
   DownloadIcon,
+  GroupIcon,
   SyncIcon,
   TrashIcon,
   UploadIcon,
 } from '../components/UiIcons';
-import { CHATGPT_MATERIAL_TEMPLATE_PROMPT, CHATGPT_PAST_EXAM_TEMPLATE_PROMPT } from '../utils/importValidator';
-import { writeClipboardText } from '../utils/nativePlatform';
+import {
+  cloudConfigured,
+  deleteCloudAccount,
+  getCloudDisplayName,
+  getCloudSession,
+  onCloudAuthStateChange,
+  sendMagicLink,
+  signOutCloud,
+  updateCloudDisplayName,
+} from '../utils/cloudService';
 import './SettingsScreen.css';
 
 interface SettingsScreenProps {
@@ -24,21 +33,99 @@ interface SettingsScreenProps {
 
 export function SettingsScreen({ onExport, onImportBackup, onClearAll, onOpenSync, onOpenPrivacy }: SettingsScreenProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [copied, setCopied] = useState('');
   const [message, setMessage] = useState('');
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+  const [session, setSession] = useState<Session | null>(null);
+  const [authReady, setAuthReady] = useState(!cloudConfigured);
+  const [email, setEmail] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [accountBusy, setAccountBusy] = useState(false);
+  const [accountMessage, setAccountMessage] = useState('');
+  const [accountError, setAccountError] = useState('');
+  const [deleteAccountConfirmOpen, setDeleteAccountConfirmOpen] = useState(false);
 
-  const copyTemplate = async (template: string, label: string) => {
+  useEffect(() => {
+    if (!cloudConfigured) return;
+    let active = true;
+    const applySession = async (value: Session | null) => {
+      if (!active) return;
+      setSession(value);
+      setAuthReady(true);
+      if (!value) {
+        setDisplayName('');
+        return;
+      }
+      const fallback = value.user.email?.split('@')[0] ?? 'Quiz Make ユーザー';
+      try {
+        const storedName = await getCloudDisplayName();
+        if (active) setDisplayName(storedName || fallback);
+      } catch {
+        if (active) setDisplayName(fallback);
+      }
+    };
+    void getCloudSession().then((value) => void applySession(value));
+    const unsubscribe = onCloudAuthStateChange((_event, value) => void applySession(value));
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
+
+  const sendLoginLink = async () => {
+    if (!email.trim()) return;
+    setAccountBusy(true);
+    setAccountError('');
     try {
-      await writeClipboardText(template);
-      setCopied(label);
-      setMessage('コピーしました。次にChatGPTを開き、入力欄へ貼り付けてください。');
-      window.setTimeout(() => {
-        setCopied('');
-        setMessage('');
-      }, 2200);
-    } catch {
-      setMessage('テンプレートのコピーに失敗しました。');
+      await sendMagicLink(email);
+      setAccountMessage('ログイン用リンクを送信しました。メールを確認してください。');
+    } catch (reason) {
+      setAccountError(getErrorMessage(reason));
+    } finally {
+      setAccountBusy(false);
+    }
+  };
+
+  const saveDisplayName = async () => {
+    if (!displayName.trim()) return;
+    setAccountBusy(true);
+    setAccountError('');
+    try {
+      await updateCloudDisplayName(displayName);
+      setDisplayName(displayName.trim());
+      setAccountMessage('表示名を更新しました。');
+    } catch (reason) {
+      setAccountError(getErrorMessage(reason));
+    } finally {
+      setAccountBusy(false);
+    }
+  };
+
+  const logout = async () => {
+    setAccountBusy(true);
+    setAccountError('');
+    try {
+      await signOutCloud();
+      setSession(null);
+      setAccountMessage('ログアウトしました。端末内の問題と学習履歴は残っています。');
+    } catch (reason) {
+      setAccountError(getErrorMessage(reason));
+    } finally {
+      setAccountBusy(false);
+    }
+  };
+
+  const deleteAccount = async () => {
+    setAccountBusy(true);
+    setAccountError('');
+    try {
+      await deleteCloudAccount();
+      setSession(null);
+      setDeleteAccountConfirmOpen(false);
+      setAccountMessage('共有アカウントを削除しました。端末内の問題と学習履歴は残っています。');
+    } catch (reason) {
+      setAccountError(getErrorMessage(reason));
+    } finally {
+      setAccountBusy(false);
     }
   };
 
@@ -54,30 +141,43 @@ export function SettingsScreen({ onExport, onImportBackup, onClearAll, onOpenSyn
     <Layout>
       <div className="settings-screen">
         <header className="settings-screen__header">
-          <p>QUIZ MAKE</p>
           <h1>設定</h1>
         </header>
 
         <main className="settings-screen__body">
-          <section className="settings-section" aria-labelledby="settings-template-title">
+          <section className="settings-section" aria-labelledby="settings-account-title">
             <div className="settings-section__heading">
-              <h2 id="settings-template-title">ChatGPTで問題を作る</h2>
-              <p>用途を選んで指示文をコピーし、ChatGPTの入力欄へ貼り付けます。</p>
+              <h2 id="settings-account-title">アカウント</h2>
+              <p>問題セットの共有に使うアカウントです。端末内の学習だけならログインは不要です。</p>
             </div>
-            <SettingsRow
-              icon={<CopyIcon />}
-              title="資料から問題を作る"
-              detail="教科書・講義資料・文章向けの指示文"
-              state={copied === 'material' ? 'コピー済み' : 'コピー'}
-              onClick={() => void copyTemplate(CHATGPT_MATERIAL_TEMPLATE_PROMPT, 'material')}
-            />
-            <SettingsRow
-              icon={<CopyIcon />}
-              title="過去問をまとめる"
-              detail="複数年度の過去問を整理する指示文"
-              state={copied === 'past-exam' ? 'コピー済み' : 'コピー'}
-              onClick={() => void copyTemplate(CHATGPT_PAST_EXAM_TEMPLATE_PROMPT, 'past-exam')}
-            />
+            <div className="settings-account">
+              <span className="settings-account__icon" aria-hidden="true"><GroupIcon /></span>
+              {!cloudConfigured ? (
+                <div className="settings-account__content"><strong>共有機能は現在利用できません</strong><small>端末内の問題作成・学習・バックアップはそのまま使えます。</small></div>
+              ) : !authReady ? (
+                <div className="settings-account__content"><strong>アカウントを確認中…</strong></div>
+              ) : session ? (
+                <div className="settings-account__content">
+                  <strong>{session.user.email ?? 'ログイン中'}</strong>
+                  <small>ログイン済み</small>
+                  <label className="settings-account__field"><span>共有時の表示名</span><input value={displayName} maxLength={40} onChange={(event) => setDisplayName(event.target.value)} /></label>
+                  <div className="settings-account__actions">
+                    <button type="button" className="settings-account__primary" disabled={accountBusy || !displayName.trim()} onClick={() => void saveDisplayName()}>表示名を保存</button>
+                    <button type="button" disabled={accountBusy} onClick={() => void logout()}>ログアウト</button>
+                  </div>
+                  <button type="button" className="settings-account__delete" disabled={accountBusy} onClick={() => setDeleteAccountConfirmOpen(true)}>共有アカウントを削除</button>
+                </div>
+              ) : (
+                <div className="settings-account__content">
+                  <strong>未ログイン</strong>
+                  <small>メールで届くリンクからログインします。</small>
+                  <label className="settings-account__field"><span>メールアドレス</span><input type="email" value={email} autoComplete="email" placeholder="you@example.com" onChange={(event) => setEmail(event.target.value)} /></label>
+                  <button type="button" className="settings-account__primary" disabled={accountBusy || !email.trim()} onClick={() => void sendLoginLink()}>{accountBusy ? '送信中…' : 'ログイン用リンクを送る'}</button>
+                </div>
+              )}
+            </div>
+            {accountMessage ? <p className="settings-account__notice" role="status">{accountMessage}</p> : null}
+            {accountError ? <p className="settings-account__notice settings-account__notice--error" role="alert">{accountError}</p> : null}
           </section>
 
           <section className="settings-section" aria-labelledby="settings-data-title">
@@ -116,9 +216,22 @@ export function SettingsScreen({ onExport, onImportBackup, onClearAll, onOpenSyn
             setClearConfirmOpen(false);
           }}
         />
+        <ConfirmDialog
+          open={deleteAccountConfirmOpen}
+          title="共有アカウントを削除しますか？"
+          message="公開した問題セット、グループなどクラウド上のアカウントデータを削除します。端末内の問題セット、回答履歴、復習状態は削除されません。"
+          confirmLabel={accountBusy ? '削除中…' : 'アカウントを削除'}
+          busy={accountBusy}
+          onCancel={() => setDeleteAccountConfirmOpen(false)}
+          onConfirm={() => void deleteAccount()}
+        />
       </div>
     </Layout>
   );
+}
+
+function getErrorMessage(reason: unknown) {
+  return reason instanceof Error ? reason.message : '操作に失敗しました。時間をおいてもう一度お試しください。';
 }
 
 function SettingsRow({ icon, title, detail, state, arrow = false, danger = false, onClick }: {

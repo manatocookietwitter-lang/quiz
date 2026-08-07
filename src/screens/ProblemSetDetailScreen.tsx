@@ -122,6 +122,17 @@ export function ProblemSetDetailScreen({
     });
   };
 
+  const startReview = () => {
+    if (allReviewQuestions.length === 0) return;
+    onStartSession({
+      questions: allReviewQuestions,
+      mode: 'review',
+      title: problemSet.title,
+      subtitle: 'この問題セットの復習',
+      setId,
+    });
+  };
+
   return (
     <Layout>
       <div className="quiz-detail">
@@ -148,6 +159,19 @@ export function ProblemSetDetailScreen({
             <strong>{correctRate}%</strong>
           </div>
         </section>
+
+        <button
+          type="button"
+          className="quiz-detail__review-entry"
+          disabled={allReviewQuestions.length === 0}
+          onClick={startReview}
+        >
+          <span>
+            <strong>この問題セットを復習</strong>
+            <small>{allReviewQuestions.length ? `間違えた問題・曖昧な問題 ${allReviewQuestions.length}問` : '復習対象はありません'}</small>
+          </span>
+          <b aria-hidden="true">›</b>
+        </button>
 
         <section className="quiz-detail__start-panel">
           <div className="quiz-detail__section-heading">

@@ -14,7 +14,8 @@ const workerSource = readSource('../public/sw.js');
 test('home and folder navigation use outline icons while retaining learning counts', () => {
   assert.match(homeSource, /FolderOutlineIcon/);
   assert.doesNotMatch(homeSource, /QuizMakeMarkIcon|MenuIcon|quiz-home__menu-button/);
-  assert.match(homeSource, /MY LIBRARY/);
+  assert.match(homeSource, /Quiz Make/);
+  assert.doesNotMatch(homeSource, /MY LIBRARY/);
   assert.match(homeSource, /セット \{setCount\}/);
   assert.match(homeSource, /問題 \{questionCount\}/);
   assert.match(homeSource, /復習 \{reviewCount\}/);

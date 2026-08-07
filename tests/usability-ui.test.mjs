@@ -5,17 +5,21 @@ import test from 'node:test';
 const readSource = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 const homeSource = readSource('../src/screens/HomeScreen.tsx');
 const settingsSource = readSource('../src/screens/SettingsScreen.tsx');
+const createSource = readSource('../src/screens/CreateProblemSetScreen.tsx');
+const detailSource = readSource('../src/screens/ProblemSetDetailScreen.tsx');
+const appSource = readSource('../src/App.tsx');
+const typesSource = readSource('../src/types.ts');
 const syncSource = readSource('../src/screens/SyncScreen.tsx');
 const globalCss = readSource('../src/index.css');
 const layoutSource = readSource('../src/components/Layout.tsx');
 const createCss = readSource('../src/screens/CreateProblemSetScreen.css');
 
 test('template actions explain what is copied and what to do next', () => {
-  assert.match(settingsSource, /ChatGPTで問題を作る/);
-  assert.match(settingsSource, /用途を選んで指示文をコピーし、ChatGPTの入力欄へ貼り付け/);
-  assert.match(settingsSource, /資料から問題を作る/);
-  assert.match(settingsSource, /過去問をまとめる/);
-  assert.match(settingsSource, /コピーしました。次にChatGPTを開き/);
+  assert.doesNotMatch(settingsSource, /ChatGPTで問題を作る|資料から問題を作る|過去問をまとめる/);
+  assert.match(createSource, /指示文をコピー/);
+  assert.match(createSource, /資料から問題を作る/);
+  assert.match(createSource, /過去問をまとめる/);
+  assert.match(createSource, /ChatGPTで作成したら、下の入力欄へ結果を貼り付け/);
   assert.doesNotMatch(homeSource, /ChatGPTで問題を作る|quiz-home__menu-button/);
 });
 
@@ -23,6 +27,15 @@ test('shared layout scrolls long screens and create actions stay above the prima
   assert.match(layoutSource, /overflow-y-auto/);
   assert.doesNotMatch(layoutSource, /flex-col overflow-hidden/);
   assert.match(createCss, /bottom:\s*calc\(var\(--primary-nav-height\)/);
+});
+
+test('review starts only from its problem set and the global review route is gone', () => {
+  assert.doesNotMatch(homeSource, /onOpenReview|quiz-home__review-card/);
+  assert.doesNotMatch(appSource, /name: 'review'/);
+  assert.doesNotMatch(typesSource, /name: 'review'/);
+  assert.match(detailSource, /この問題セットを復習/);
+  assert.match(detailSource, /questions: allReviewQuestions/);
+  assert.match(detailSource, /mode: 'review'/);
 });
 
 test('sync screen shows two primary steps and keeps maintenance options collapsed', () => {
@@ -36,7 +49,7 @@ test('sync screen shows two primary steps and keeps maintenance options collapse
 
 test('folder and problem-set rows are visually separated into individual cards', () => {
   const individualCardCss = globalCss.slice(globalCss.lastIndexOf('.quiz-home__folder-card,'));
-  assert.match(individualCardCss, /border:\s*1px solid var\(--ui-border\)/);
-  assert.match(individualCardCss, /border-radius:\s*18px/);
-  assert.match(individualCardCss, /margin-bottom:\s*10px/);
+  assert.match(globalCss, /\.quiz-home__folder-card,[\s\S]{0,260}border:\s*1px solid var\(--ui-border\)/);
+  assert.match(individualCardCss, /border-radius:\s*12px/);
+  assert.match(individualCardCss, /box-shadow:\s*none/);
 });

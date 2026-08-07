@@ -106,6 +106,16 @@ export async function updateCloudDisplayName(displayName: string): Promise<void>
   if (error) throw new Error(toFriendlyCloudError(error.message));
 }
 
+export async function getCloudDisplayName(): Promise<string> {
+  const client = requireCloudClient();
+  const { data, error } = await client
+    .from('quiz_profiles')
+    .select('display_name')
+    .maybeSingle();
+  if (error) throw new Error(toFriendlyCloudError(error.message));
+  return String(data?.display_name ?? '');
+}
+
 export async function publishLocalProblemSet(params: {
   data: AppData;
   setId: string;

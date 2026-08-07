@@ -10,7 +10,7 @@ import {
   cloudConfigured,
   createCloudGroup,
   createGroupInvite,
-  deleteCloudAccount,
+  getCloudDisplayName,
   getCloudSession,
   getSharedProblemSet,
   joinCloudGroup,
@@ -32,10 +32,9 @@ import {
   type CloudPublishResult,
   unpublishCloudProblemSet,
 } from '../utils/cloudService';
-import { isReviewTarget } from '../utils/reviewTargets';
 import './CommunityScreen.css';
 
-export type CommunityTab = 'mine' | 'groups' | 'discover' | 'review';
+export type CommunityTab = 'mine' | 'groups' | 'discover';
 
 interface CommunityScreenProps {
   data: AppData;
@@ -45,7 +44,6 @@ interface CommunityScreenProps {
   onBack: () => void;
   onCreateProblemSet: () => void;
   onOpenLocalSet: (setId: string) => void;
-  onOpenReview: () => void;
   onCopySharedSet: (set: CloudProblemSet) => Promise<string | null>;
   onPracticeSharedSet: (set: CloudProblemSet) => void;
   onPublished: (localSetId: string, result: CloudPublishResult) => Promise<void>;
@@ -60,7 +58,6 @@ export function CommunityScreen({
   onBack,
   onCreateProblemSet,
   onOpenLocalSet,
-  onOpenReview,
   onCopySharedSet,
   onPracticeSharedSet,
   onPublished,
@@ -95,13 +92,7 @@ export function CommunityScreen({
   const [reportTarget, setReportTarget] = useState<CloudProblemSet | null>(null);
   const [reportReason, setReportReason] = useState('incorrect_answer');
   const [reportDetails, setReportDetails] = useState('');
-  const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
   const isPrimaryRoot = !initialSetId && !shareToken && (initialTab === 'discover' || initialTab === 'groups');
-
-  const reviewCount = useMemo(
-    () => data.progress.filter(isReviewTarget).length,
-    [data.progress],
-  );
   const selectedGroup = groups.find((group) => group.id === selectedGroupId);
   const canManageSelectedGroup = selectedGroup?.role === 'owner' || selectedGroup?.role === 'admin';
   const subjectOptions = useMemo(() => [...new Set(publicSets.map((set) => set.subject).filter(Boolean))].sort(), [publicSets]);
@@ -208,12 +199,13 @@ export function CommunityScreen({
     setBusy(true);
     setError('');
     try {
+      const profileName = await getCloudDisplayName().catch(() => '');
       const result = await publishLocalProblemSet({
         data,
         setId: shareLocalSetId,
         visibility: shareVisibility,
         groupIds: shareGroupIds,
-        authorName: session.user.user_metadata.display_name || session.user.email?.split('@')[0] || 'Quiz Make ユーザー',
+        authorName: profileName || session.user.user_metadata.display_name || session.user.email?.split('@')[0] || 'Quiz Make ユーザー',
       });
       await onPublished(shareLocalSetId, result);
       const url = buildShareUrl(result.id, result.shareToken);
@@ -390,29 +382,12 @@ export function CommunityScreen({
     }
   };
 
-  const deleteAccount = async () => {
-    setBusy(true);
-    setError('');
-    try {
-      await deleteCloudAccount();
-      setDeleteAccountOpen(false);
-      setSession(null);
-      setGroups([]);
-      setPublishedSets([]);
-      setAuthMessage('共有アカウントとクラウド上の共有データを削除しました。端末内の問題と学習履歴は残っています。');
-    } catch (reason) {
-      setError(getErrorMessage(reason));
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <Layout>
       <div className="community-screen">
         <header className="community-screen__header">
           {isPrimaryRoot ? <span className="community-screen__header-spacer" aria-hidden="true" /> : <BackButton onClick={onBack} label="戻る" />}
-          <div><p>QUIZ MAKE</p><h1>{tab === 'groups' ? 'グループ' : tab === 'discover' ? '見つける' : '問題セット'}</h1></div>
+          <div><h1>{tab === 'groups' ? 'グループ' : tab === 'discover' ? '見つける' : '問題セット'}</h1></div>
           <span className="community-screen__header-spacer" aria-hidden="true" />
         </header>
 
@@ -429,7 +404,7 @@ export function CommunityScreen({
               </div>
               <div className="community-account">
                 <span>{!authReady ? '確認中…' : session ? `${session.user.email ?? 'ログイン中'}` : '共有するときだけログイン'}</span>
-                {session ? <span className="community-account__actions"><button type="button" onClick={() => void signOutCloud()}>ログアウト</button><button type="button" onClick={() => setDeleteAccountOpen(true)}>削除</button></span> : <button type="button" onClick={() => setLoginOpen(true)}>ログイン</button>}
+                {session ? <span className="community-account__actions"><button type="button" onClick={() => void signOutCloud()}>ログアウト</button></span> : <button type="button" onClick={() => setLoginOpen(true)}>ログイン</button>}
               </div>
               <div className="community-card-list">
                 {data.problemSets.map((set) => {
@@ -515,12 +490,6 @@ export function CommunityScreen({
             </section>
           ) : null}
 
-          {tab === 'review' ? (
-            <section className="community-section">
-              <div className="community-review-card"><span>{reviewCount}</span><div><h2>復習する問題</h2><p>間違えた問題と曖昧にした問題をまとめて学習します。</p></div></div>
-              <button type="button" className="community-primary" disabled={reviewCount === 0} onClick={onOpenReview}>{reviewCount ? '復習を始める' : '復習対象はありません'}</button>
-            </section>
-          ) : null}
         </main>
 
         {loginOpen ? (
@@ -567,15 +536,6 @@ export function CommunityScreen({
           </div>
         ) : null}
 
-        {deleteAccountOpen ? (
-          <div className="community-overlay" onMouseDown={(event) => event.target === event.currentTarget && setDeleteAccountOpen(false)}>
-            <section className="community-sheet" role="dialog" aria-modal="true" aria-label="共有アカウントを削除">
-              <h2>共有アカウントを削除しますか？</h2>
-              <p>公開した問題セット、グループ、招待、通報履歴などクラウド上のアカウントデータを削除します。端末内の問題セット、回答履歴、復習状態は削除されません。</p>
-              <div className="community-sheet__actions"><button type="button" onClick={() => setDeleteAccountOpen(false)}>キャンセル</button><button type="button" className="community-danger" disabled={busy} onClick={() => void deleteAccount()}>{busy ? '削除中…' : 'アカウントを削除'}</button></div>
-            </section>
-          </div>
-        ) : null}
       </div>
     </Layout>
   );

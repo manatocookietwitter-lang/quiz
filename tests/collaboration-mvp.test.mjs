@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const [appSource, screenSource, primaryNavSource, serviceSource, typesSource, storageSource, collaborationMigration, groupManagementMigration, accountDeletionMigration, reportReasonsMigration] = await Promise.all([
+const [appSource, screenSource, settingsSource, primaryNavSource, serviceSource, typesSource, storageSource, collaborationMigration, groupManagementMigration, accountDeletionMigration, reportReasonsMigration] = await Promise.all([
   readFile(new URL('../src/App.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/screens/CommunityScreen.tsx', import.meta.url), 'utf8'),
+  readFile(new URL('../src/screens/SettingsScreen.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/components/PrimaryBottomNav.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/utils/cloudService.ts', import.meta.url), 'utf8'),
   readFile(new URL('../src/types.ts', import.meta.url), 'utf8'),
@@ -56,6 +57,8 @@ test('publishing sends only set content, never progress or answer logs', () => {
   assert.match(publishBody, /p_questions/);
   assert.doesNotMatch(publishBody, /answerLogs/);
   assert.doesNotMatch(publishBody, /progress:/);
+  assert.match(screenSource, /getCloudDisplayName/);
+  assert.match(screenSource, /authorName: profileName/);
 });
 
 test('collaboration tables all enable row-level security', () => {
@@ -86,7 +89,8 @@ test('owners can stop sharing and users can delete only their own cloud account'
   assert.match(screenSource, /共有を停止しました/);
   assert.match(serviceSource, /unpublishCloudProblemSet/);
   assert.match(migration, /delete from auth\.users where id = current_user_id/);
-  assert.match(screenSource, /端末内の問題セット、回答履歴、復習状態は削除されません/);
+  assert.match(settingsSource, /端末内の問題セット、回答履歴、復習状態は削除されません/);
+  assert.match(settingsSource, /deleteCloudAccount/);
 });
 
 test('quality reports expose every required reason', () => {
