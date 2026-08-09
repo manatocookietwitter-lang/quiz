@@ -16,10 +16,10 @@ test('home and folder navigation use outline icons while retaining learning coun
   assert.doesNotMatch(homeSource, /QuizMakeMarkIcon|MenuIcon|quiz-home__menu-button/);
   assert.match(homeSource, /Quiz Make/);
   assert.doesNotMatch(homeSource, /MY LIBRARY/);
-  assert.match(homeSource, /セット \{setCount\}/);
-  assert.match(homeSource, /問題 \{questionCount\}/);
-  assert.match(homeSource, /復習 \{reviewCount\}/);
-  assert.match(homeSource, /正答 \{correctRate\}%/);
+  assert.match(homeSource, /📁 \{setCount\}/);
+  assert.match(homeSource, /🏷 \{questionCount\}/);
+  assert.match(homeSource, /🔖 \{reviewCount\}/);
+  assert.match(homeSource, /✅ \{correctRate\}%/);
   assert.doesNotMatch(homeSource, /quiz-home__folder-tab/);
   for (const icon of ['HomeIcon', 'SearchIcon', 'GroupIcon', 'AddSquareIcon', 'SettingsIcon']) {
     assert.match(primaryNavSource, new RegExp(icon));

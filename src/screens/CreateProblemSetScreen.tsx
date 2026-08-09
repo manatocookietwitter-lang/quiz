@@ -28,7 +28,6 @@ export interface CreateProblemSetSubmission {
 
 interface CreateProblemSetScreenProps {
   data: AppData;
-  onBack: () => void;
   onSave: (submission: CreateProblemSetSubmission) => Promise<string | null>;
   onOpenLegacyImport: (folderId: string) => void;
   onImportBackup: (file: File) => Promise<string | null>;
@@ -47,7 +46,7 @@ interface SetMeta {
   source: string;
 }
 
-export function CreateProblemSetScreen({ data, onBack, onSave, onOpenLegacyImport, onImportBackup }: CreateProblemSetScreenProps) {
+export function CreateProblemSetScreen({ data, onSave, onOpenLegacyImport, onImportBackup }: CreateProblemSetScreenProps) {
   const [view, setView] = useState<CreationView>('methods');
   const [meta, setMeta] = useState<SetMeta>(() => createInitialMeta(data));
   const [drafts, setDrafts] = useState<BulkQuestionDraft[]>([]);
@@ -191,8 +190,8 @@ export function CreateProblemSetScreen({ data, onBack, onSave, onOpenLegacyImpor
   return (
     <Layout>
       <main className="create-set">
-        <header className="create-set__header">
-          <BackButton onClick={view === 'methods' ? onBack : () => goTo('methods')} label={view === 'methods' ? 'ホームへ戻る' : '作成方法へ戻る'} />
+        <header className={`create-set__header${view === 'methods' ? ' create-set__header--root' : ''}`}>
+          {view === 'methods' ? null : <BackButton onClick={() => goTo('methods')} label="作成方法へ戻る" />}
           <div>
             <h1>{getViewTitle(view, sourceSetId)}</h1>
           </div>

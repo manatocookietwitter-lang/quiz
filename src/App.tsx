@@ -798,7 +798,6 @@ export default function App() {
       <Suspense fallback={<div className="quiz-app-loading">作成画面を読み込み中...</div>}>
         <CreateProblemSetScreen
           data={data}
-          onBack={goHome}
           onSave={handleCreateProblemSet}
           onOpenLegacyImport={(folderId) => void handleOpenLegacyImport(folderId)}
           onImportBackup={handleImportBackup}

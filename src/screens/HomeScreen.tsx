@@ -150,10 +150,10 @@ function QuizHomeFolderItem({
         <span className="quiz-home__folder-body">
           <span className="quiz-home__folder-name">{folder.name}</span>
           <span className="quiz-home__folder-stats">
-            <span>セット {setCount}</span>
-            <span>問題 {questionCount}</span>
-            <span>復習 {reviewCount}</span>
-            <span>正答 {correctRate}%</span>
+            <span aria-label={`問題セット ${setCount}`}>📁 {setCount}</span>
+            <span aria-label={`問題 ${questionCount}`}>🏷 {questionCount}</span>
+            <span aria-label={`復習 ${reviewCount}`}>🔖 {reviewCount}</span>
+            <span aria-label={`正答率 ${correctRate}%`}>✅ {correctRate}%</span>
           </span>
           <span className="quiz-home__folder-date">更新 {formatDisplayDate(folder.updatedAt)}</span>
         </span>

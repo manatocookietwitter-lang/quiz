@@ -29,6 +29,13 @@ test('shared layout scrolls long screens and create actions stay above the prima
   assert.match(createCss, /bottom:\s*calc\(var\(--primary-nav-height\)/);
 });
 
+test('primary headers share one height and create root relies on the global home navigation', () => {
+  assert.match(globalCss, /\.quiz-home__header \{[\s\S]*?height:\s*calc\(72px \+ var\(--safe-top\)\)/);
+  assert.match(createCss, /min-height:\s*calc\(72px \+ var\(--safe-top\)\)/);
+  assert.match(createSource, /view === 'methods' \? null : <BackButton/);
+  assert.doesNotMatch(createSource, /label=\{view === 'methods' \? 'ホームへ戻る'/);
+});
+
 test('review starts only from its problem set and the global review route is gone', () => {
   assert.doesNotMatch(homeSource, /onOpenReview|quiz-home__review-card/);
   assert.doesNotMatch(appSource, /name: 'review'/);
