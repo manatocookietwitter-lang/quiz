@@ -32,3 +32,11 @@ test('service worker activation never reloads over protected or failed local sav
   assert.match(appSource, /waitingWorker\?\.state === 'activated'/);
   assert.match(appSource, /disabled=\{protectedWorkReason !== null\}/);
 });
+
+test('auto sync retries revision races shortly after releasing its network lock', () => {
+  assert.match(autoSyncSource, /const LOCAL_CHANGE_RETRY_MS = 750/);
+  assert.match(autoSyncSource, /result\.code === 'local_changed'[\s\S]*?shouldRetryLocalChanges = true/);
+  assert.match(autoSyncSource, /result\.value\.localChangesPending[\s\S]*?shouldRetryLocalChanges = true/);
+  assert.match(autoSyncSource, /uploadRunningRef\.current = false;[\s\S]*?scheduleLocalChangeRetry\(\)/);
+  assert.match(autoSyncSource, /uploadRunningRef\.current \|\| remoteCheckRunningRef\.current[\s\S]*?scheduleLocalChangeRetry\(\)/);
+});

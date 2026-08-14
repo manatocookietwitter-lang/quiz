@@ -1,3 +1,5 @@
+import { advanceLocalDataRevision } from './localDataRevision';
+
 const NOTE_DB_NAME = 'quiz-make-notes-v1';
 const NOTE_STORE_NAME = 'categoryNotes';
 const NOTE_BACKUP_STORE_NAME = 'categoryNoteBackups';
@@ -86,7 +88,11 @@ export async function deleteAllCategoryNotes(): Promise<number> {
 function enqueueCategoryNoteOperation<T>(operation: () => Promise<T>): Promise<T> {
   const queuedOperation = noteSaveQueue
     .catch(() => undefined)
-    .then(operation);
+    .then(async () => {
+      const result = await operation();
+      advanceLocalDataRevision();
+      return result;
+    });
   noteSaveQueue = queuedOperation;
   return queuedOperation;
 }
@@ -217,22 +223,23 @@ function getNoteUpdatedAt(raw: string): string | null {
     return null;
   }
 }
-export async function replaceCategoryNotesRaw(notes: Record<string, string>): Promise<number> {
-  await waitForPendingCategoryNoteSaves();
+export function replaceCategoryNotesRaw(notes: Record<string, string>): Promise<number> {
   const validNotes = sortRecord(Object.keys(notes).reduce<Record<string, string>>((result, key) => {
     if (isCategoryNoteKey(key) && typeof notes[key] === 'string' && isUsableNoteRaw(notes[key])) result[key] = notes[key];
     return result;
   }, {}));
 
-  if (isIndexedDbAvailable()) {
-    await replaceIndexedDbNotes(validNotes);
-    removeAllLegacyLocalStorageNotes();
-    return Object.keys(validNotes).length;
-  }
+  return enqueueCategoryNoteOperation(async () => {
+    if (isIndexedDbAvailable()) {
+      await replaceIndexedDbNotes(validNotes);
+      removeAllLegacyLocalStorageNotes();
+      return Object.keys(validNotes).length;
+    }
 
-  removeAllLegacyLocalStorageNotes();
-  Object.entries(validNotes).forEach(([key, value]) => localStorage.setItem(key, value));
-  return Object.keys(validNotes).length;
+    removeAllLegacyLocalStorageNotes();
+    Object.entries(validNotes).forEach(([key, value]) => localStorage.setItem(key, value));
+    return Object.keys(validNotes).length;
+  });
 }
 
 function openNoteDb(): Promise<IDBDatabase> {

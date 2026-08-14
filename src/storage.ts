@@ -1,5 +1,6 @@
 import type { AppData } from './types';
 import { normalizeAppData } from './utils/appDataValidation';
+import { advanceLocalDataRevision } from './utils/localDataRevision';
 
 export const APP_DATA_STORAGE_KEY = 'quiz-make-app-data-v1';
 export const APP_DATA_FALLBACK_META_KEY = 'quiz-make-app-data-v1:fallback-saved-at';
@@ -120,6 +121,7 @@ async function saveAppDataNow(data: AppData): Promise<boolean> {
       safeLocalStorageRemove(APP_DATA_STORAGE_KEY);
       safeLocalStorageRemove(APP_DATA_FALLBACK_META_KEY);
       safeLocalStorageRemove(APP_DATA_FALLBACK_RECORD_KEY);
+      advanceLocalDataRevision();
       return true;
     } catch (error) {
       console.error('Failed to save Quiz make data to IndexedDB.', error);
@@ -132,6 +134,7 @@ async function saveAppDataNow(data: AppData): Promise<boolean> {
     localStorage.setItem(APP_DATA_FALLBACK_RECORD_KEY, JSON.stringify({ raw, savedAt }));
     safeLocalStorageRemove(APP_DATA_STORAGE_KEY);
     safeLocalStorageRemove(APP_DATA_FALLBACK_META_KEY);
+    advanceLocalDataRevision();
     return true;
   } catch (error) {
     console.error('Failed to save Quiz make data.', error);

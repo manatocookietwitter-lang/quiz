@@ -17,6 +17,7 @@ import {
   isSyncConfigured,
   runSyncDiagnostic,
   setAutoSyncEnabled,
+  setLastSyncState,
   setStoredSyncId,
   summarizeSyncPayload,
   uploadSyncData,
@@ -50,7 +51,11 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
   const [deleteCloudConfirmOpen, setDeleteCloudConfirmOpen] = useState(false);
   const [pendingGeneratedSyncId, setPendingGeneratedSyncId] = useState('');
   const [pendingConnectSyncId, setPendingConnectSyncId] = useState('');
-  const [pendingCloudImport, setPendingCloudImport] = useState<{ payload: SyncPayload; summary: SyncPayloadSummary } | null>(null);
+  const [pendingCloudImport, setPendingCloudImport] = useState<{
+    payload: SyncPayload;
+    summary: SyncPayloadSummary;
+    remoteUpdatedAt: string;
+  } | null>(null);
   const [pendingCloudOverwrite, setPendingCloudOverwrite] = useState<{
     payload: SyncPayload;
     localHash: string;
@@ -380,7 +385,11 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
 
     const remoteSummary = summarizeSyncPayload(result.value.payload);
     setMessage('');
-    setPendingCloudImport({ payload: result.value.payload, summary: remoteSummary });
+    setPendingCloudImport({
+      payload: result.value.payload,
+      summary: remoteSummary,
+      remoteUpdatedAt: result.value.updatedAt,
+    });
   };
 
   const cancelCloudImport = () => {
@@ -405,6 +414,15 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
       setError(importResult.error);
       return;
     }
+
+    setLastSyncState({
+      lastSyncAt: target.remoteUpdatedAt,
+      lastRemoteUpdatedAt: target.remoteUpdatedAt,
+      lastUploadHash: computePayloadHash(target.payload),
+      status: 'クラウドから読み込みました',
+      error: '',
+    });
+    setLastState(getLastSyncState());
 
     setMessage(`クラウドから読み込みました。${formatSyncSummary(target.summary)} / アプリを再読み込みします...`);
     window.setTimeout(() => window.location.reload(), 800);

@@ -16,6 +16,7 @@ import { ConfirmDialog } from './ConfirmDialog';
 
 const AUTO_SYNC_INTERVAL_MS = 60000;
 const REMOTE_CHECK_COOLDOWN_MS = 60000;
+const LOCAL_CHANGE_RETRY_MS = 750;
 
 interface AutoSyncControllerProps {
   protectedWorkReason: ProtectedWorkReason | null;
@@ -113,6 +114,7 @@ export function AutoSyncController({ protectedWorkReason }: AutoSyncControllerPr
 
   useEffect(() => {
     cleanupLegacySyncBackups();
+    let localChangeRetryTimer: number | null = null;
 
     const uploadIfChanged = async () => {
       const settings = getAutoSyncSettings();
@@ -125,6 +127,7 @@ export function AutoSyncController({ protectedWorkReason }: AutoSyncControllerPr
 
       uploadRunningRef.current = true;
       let shouldCheckRemoteAfterUpload = false;
+      let shouldRetryLocalChanges = false;
       try {
         const payload = await exportQuizMakeData();
         if (protectedWorkReasonRef.current) {
@@ -148,12 +151,21 @@ export function AutoSyncController({ protectedWorkReason }: AutoSyncControllerPr
           force: false,
         });
         if (!result.ok) {
+          if (result.code === 'local_changed') {
+            shouldRetryLocalChanges = true;
+            setLastSyncState({ status: '自動同期: 最新の変更を再確認中...', error: '' });
+            return;
+          }
           console.warn('Auto sync upload failed.', result.error);
           setLastSyncState({
             status: result.code === 'conflict' ? 'クラウドに新しいデータがあります' : '自動同期失敗',
             error: result.error,
           });
           if (result.code === 'conflict') shouldCheckRemoteAfterUpload = true;
+          return;
+        }
+        if (result.value.localChangesPending) {
+          shouldRetryLocalChanges = true;
           return;
         }
         setLastSyncState({ status: '自動保存しました', error: '' });
@@ -163,8 +175,21 @@ export function AutoSyncController({ protectedWorkReason }: AutoSyncControllerPr
         setLastSyncState({ status: '自動同期失敗', error: message });
       } finally {
         uploadRunningRef.current = false;
+        if (shouldRetryLocalChanges) scheduleLocalChangeRetry();
         if (shouldCheckRemoteAfterUpload) void checkRemote(true);
       }
+    };
+
+    const scheduleLocalChangeRetry = () => {
+      if (localChangeRetryTimer !== null) window.clearTimeout(localChangeRetryTimer);
+      localChangeRetryTimer = window.setTimeout(() => {
+        localChangeRetryTimer = null;
+        if (uploadRunningRef.current || remoteCheckRunningRef.current) {
+          scheduleLocalChangeRetry();
+          return;
+        }
+        void uploadIfChanged();
+      }, LOCAL_CHANGE_RETRY_MS);
     };
 
     const checkRemote = async (force = false) => {
@@ -229,6 +254,7 @@ export function AutoSyncController({ protectedWorkReason }: AutoSyncControllerPr
 
     return () => {
       window.clearInterval(intervalId);
+      if (localChangeRetryTimer !== null) window.clearTimeout(localChangeRetryTimer);
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('quiz-make-sync-settings-change', handleSettingsChange);

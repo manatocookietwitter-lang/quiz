@@ -22,6 +22,11 @@ import {
   LAST_SYNC_STATUS_KEY,
   LAST_UPLOAD_HASH_KEY,
 } from './syncState';
+import {
+  associateLocalDataRevision,
+  getAssociatedLocalDataRevision,
+  getLocalDataRevision,
+} from './localDataRevision';
 export type SyncPayload = {
   version: 1;
   updatedAt: string;
@@ -29,12 +34,13 @@ export type SyncPayload = {
   indexedDbNotes?: Record<string, string>;
 };
 
-export type SyncResult<T> = { ok: true; value: T } | { ok: false; error: string; code?: 'conflict' };
+export type SyncResult<T> = { ok: true; value: T } | { ok: false; error: string; code?: 'conflict' | 'local_changed' };
 
 export type RemoteSyncRecord = {
   syncId: string;
   payload: SyncPayload;
   updatedAt: string;
+  localChangesPending?: boolean;
 };
 
 export type RemoteSyncMeta = {
@@ -102,8 +108,6 @@ const SUPABASE_PROBE_RPC = 'quiz_sync_probe';
 const SUPABASE_DELETE_RPC = 'quiz_sync_delete';
 const REMOTE_REQUEST_TIMEOUT_MS = 15_000;
 let syncDataOperationQueue: Promise<void> = Promise.resolve();
-let localDataRevision = 0;
-const exportedPayloadRevisions = new WeakMap<SyncPayload, number>();
 
 export function isSyncConfigured(): boolean {
   return Boolean(getRemoteSyncConfig());
@@ -235,12 +239,30 @@ export function generateSyncId(): string {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-export function exportQuizMakeData(updatedAt = new Date().toISOString()): Promise<SyncPayload> {
-  return runSyncDataOperation(async () => {
-    await Promise.all([
+async function waitForLocalPersistence(): Promise<SyncResult<number>> {
+  try {
+    const [appDataSaved] = await Promise.all([
       waitForPendingAppDataSaves(),
       waitForPendingCategoryNoteSaves(),
     ]);
+    if (!appDataSaved) {
+      return { ok: false, error: '端末内の問題データを保存できていないため、クラウド同期を中止しました。' };
+    }
+    return { ok: true, value: getLocalDataRevision() };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error
+        ? `端末内のノートを保存できていないため、クラウド同期を中止しました: ${error.message}`
+        : '端末内のノートを保存できていないため、クラウド同期を中止しました。',
+    };
+  }
+}
+
+export function exportQuizMakeData(updatedAt = new Date().toISOString()): Promise<SyncPayload> {
+  return runSyncDataOperation(async () => {
+    const beforeSnapshot = await waitForLocalPersistence();
+    if (!beforeSnapshot.ok) throw new Error(beforeSnapshot.error);
     const localStorageData: Record<string, string> = {};
     const keys: string[] = [];
 
@@ -262,8 +284,9 @@ export function exportQuizMakeData(updatedAt = new Date().toISOString()): Promis
       localStorage: localStorageData,
       indexedDbNotes: await exportCategoryNotesRaw(),
     };
-    exportedPayloadRevisions.set(payload, localDataRevision);
-    return payload;
+    const afterSnapshot = await waitForLocalPersistence();
+    if (!afterSnapshot.ok) throw new Error(afterSnapshot.error);
+    return associateLocalDataRevision(payload, beforeSnapshot.value);
   });
 }
 
@@ -292,7 +315,6 @@ export function importQuizMakeData(payload: SyncPayload): Promise<SyncResult<num
 async function importQuizMakeDataUnlocked(payload: SyncPayload): Promise<SyncResult<number>> {
   const validation = validateSyncPayload(payload);
   if (!validation.ok) return validation;
-  localDataRevision += 1;
 
   let previousAppDataRaw: string;
   let previousNotes: Record<string, string>;
@@ -369,13 +391,6 @@ async function uploadSyncDataUnlocked(
   payload: SyncPayload,
   options: UploadSyncOptions,
 ): Promise<SyncResult<RemoteSyncRecord>> {
-  const exportedRevision = exportedPayloadRevisions.get(payload);
-  if (exportedRevision !== undefined && exportedRevision !== localDataRevision) {
-    return {
-      ok: false,
-      error: 'クラウドへの保存準備後に端末データが読み込まれたため、古い内容の送信を中止しました。もう一度保存してください。',
-    };
-  }
   const normalizedSyncId = syncId.trim();
   if (!normalizedSyncId) return { ok: false, error: '同期IDを入力してください。' };
   if (!isStrongSyncId(normalizedSyncId)) return { ok: false, error: '同期IDは「同期IDを生成」で作成した36文字のIDを使用してください。' };
@@ -385,6 +400,18 @@ async function uploadSyncDataUnlocked(
 
   const validation = validateSyncPayload(payload);
   if (!validation.ok) return validation;
+
+  const exportedRevision = getAssociatedLocalDataRevision(payload);
+  const beforeUpload = await waitForLocalPersistence();
+  if (!beforeUpload.ok) return beforeUpload;
+  if (exportedRevision !== undefined && exportedRevision !== beforeUpload.value) {
+    return {
+      ok: false,
+      code: 'local_changed',
+      error: 'クラウドへの保存準備後に端末データが更新されたため、古い内容の送信を中止しました。最新の内容でもう一度保存します。',
+    };
+  }
+  const uploadStartRevision = beforeUpload.value;
 
   try {
     const updatedAt = new Date().toISOString();
@@ -422,15 +449,22 @@ async function uploadSyncDataUnlocked(
     const record = parseRemoteRecord(first, normalizedSyncId, uploadPayload, updatedAt);
     if (!record.ok) return record;
 
+    const afterUpload = await waitForLocalPersistence();
+    const localChangesPending = !afterUpload.ok || afterUpload.value !== uploadStartRevision;
+
     setStoredSyncId(normalizedSyncId);
     setLastSyncState({
       lastSyncAt: record.value.updatedAt,
-      lastUploadHash: computePayloadHash(uploadPayload),
+      lastUploadHash: localChangesPending ? '' : computePayloadHash(uploadPayload),
       lastRemoteUpdatedAt: record.value.updatedAt,
-      status: 'クラウドへ保存しました',
-      error: '',
+      status: localChangesPending
+        ? 'クラウド保存中に端末データが更新されました。最新の内容を再同期します'
+        : 'クラウドへ保存しました',
+      error: afterUpload.ok ? '' : afterUpload.error,
     });
-    return record;
+    return localChangesPending
+      ? { ok: true, value: { ...record.value, localChangesPending: true } }
+      : record;
   } catch (error) {
     return {
       ok: false,

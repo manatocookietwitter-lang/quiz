@@ -11,12 +11,7 @@ import { HomeScreen } from './screens/HomeScreen';
 import { FolderScreen } from './screens/FolderScreen';
 import { ProblemSetDetailScreen } from './screens/ProblemSetDetailScreen';
 import { ProblemListScreen } from './screens/ProblemListScreen';
-import { NoteListScreen } from './screens/NoteListScreen';
-import { ImportScreen } from './screens/ImportScreen';
 import { ResultScreen } from './screens/ResultScreen';
-import { SyncScreen } from './screens/SyncScreen';
-import { PrivacyScreen } from './screens/PrivacyScreen';
-import { SettingsScreen } from './screens/SettingsScreen';
 import type { CreateProblemSetSubmission } from './screens/CreateProblemSetScreen';
 import { AutoSyncController } from './components/AutoSyncController';
 import { ConfirmDialog } from './components/ConfirmDialog';
@@ -51,6 +46,11 @@ const CommunityScreen = lazy(() => import('./screens/CommunityScreen').then((mod
 const CreateProblemSetScreen = lazy(() => import('./screens/CreateProblemSetScreen').then((module) => ({ default: module.CreateProblemSetScreen })));
 const QuizScreen = lazy(() => import('./screens/QuizScreen').then((module) => ({ default: module.QuizScreen })));
 const QuizRunner = lazy(() => import('./screens/QuizRunner').then((module) => ({ default: module.QuizRunner })));
+const NoteListScreen = lazy(() => import('./screens/NoteListScreen').then((module) => ({ default: module.NoteListScreen })));
+const ImportScreen = lazy(() => import('./screens/ImportScreen').then((module) => ({ default: module.ImportScreen })));
+const SettingsScreen = lazy(() => import('./screens/SettingsScreen').then((module) => ({ default: module.SettingsScreen })));
+const SyncScreen = lazy(() => import('./screens/SyncScreen').then((module) => ({ default: module.SyncScreen })));
+const PrivacyScreen = lazy(() => import('./screens/PrivacyScreen').then((module) => ({ default: module.PrivacyScreen })));
 type PendingBackupImport =
   | { kind: 'sync'; payload: SyncPayload; summary: SyncPayloadSummary }
   | { kind: 'legacy'; data: AppData };
@@ -1257,7 +1257,13 @@ export default function App() {
     <>
       <AutoSyncController protectedWorkReason={protectedWorkReason} />
       <div key={getScreenKey(screen)} className={`quiz-screen-transition quiz-screen-transition--${transitionDirection}`}>
-        {content}
+        <Suspense fallback={(
+          <div className="quiz-app-loading" role="status" aria-live="polite">
+            {getScreenLoadingMessage(screen)}
+          </div>
+        )}>
+          {content}
+        </Suspense>
       </div>
       {getPrimaryNavItem(screen) ? (
         <PrimaryBottomNav active={getPrimaryNavItem(screen)!} onSelect={navigatePrimary} />
@@ -1305,6 +1311,15 @@ export default function App() {
       ) : null}
     </>
   );
+}
+
+function getScreenLoadingMessage(screen: AppScreen) {
+  if (screen.name === 'noteList') return 'ノートを読み込み中…';
+  if (screen.name === 'import') return '問題の取り込み画面を読み込み中…';
+  if (screen.name === 'settings') return '設定画面を読み込み中…';
+  if (screen.name === 'sync') return '同期設定を読み込み中…';
+  if (screen.name === 'privacy') return 'プライバシー情報を読み込み中…';
+  return '画面を読み込み中…';
 }
 
 function getBackupImportMessage(target: PendingBackupImport) {
