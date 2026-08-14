@@ -110,6 +110,7 @@ export interface QuizResult {
   mode: 'quiz' | 'review';
   title: string;
   setId?: string;
+  returnScreen?: AppScreen;
   retry?: {
     questionIds: string[];
     subtitle?: string;

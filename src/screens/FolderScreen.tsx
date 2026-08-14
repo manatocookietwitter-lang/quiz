@@ -3,6 +3,7 @@ import type { AppData, ProblemSet } from '../types';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { BackButton } from '../components/BackButton';
 import { Layout } from '../components/Layout';
+import { MissingResourceState } from '../components/MissingResourceState';
 import { CheckIcon, ChevronRightIcon, DocumentOutlineIcon, PlusIcon, TrashIcon } from '../components/UiIcons';
 import { formatDisplayDate } from '../utils/date';
 import { getProblemSetsByFolder, getQuestionsBySet } from '../utils/quiz';
@@ -28,6 +29,11 @@ export function FolderScreen({ data, folderId, onBack, onCreateProblemSet, onOpe
       <Layout>
         <div className="quiz-folder">
           <FolderHeader title="Quiz make" onBack={onBack} />
+          <MissingResourceState
+            title="フォルダが見つかりません"
+            description="このフォルダは削除されたか、リンクが正しくない可能性があります。問題データは変更していません。"
+            onAction={onBack}
+          />
         </div>
       </Layout>
     );

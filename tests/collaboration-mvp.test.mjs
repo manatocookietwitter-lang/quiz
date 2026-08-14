@@ -2,14 +2,14 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const [appSource, screenSource, settingsSource, primaryNavSource, serviceSource, typesSource, storageSource, collaborationMigration, groupManagementMigration, accountDeletionMigration, reportReasonsMigration] = await Promise.all([
+const [appSource, screenSource, settingsSource, primaryNavSource, serviceSource, typesSource, validationSource, collaborationMigration, groupManagementMigration, accountDeletionMigration, reportReasonsMigration] = await Promise.all([
   readFile(new URL('../src/App.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/screens/CommunityScreen.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/screens/SettingsScreen.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/components/PrimaryBottomNav.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/utils/cloudService.ts', import.meta.url), 'utf8'),
   readFile(new URL('../src/types.ts', import.meta.url), 'utf8'),
-  readFile(new URL('../src/storage.ts', import.meta.url), 'utf8'),
+  readFile(new URL('../src/utils/appDataValidation.ts', import.meta.url), 'utf8'),
   readFile(new URL('../supabase/migrations/20260806_create_collaboration_mvp.sql', import.meta.url), 'utf8'),
   readFile(new URL('../supabase/migrations/20260807_add_group_member_management.sql', import.meta.url), 'utf8'),
   readFile(new URL('../supabase/migrations/20260808_add_account_deletion.sql', import.meta.url), 'utf8'),
@@ -20,7 +20,7 @@ const migration = [collaborationMigration, groupManagementMigration, accountDele
 test('local AppData stays version 1 and cloud metadata is backward-compatible', () => {
   assert.match(typesSource, /version:\s*1/);
   assert.match(typesSource, /cloudSetId\?: string/);
-  assert.match(storageSource, /value\.cloudSetId === undefined/);
+  assert.match(validationSource, /copyOptionalString\(value, item, 'cloudSetId'\)/);
   assert.match(appSource, /createEmptyAppData/);
 });
 

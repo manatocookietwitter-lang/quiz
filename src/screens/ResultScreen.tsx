@@ -4,11 +4,12 @@ import './ResultScreen.css';
 
 interface ResultScreenProps {
   result: QuizResult;
-  onHome: () => void;
+  returnLabel: string;
+  onReturn: () => void;
   onRetry: () => void;
 }
 
-export function ResultScreen({ result, onHome, onRetry }: ResultScreenProps) {
+export function ResultScreen({ result, returnLabel, onReturn, onRetry }: ResultScreenProps) {
   const correctRate = result.answered === 0 ? 0 : Math.round((result.correct / result.answered) * 100);
   const completionMessage = result.mode === 'review'
     ? '\u5fa9\u7fd2\u304c\u5b8c\u4e86\u3057\u307e\u3057\u305f\u3002'
@@ -39,8 +40,8 @@ export function ResultScreen({ result, onHome, onRetry }: ResultScreenProps) {
         </div>
 
         <section className="result-actions" aria-label="\u7d50\u679c\u64cd\u4f5c">
-          <button type="button" onClick={onHome} className="result-button result-button--secondary">
-            {'\u30db\u30fc\u30e0\u306b\u623b\u308b'}
+          <button type="button" onClick={onReturn} className="result-button result-button--secondary">
+            {returnLabel}
           </button>
           <button type="button" onClick={onRetry} className="result-button result-button--primary">
             {'\u3082\u3046\u4e00\u5ea6\u89e3\u304f'}

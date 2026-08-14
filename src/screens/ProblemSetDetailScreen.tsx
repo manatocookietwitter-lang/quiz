@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import type { AppData, ProblemSortMode, Question } from '../types';
 import { BackButton } from '../components/BackButton';
 import { Layout } from '../components/Layout';
+import { MissingResourceState } from '../components/MissingResourceState';
 import {
   getProgress,
   getQuestionsBySet,
@@ -74,6 +75,11 @@ export function ProblemSetDetailScreen({
       <Layout>
         <div className="quiz-detail">
           <DetailHeader title="Quiz make" onBack={onBack} />
+          <MissingResourceState
+            title="問題セットが見つかりません"
+            description="この問題セットは削除されたか、リンクが正しくない可能性があります。"
+            onAction={onBack}
+          />
         </div>
       </Layout>
     );

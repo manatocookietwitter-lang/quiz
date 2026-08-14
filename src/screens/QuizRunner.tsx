@@ -6,6 +6,7 @@ import type { AppData, Question, QuizResult } from '../types';
 import { BackButton } from '../components/BackButton';
 import { CategoryNoteDrawer } from '../components/CategoryNoteDrawer';
 import { Layout } from '../components/Layout';
+import { MissingResourceState } from '../components/MissingResourceState';
 import { getAnswerIndexes, getAnswerText, getChoiceLabel, getChoiceText, getProgress, getVirtualLevel, makeResult } from '../utils/quiz';
 import { resolveQuestionDetailedExplanation } from '../utils/questionView';
 import { readClipboardText } from '../utils/nativePlatform';
@@ -32,6 +33,11 @@ interface QuizRunnerProps {
   setId?: string;
   initialIndex?: number;
   readOnly?: boolean;
+  emptyState?: {
+    title: string;
+    description: string;
+    actionLabel?: string;
+  };
   onBack: () => void;
   onAnswer: (question: Question, selectedIndexes: number[], isReviewMode: boolean) => AnswerHandlerResult;
   onToggleAmbiguous: (questionId: string) => Promise<boolean>;
@@ -39,7 +45,7 @@ interface QuizRunnerProps {
   onFinish: (result: QuizResult) => void;
 }
 
-export function QuizRunner({ data, title, subtitle, questions, mode, setId, initialIndex = 0, readOnly = false, onBack, onAnswer, onToggleAmbiguous, onSaveDetailedExplanation, onFinish }: QuizRunnerProps) {
+export function QuizRunner({ data, title, subtitle, questions, mode, setId, initialIndex = 0, readOnly = false, emptyState, onBack, onAnswer, onToggleAmbiguous, onSaveDetailedExplanation, onFinish }: QuizRunnerProps) {
   const [currentIndex, setCurrentIndex] = useState(() => Math.min(Math.max(initialIndex, 0), Math.max(questions.length - 1, 0)));
   const [selectedIndexes, setSelectedIndexes] = useState<number[]>([]);
   const [lastCorrect, setLastCorrect] = useState<boolean | null>(null);
@@ -134,18 +140,12 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
       <Layout>
         <div className="flex h-full flex-col bg-[#E9E5D8] text-[#111111]">
           <QuizHeader title={title} onBack={onBack} />
-          <div className="flex min-h-0 flex-1 items-center justify-center px-5">
-            <div className="w-full rounded-[20px] bg-[#F7F7F5] p-6 text-center">
-              <p className="text-base font-bold text-[#6D5A45]">{'\u3053\u306e\u30e2\u30fc\u30c9\u3067\u51fa\u984c\u3067\u304d\u308b\u554f\u984c\u304c\u3042\u308a\u307e\u305b\u3093\u3002'}</p>
-              <button
-                type="button"
-                onClick={onBack}
-                className="mt-5 h-14 w-full rounded-[14px] bg-[#5FA9DD] text-base font-bold text-white active:scale-[0.98]"
-              >
-                {'\u623b\u308b'}
-              </button>
-            </div>
-          </div>
+          <MissingResourceState
+            title={emptyState?.title ?? '出題できる問題がありません'}
+            description={emptyState?.description ?? 'この条件で出題できる問題がありません。問題セットへ戻って条件を確認してください。'}
+            actionLabel={emptyState?.actionLabel ?? '問題セットへ戻る'}
+            onAction={onBack}
+          />
         </div>
       </Layout>
     );
@@ -284,7 +284,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
           </section>
 
           <section className={`quiz-runner__choices flex min-h-0 flex-1 flex-col justify-center gap-2.5 px-6 py-3 transition-opacity ${answered ? 'opacity-75' : ''}`}>
-            {currentQuestion.choices.map((choice, index) => (
+            {currentQuestion.choices.map((_, index) => (
               <QuizChoiceButton
                 key={`${currentQuestion.id}_${index}`}
                 text={getChoiceText(currentQuestion, index)}

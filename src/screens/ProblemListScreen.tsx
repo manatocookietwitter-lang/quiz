@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import type { AppData, ProblemSortMode, Question } from '../types';
 import { BackButton } from '../components/BackButton';
 import { Layout } from '../components/Layout';
+import { MissingResourceState } from '../components/MissingResourceState';
 import { formatDisplayDate } from '../utils/date';
 import { getProgress, getProgressLevelLabel, getQuestionsBySet } from '../utils/quiz';
 import {
@@ -71,6 +72,25 @@ export function ProblemListScreen({ data, setId, initialSortMode = 'ordered', on
       sortMode,
     });
   };
+
+  if (!problemSet) {
+    return (
+      <Layout>
+        <div className="quiz-list">
+          <header className="quiz-list__header">
+            <div className="quiz-list__header-slope" />
+            <BackButton onClick={onBack} className="quiz-list__back-button" />
+            <div className="quiz-list__title-wrap"><h1>問題一覧</h1><p>Quiz make</p></div>
+          </header>
+          <MissingResourceState
+            title="問題セットが見つかりません"
+            description="問題一覧を表示できません。この問題セットは削除されたか、リンクが正しくない可能性があります。"
+            onAction={onBack}
+          />
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>

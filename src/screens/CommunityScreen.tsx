@@ -82,7 +82,7 @@ export function CommunityScreen({
   const [sort, setSort] = useState<'new' | 'popular'>('new');
   const [subjectFilter, setSubjectFilter] = useState('all');
   const [difficultyFilter, setDifficultyFilter] = useState('all');
-  const [shareLocalSetId, setShareLocalSetId] = useState(() => initialSetId && !shareToken ? initialSetId : '');
+  const [shareLocalSetId, setShareLocalSetId] = useState(() => initialSetId && !shareToken && initialTab === 'mine' ? initialSetId : '');
   const [shareVisibility, setShareVisibility] = useState<Exclude<ProblemSetVisibility, 'private'>>('link');
   const [shareGroupIds, setShareGroupIds] = useState<string[]>([]);
   const [shareResult, setShareResult] = useState<{ url: string; visibility: ProblemSetVisibility } | null>(null);
@@ -179,6 +179,29 @@ export function CommunityScreen({
       .catch((reason) => setError(getErrorMessage(reason)))
       .finally(() => setBusy(false));
   }, [initialSetId, shareToken]);
+
+  useEffect(() => {
+    if (!initialSetId || shareToken || initialTab === 'mine' || !cloudConfigured || !authReady || !session) return;
+    let cancelled = false;
+    setBusy(true);
+    setError('');
+    void getSharedProblemSet(initialSetId)
+      .then((set) => {
+        if (!cancelled) {
+          setDirectSet(set);
+          setTab('discover');
+        }
+      })
+      .catch((reason) => {
+        if (!cancelled) setError(getErrorMessage(reason));
+      })
+      .finally(() => {
+        if (!cancelled) setBusy(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [authReady, initialSetId, initialTab, session, shareToken]);
 
   useEffect(() => {
     if (!initialSetId || shareToken || !authReady || session) return;

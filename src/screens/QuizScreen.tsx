@@ -27,6 +27,11 @@ export function QuizScreen({ data, setId, mode, onBack, onAnswer, onToggleAmbigu
       questions={sessionQuestions}
       mode="quiz"
       setId={setId}
+      emptyState={!problemSet ? {
+        title: '問題セットが見つかりません',
+        description: 'クイズを開始できません。この問題セットは削除されたか、リンクが正しくない可能性があります。',
+        actionLabel: 'ホームへ戻る',
+      } : undefined}
       onBack={onBack}
       onAnswer={onAnswer}
       onToggleAmbiguous={onToggleAmbiguous}

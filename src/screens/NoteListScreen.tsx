@@ -3,6 +3,7 @@ import type { AppData } from '../types';
 import { BackButton } from '../components/BackButton';
 import { CategoryNotePanel } from '../components/CategoryNoteDrawer';
 import { Layout } from '../components/Layout';
+import { MissingResourceState } from '../components/MissingResourceState';
 import { buildProblemCategories, normalizeProblemCategory } from './ProblemSetDetailScreen';
 import { getQuestionsBySet } from '../utils/quiz';
 import './NoteListScreen.css';
@@ -38,7 +39,26 @@ export function NoteListScreen({ data, setId, onBack }: NoteListScreenProps) {
     return () => query.removeEventListener?.('change', update);
   }, []);
 
-  const title = problemSet?.title ?? '問題セット';
+  if (!problemSet) {
+    return (
+      <Layout>
+        <div className="quiz-notes">
+          <header className="quiz-notes__header">
+            <div className="quiz-notes__header-slope" />
+            <BackButton onClick={onBack} className="quiz-notes__back-button" />
+            <div className="quiz-notes__title-wrap"><h1>ノート一覧</h1><p>Quiz make</p></div>
+          </header>
+          <MissingResourceState
+            title="問題セットが見つかりません"
+            description="ノート一覧を表示できません。この問題セットは削除されたか、リンクが正しくない可能性があります。"
+            onAction={onBack}
+          />
+        </div>
+      </Layout>
+    );
+  }
+
+  const title = problemSet.title;
 
   return (
     <Layout>

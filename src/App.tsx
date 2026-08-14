@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import type { AppData, AppScreen, Folder, ProblemSet, Question, QuizMode, QuizResult, QuizSession } from './types';
+import type { AppData, AppScreen, Folder, ProblemSet, Question, QuizResult, QuizSession } from './types';
 import {
   createEmptyAppData,
   loadAppDataAsync,
@@ -23,7 +23,13 @@ import { ConfirmDialog } from './components/ConfirmDialog';
 import { PrimaryBottomNav, type PrimaryNavItem } from './components/PrimaryBottomNav';
 import { createId } from './utils/id';
 import { formatBackupDate, nowIso } from './utils/date';
-import { getBackNavigationSteps, getCreateProblemSetBackScreen, getScreenKey } from './utils/navigation';
+import {
+  getBackNavigationSteps,
+  getCreateProblemSetBackScreen,
+  getResultReturnLabel,
+  getResultReturnScreen,
+  getScreenKey,
+} from './utils/navigation';
 import {
   addFolder,
   deleteFolder,
@@ -736,7 +742,16 @@ export default function App() {
       setStorageError('お試しできる問題がありません。');
       return;
     }
-    const backScreen = screenRef.current.name === 'community' ? screenRef.current : { name: 'community', tab: 'discover' } as AppScreen;
+    const currentScreen = screenRef.current;
+    const backScreen: AppScreen = {
+      name: 'community',
+      tab: 'discover',
+      shareSetId: sharedSet.id,
+      ...(currentScreen.name === 'community' && currentScreen.shareToken
+        ? { shareToken: currentScreen.shareToken }
+        : {}),
+    };
+    if (currentScreen.name === 'community') replaceScreen(backScreen);
     navigate({
       name: 'quizSession',
       session: {
@@ -918,10 +933,6 @@ export default function App() {
     setBackupImportBusy(false);
     replaceScreen({ name: 'home' });
   };
-  const handleStartQuiz = (setId: string, mode: QuizMode) => {
-    navigate({ name: 'quiz', setId, mode });
-  };
-
   const handleStartQuizSession = (session: QuizSession) => {
     navigate({ name: 'quizSession', session });
   };
@@ -935,9 +946,14 @@ export default function App() {
       backScreen = { name: 'problemSetDetail', setId: result.setId };
     }
 
-    let nextResult = result.retry && backScreen
-      ? { ...result, retry: { ...result.retry, backScreen } }
-      : result;
+    const returnScreen = backScreen ?? (result.setId
+      ? { name: 'problemSetDetail', setId: result.setId } as AppScreen
+      : { name: 'home' } as AppScreen);
+    let nextResult: QuizResult = {
+      ...result,
+      returnScreen,
+      ...(result.retry ? { retry: { ...result.retry, backScreen: returnScreen } } : {}),
+    };
     if (current.name === 'quizSession' && current.session.isPreview && nextResult.retry) {
       nextResult = {
         ...nextResult,
@@ -1060,11 +1076,14 @@ export default function App() {
     );
   } else if (screen.name === 'problemSetDetail') {
     const problemSet = data.problemSets.find((set) => set.id === screen.setId);
+    const parentFolderExists = Boolean(problemSet && data.folders.some((folder) => folder.id === problemSet.folderId));
     content = (
       <ProblemSetDetailScreen
         data={data}
         setId={screen.setId}
-        onBack={() => goBackTo({ name: 'folder', folderId: problemSet?.folderId ?? '' })}
+        onBack={problemSet && parentFolderExists
+          ? () => goBackTo({ name: 'folder', folderId: problemSet.folderId })
+          : goHome}
         onEdit={() => navigate({
           name: 'createProblemSet',
           folderId: problemSet?.folderId,
@@ -1086,12 +1105,13 @@ export default function App() {
       />
     );
   } else if (screen.name === 'problemList') {
+    const problemSet = data.problemSets.find((set) => set.id === screen.setId);
     content = (
       <ProblemListScreen
         data={data}
         setId={screen.setId}
         initialSortMode={screen.sortMode}
-        onBack={() => goBackTo({ name: 'problemSetDetail', setId: screen.setId })}
+        onBack={problemSet ? () => goBackTo({ name: 'problemSetDetail', setId: screen.setId }) : goHome}
         onStartFromQuestion={({ questions, initialIndex, title, subtitle, setId, sortMode }) => handleStartQuizSession({
           title,
           subtitle,
@@ -1104,11 +1124,12 @@ export default function App() {
       />
     );
   } else if (screen.name === 'noteList') {
+    const problemSet = data.problemSets.find((set) => set.id === screen.setId);
     content = (
       <NoteListScreen
         data={data}
         setId={screen.setId}
-        onBack={() => goBackTo({ name: 'problemSetDetail', setId: screen.setId })}
+        onBack={problemSet ? () => goBackTo({ name: 'problemSetDetail', setId: screen.setId }) : goHome}
       />
     );
   } else if (screen.name === 'import') {
@@ -1123,6 +1144,7 @@ export default function App() {
     );
   } else if (screen.name === 'quiz') {
     const problemSet = data.problemSets.find((set) => set.id === screen.setId);
+    const parentFolderExists = Boolean(problemSet && data.folders.some((folder) => folder.id === problemSet.folderId));
     content = (
       <Suspense fallback={<div className="quiz-app-loading">演習画面を読み込み中...</div>}>
         <QuizScreen
@@ -1130,7 +1152,9 @@ export default function App() {
           data={data}
           setId={screen.setId}
           mode={screen.mode}
-          onBack={() => goBackTo({ name: 'folder', folderId: problemSet?.folderId ?? '' })}
+          onBack={problemSet && parentFolderExists
+            ? () => goBackTo({ name: 'folder', folderId: problemSet.folderId })
+            : goHome}
           onAnswer={handleAnswer}
           onToggleAmbiguous={handleToggleAmbiguous}
           onSaveDetailedExplanation={handleSaveDetailedExplanation}
@@ -1160,10 +1184,12 @@ export default function App() {
       </Suspense>
     );
   } else if (screen.name === 'result') {
+    const returnScreen = getResultReturnScreen(screen.result, data);
     content = (
       <ResultScreen
         result={screen.result}
-        onHome={goHome}
+        returnLabel={getResultReturnLabel(returnScreen)}
+        onReturn={returnScreen.name === 'home' ? goHome : () => goBackTo(returnScreen)}
         onRetry={() => handleRetry(screen.result)}
       />
     );

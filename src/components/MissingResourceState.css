@@ -1,0 +1,55 @@
+.missing-resource-state {
+  width: min(calc(100% - 32px), 520px);
+  margin: clamp(40px, 9vh, 88px) auto 32px;
+  padding: 32px 24px 24px;
+  border: 1px solid #dce3ee;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 10px 30px rgb(29 53 87 / 8%);
+  color: #172033;
+  text-align: center;
+}
+
+.missing-resource-state__mark {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 16px;
+  place-items: center;
+  border-radius: 50%;
+  background: #eef3ff;
+  color: #244fbd;
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.missing-resource-state h2 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.45;
+}
+
+.missing-resource-state p {
+  margin: 10px auto 22px;
+  color: #5d6879;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.missing-resource-state button.missing-resource-state__action {
+  min-width: 180px;
+  min-height: 48px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 13px;
+  background: #244fbd;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.missing-resource-state button.missing-resource-state__action:focus-visible {
+  outline: 3px solid rgb(36 79 189 / 28%);
+  outline-offset: 3px;
+}

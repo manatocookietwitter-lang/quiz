@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { getBackNavigationSteps, getCreateProblemSetBackScreen } from '../src/utils/navigation.ts';
+import {
+  getBackNavigationSteps,
+  getCreateProblemSetBackScreen,
+  getResultReturnLabel,
+  getResultReturnScreen,
+} from '../src/utils/navigation.ts';
+
+const readSource = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 
 test('jumping home unwinds every pushed screen instead of leaving dead history entries', () => {
   const stack = [
@@ -61,4 +69,55 @@ test('problem-set creation returns to the screen that opened it', () => {
     getCreateProblemSetBackScreen({ name: 'createProblemSet' }),
     null,
   );
+});
+
+test('result exits return to the session origin and reject deleted local targets', () => {
+  const data = {
+    version: 1,
+    folders: [{ id: 'folder-1', name: '英語', createdAt: '', updatedAt: '' }],
+    problemSets: [{ id: 'set-1', folderId: 'folder-1', title: '単語', source: '', createdAt: '', updatedAt: '' }],
+    questions: [],
+    progress: [],
+    answerLogs: [],
+  };
+  const baseResult = { mode: 'quiz', title: '単語', answered: 1, correct: 1, wrong: 0, addedReviewCount: 0 };
+
+  const detailTarget = getResultReturnScreen({
+    ...baseResult,
+    returnScreen: { name: 'problemSetDetail', setId: 'set-1' },
+  }, data);
+  assert.deepEqual(detailTarget, { name: 'problemSetDetail', setId: 'set-1' });
+  assert.equal(getResultReturnLabel(detailTarget), '問題セットへ戻る');
+
+  const listTarget = getResultReturnScreen({
+    ...baseResult,
+    returnScreen: { name: 'problemList', setId: 'set-1', sortMode: 'level' },
+  }, data);
+  assert.equal(getResultReturnLabel(listTarget), '問題一覧へ戻る');
+
+  const sharedTarget = getResultReturnScreen({
+    ...baseResult,
+    returnScreen: { name: 'community', tab: 'discover', shareSetId: 'shared-1' },
+  }, data);
+  assert.deepEqual(sharedTarget, { name: 'community', tab: 'discover', shareSetId: 'shared-1' });
+  assert.equal(getResultReturnLabel(sharedTarget), '共有詳細へ戻る');
+
+  assert.deepEqual(getResultReturnScreen({
+    ...baseResult,
+    returnScreen: { name: 'problemSetDetail', setId: 'deleted' },
+  }, data), { name: 'home' });
+});
+
+test('missing local routes render an explanation and a safe recovery action', () => {
+  for (const path of [
+    '../src/screens/FolderScreen.tsx',
+    '../src/screens/ProblemSetDetailScreen.tsx',
+    '../src/screens/ProblemListScreen.tsx',
+    '../src/screens/NoteListScreen.tsx',
+  ]) {
+    assert.match(readSource(path), /MissingResourceState/);
+  }
+  assert.match(readSource('../src/screens/QuizScreen.tsx'), /emptyState=\{!problemSet/);
+  assert.match(readSource('../src/screens/QuizRunner.tsx'), /emptyState\?\.title/);
+  assert.match(readSource('../src/App.tsx'), /problemSet \? \(\) => goBackTo\(\{ name: 'problemSetDetail'/);
 });

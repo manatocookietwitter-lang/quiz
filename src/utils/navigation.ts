@@ -1,4 +1,4 @@
-import type { AppScreen } from '../types';
+import type { AppData, AppScreen, QuizResult } from '../types';
 
 export function getScreenKey(screen: AppScreen): string {
   if (screen.name === 'createProblemSet') return `create-${screen.editSetId ?? ''}-${screen.folderId ?? ''}`;
@@ -31,4 +31,34 @@ export function getCreateProblemSetBackScreen(
   if (screen.editSetId) return { name: 'problemSetDetail', setId: screen.editSetId };
   if (screen.folderId) return { name: 'folder', folderId: screen.folderId };
   return null;
+}
+
+export function getResultReturnScreen(result: QuizResult, data: AppData): AppScreen {
+  const target = result.returnScreen
+    ?? result.retry?.backScreen
+    ?? (result.setId ? { name: 'problemSetDetail', setId: result.setId } : { name: 'home' });
+
+  if (target.name === 'folder') {
+    return data.folders.some((folder) => folder.id === target.folderId) ? target : { name: 'home' };
+  }
+  if (target.name === 'problemSetDetail' || target.name === 'problemList' || target.name === 'noteList') {
+    return data.problemSets.some((set) => set.id === target.setId) ? target : { name: 'home' };
+  }
+  if (target.name === 'import') {
+    return data.folders.some((folder) => folder.id === target.folderId) ? target : { name: 'home' };
+  }
+  if (target.name === 'quiz' || target.name === 'quizSession' || target.name === 'result') {
+    return { name: 'home' };
+  }
+  return target;
+}
+
+export function getResultReturnLabel(target: AppScreen): string {
+  if (target.name === 'problemSetDetail') return '問題セットへ戻る';
+  if (target.name === 'problemList') return '問題一覧へ戻る';
+  if (target.name === 'noteList') return 'ノート一覧へ戻る';
+  if (target.name === 'folder') return 'フォルダへ戻る';
+  if (target.name === 'community') return target.shareSetId || target.shareToken ? '共有詳細へ戻る' : '共有画面へ戻る';
+  if (target.name === 'home') return 'ホームへ戻る';
+  return '前の画面へ戻る';
 }
