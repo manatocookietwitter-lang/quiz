@@ -1,6 +1,7 @@
 import type { AppScreen } from '../types';
 
 export function getScreenKey(screen: AppScreen): string {
+  if (screen.name === 'createProblemSet') return `create-${screen.editSetId ?? ''}-${screen.folderId ?? ''}`;
   if (screen.name === 'folder') return `folder-${screen.folderId}`;
   if (screen.name === 'community') return `community-${screen.tab ?? 'mine'}-${screen.shareSetId ?? ''}`;
   if (screen.name === 'problemSetDetail') return `detail-${screen.setId}`;
@@ -21,4 +22,13 @@ export function getBackNavigationSteps(stack: AppScreen[], target: AppScreen): n
     }
   }
   return 1;
+}
+
+export function getCreateProblemSetBackScreen(
+  screen: Extract<AppScreen, { name: 'createProblemSet' }>,
+): AppScreen | null {
+  if (screen.backScreen && screen.backScreen.name !== 'createProblemSet') return screen.backScreen;
+  if (screen.editSetId) return { name: 'problemSetDetail', setId: screen.editSetId };
+  if (screen.folderId) return { name: 'folder', folderId: screen.folderId };
+  return null;
 }

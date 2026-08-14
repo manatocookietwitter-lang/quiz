@@ -13,8 +13,6 @@ import { ProblemSetDetailScreen } from './screens/ProblemSetDetailScreen';
 import { ProblemListScreen } from './screens/ProblemListScreen';
 import { NoteListScreen } from './screens/NoteListScreen';
 import { ImportScreen } from './screens/ImportScreen';
-import { QuizScreen } from './screens/QuizScreen';
-import { QuizRunner } from './screens/QuizRunner';
 import { ResultScreen } from './screens/ResultScreen';
 import { SyncScreen } from './screens/SyncScreen';
 import { PrivacyScreen } from './screens/PrivacyScreen';
@@ -25,7 +23,7 @@ import { ConfirmDialog } from './components/ConfirmDialog';
 import { PrimaryBottomNav, type PrimaryNavItem } from './components/PrimaryBottomNav';
 import { createId } from './utils/id';
 import { formatBackupDate, nowIso } from './utils/date';
-import { getBackNavigationSteps, getScreenKey } from './utils/navigation';
+import { getBackNavigationSteps, getCreateProblemSetBackScreen, getScreenKey } from './utils/navigation';
 import {
   addFolder,
   deleteFolder,
@@ -36,24 +34,32 @@ import {
   updateQuestionDetailedExplanation,
 } from './utils/quiz';
 import { validateImportJson } from './utils/importValidator';
+import { getDraftAnswerIndexes } from './utils/bulkQuestionParser';
 import { exportQuizMakeData, importQuizMakeData, summarizeSyncPayload, validateSyncPayload, type SyncPayload, type SyncPayloadSummary } from './utils/syncService';
-import { waitForPendingCategoryNoteSaves } from './utils/noteStorage';
+import { deleteAllCategoryNotes, deleteCategoryNotesForProblemSetIds, waitForPendingCategoryNoteSaves } from './utils/noteStorage';
 import { saveJsonBackup } from './utils/nativePlatform';
 import { createSampleAppData } from './utils/sampleData';
 import type { CloudProblemSet, CloudPublishResult } from './utils/cloudService';
 const CommunityScreen = lazy(() => import('./screens/CommunityScreen').then((module) => ({ default: module.CommunityScreen })));
 const CreateProblemSetScreen = lazy(() => import('./screens/CreateProblemSetScreen').then((module) => ({ default: module.CreateProblemSetScreen })));
+const QuizScreen = lazy(() => import('./screens/QuizScreen').then((module) => ({ default: module.QuizScreen })));
+const QuizRunner = lazy(() => import('./screens/QuizRunner').then((module) => ({ default: module.QuizRunner })));
 type PendingBackupImport =
   | { kind: 'sync'; payload: SyncPayload; summary: SyncPayloadSummary }
   | { kind: 'legacy'; data: AppData };
 export default function App() {
   const [data, setData] = useState<AppData>(() => createEmptyAppData());
   const [storageReady, setStorageReady] = useState(false);
+  const [storageLoadError, setStorageLoadError] = useState('');
+  const [storageLoadAttempt, setStorageLoadAttempt] = useState(0);
   const dataRef = useRef(data);
+  const durableDataRef = useRef(data);
   const [screen, setScreen] = useState<AppScreen>({ name: 'home' });
   const [transitionDirection, setTransitionDirection] = useState<'forward' | 'back' | 'replace'>('replace');
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
   const [pendingExitTarget, setPendingExitTarget] = useState<AppScreen | null>(null);
+  const [pendingExitReason, setPendingExitReason] = useState<'quiz' | 'create' | null>(null);
+  const [createDraftDirty, setCreateDraftDirty] = useState(false);
   const [pendingBackupImport, setPendingBackupImport] = useState<PendingBackupImport | null>(null);
   const [backupImportBusy, setBackupImportBusy] = useState(false);
   const [backupImportError, setBackupImportError] = useState('');
@@ -63,35 +69,50 @@ export default function App() {
   const pendingBackTargetRef = useRef<AppScreen | null>(null);
   const pendingBackStepsRef = useRef(1);
   const pendingExitTargetRef = useRef<AppScreen | null>(null);
-  const confirmedQuizExitRef = useRef(false);
+  const pendingExitModeRef = useRef<'back' | 'replace'>('back');
+  const confirmedProtectedExitRef = useRef(false);
+  const createDraftDirtyRef = useRef(false);
   const screenRef = useRef<AppScreen>({ name: 'home' });
   const dataRevisionRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
-    void loadAppDataAsync().then((loadedData) => {
-      if (cancelled) return;
-      dataRef.current = loadedData;
-      setData(loadedData);
-      const url = new URL(window.location.href);
-      const sharedSetId = url.searchParams.get('sharedSet') ?? '';
-      const shareToken = url.searchParams.get('token') ?? '';
-      if (sharedSetId) {
-        const sharedScreen: AppScreen = { name: 'community', tab: 'discover', shareSetId: sharedSetId, shareToken };
-        navigationStackRef.current = [sharedScreen];
-        screenRef.current = sharedScreen;
-        setScreen(sharedScreen);
-      }
-      setStorageReady(true);
-    });
+    setStorageReady(false);
+    setStorageLoadError('');
+    void loadAppDataAsync()
+      .then((loadedData) => {
+        if (cancelled) return;
+        dataRef.current = loadedData;
+        durableDataRef.current = loadedData;
+        setData(loadedData);
+        const url = new URL(window.location.href);
+        const sharedSetId = url.searchParams.get('sharedSet') ?? '';
+        const shareToken = url.searchParams.get('token') ?? '';
+        if (sharedSetId) {
+          const sharedScreen: AppScreen = { name: 'community', tab: 'discover', shareSetId: sharedSetId, shareToken };
+          navigationStackRef.current = [sharedScreen];
+          screenRef.current = sharedScreen;
+          setScreen(sharedScreen);
+        }
+        setStorageReady(true);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setStorageLoadError(error instanceof Error ? error.message : '保存データを読み込めませんでした。');
+        setStorageReady(true);
+      });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [storageLoadAttempt]);
 
   useEffect(() => {
     screenRef.current = screen;
   }, [screen]);
+
+  useEffect(() => {
+    createDraftDirtyRef.current = createDraftDirty;
+  }, [createDraftDirty]);
 
   useEffect(() => {
     window.history.replaceState({ quizMake: true }, '');
@@ -103,15 +124,18 @@ export default function App() {
       pendingBackTargetRef.current = null;
       pendingBackStepsRef.current = 1;
 
-      if (isQuizInProgressScreen(current) && !confirmedQuizExitRef.current) {
+      const exitReason = getProtectedExitReason(current, createDraftDirtyRef.current);
+      if (exitReason && !confirmedProtectedExitRef.current) {
         window.history.pushState({ quizMake: true }, '');
         pendingExitTargetRef.current = target;
+        pendingExitModeRef.current = 'back';
+        setPendingExitReason(exitReason);
         setPendingExitTarget(target);
         return;
       }
 
-      if (confirmedQuizExitRef.current) {
-        confirmedQuizExitRef.current = false;
+      if (confirmedProtectedExitRef.current) {
+        confirmedProtectedExitRef.current = false;
       }
       applyBackNavigation(target, historySteps);
     };
@@ -128,16 +152,25 @@ export default function App() {
   }, []);
 
   const commitData = async (nextData: AppData): Promise<boolean> => {
-    dataRevisionRef.current += 1;
+    const revision = dataRevisionRef.current + 1;
+    dataRevisionRef.current = revision;
     dataRef.current = nextData;
     setData(nextData);
     const saved = await saveAppData(nextData);
-    setStorageError(saved ? '' : '端末への保存に失敗しました。空き容量やブラウザの保存設定を確認して、もう一度お試しください。');
+    if (saved) {
+      durableDataRef.current = nextData;
+      if (dataRevisionRef.current === revision) setStorageError('');
+      return true;
+    }
+    if (dataRevisionRef.current === revision) {
+      dataRef.current = durableDataRef.current;
+      setData(durableDataRef.current);
+      setStorageError('端末への保存に失敗しました。保存前の状態に戻しました。空き容量やブラウザの保存設定を確認して、もう一度お試しください。');
+    }
     return saved;
   };
 
   const persistThenCommitData = async (nextData: AppData): Promise<boolean> => {
-    const previousData = dataRef.current;
     const revision = dataRevisionRef.current + 1;
     dataRevisionRef.current = revision;
     // Reserve the next snapshot immediately. Any action taken while this durable
@@ -146,11 +179,13 @@ export default function App() {
     const saved = await saveAppData(nextData);
     if (!saved) {
       if (dataRevisionRef.current === revision) {
-        dataRef.current = previousData;
+        dataRef.current = durableDataRef.current;
+        setData(durableDataRef.current);
+        setStorageError('端末への保存に失敗しました。保存前の状態に戻しました。空き容量やブラウザの保存設定を確認して、もう一度お試しください。');
       }
-      setStorageError('端末への保存に失敗しました。空き容量やブラウザの保存設定を確認して、もう一度お試しください。');
       return false;
     }
+    durableDataRef.current = nextData;
     // A newer mutation may already contain this snapshot plus further changes.
     // Do not roll the UI back to this older snapshot when that happens.
     if (dataRevisionRef.current === revision) {
@@ -189,7 +224,9 @@ export default function App() {
 
   const performBackNavigation = (target: AppScreen) => {
     pendingBackTargetRef.current = target;
-    const desiredSteps = getBackNavigationSteps(navigationStackRef.current, target);
+    const desiredSteps = target.name === 'home'
+      ? browserDepthRef.current
+      : getBackNavigationSteps(navigationStackRef.current, target);
     if (browserDepthRef.current > 0) {
       const historySteps = Math.min(desiredSteps, browserDepthRef.current);
       pendingBackStepsRef.current = historySteps;
@@ -202,8 +239,11 @@ export default function App() {
   };
 
   const goBackTo = (next: AppScreen) => {
-    if (isQuizInProgressScreen(screenRef.current)) {
+    const exitReason = getProtectedExitReason(screenRef.current, createDraftDirtyRef.current);
+    if (exitReason) {
       pendingExitTargetRef.current = next;
+      pendingExitModeRef.current = 'back';
+      setPendingExitReason(exitReason);
       setPendingExitTarget(next);
       return;
     }
@@ -218,25 +258,37 @@ export default function App() {
     setScreen(next);
   };
 
-  const cancelExitSession = () => {
+  const cancelProtectedExit = () => {
     pendingExitTargetRef.current = null;
+    pendingExitModeRef.current = 'back';
+    setPendingExitReason(null);
     setPendingExitTarget(null);
   };
 
-  const confirmExitSession = () => {
+  const confirmProtectedExit = () => {
     const target = pendingExitTargetRef.current ?? pendingExitTarget ?? { name: 'home' };
+    const navigationMode = pendingExitModeRef.current;
     pendingExitTargetRef.current = null;
+    pendingExitModeRef.current = 'back';
+    setPendingExitReason(null);
     setPendingExitTarget(null);
-    confirmedQuizExitRef.current = true;
+    confirmedProtectedExitRef.current = true;
+    if (navigationMode === 'replace') {
+      confirmedProtectedExitRef.current = false;
+      replaceScreen(target);
+      return;
+    }
     pendingBackTargetRef.current = target;
-    const desiredSteps = getBackNavigationSteps(navigationStackRef.current, target);
+    const desiredSteps = target.name === 'home'
+      ? browserDepthRef.current
+      : getBackNavigationSteps(navigationStackRef.current, target);
     if (browserDepthRef.current > 0) {
       const historySteps = Math.min(desiredSteps, browserDepthRef.current);
       pendingBackStepsRef.current = historySteps;
       window.history.go(-historySteps);
       return;
     }
-    confirmedQuizExitRef.current = false;
+    confirmedProtectedExitRef.current = false;
     pendingBackTargetRef.current = null;
     pendingBackStepsRef.current = 1;
     applyBackNavigation(target, 0);
@@ -267,6 +319,14 @@ export default function App() {
       goHome();
       return;
     }
+    const exitReason = getProtectedExitReason(screenRef.current, createDraftDirtyRef.current);
+    if (exitReason) {
+      pendingExitTargetRef.current = next;
+      pendingExitModeRef.current = 'replace';
+      setPendingExitReason(exitReason);
+      setPendingExitTarget(next);
+      return;
+    }
     replaceScreen(next);
   };
 
@@ -274,13 +334,35 @@ export default function App() {
     void commitData(addFolder(dataRef.current, name));
   };
 
-  const handleDeleteFolder = (folderId: string) => {
-    void commitData(deleteFolder(dataRef.current, folderId));
+  const handleDeleteFolder = async (folderId: string) => {
+    const previousData = dataRef.current;
+    const setIds = previousData.problemSets.filter((set) => set.folderId === folderId).map((set) => set.id);
+    const saved = await persistThenCommitData(deleteFolder(previousData, folderId));
+    if (!saved) return;
+    try {
+      await deleteCategoryNotesForProblemSetIds(setIds);
+    } catch {
+      const restored = await persistThenCommitData(previousData);
+      setStorageError(restored
+        ? 'ノートを削除できなかったため、フォルダの削除を取り消しました。もう一度お試しください。'
+        : 'ノートの削除とフォルダの復元に失敗しました。バックアップを書き出してから再読み込みしてください。');
+      return;
+    }
     goBackTo({ name: 'home' });
   };
 
-  const handleDeleteProblemSet = (setId: string) => {
-    void commitData(deleteProblemSet(dataRef.current, setId));
+  const handleDeleteProblemSet = async (setId: string) => {
+    const previousData = dataRef.current;
+    const saved = await persistThenCommitData(deleteProblemSet(previousData, setId));
+    if (!saved) return;
+    try {
+      await deleteCategoryNotesForProblemSetIds([setId]);
+    } catch {
+      const restored = await persistThenCommitData(previousData);
+      setStorageError(restored
+        ? 'ノートを削除できなかったため、問題セットの削除を取り消しました。もう一度お試しください。'
+        : 'ノートの削除と問題セットの復元に失敗しました。バックアップを書き出してから再読み込みしてください。');
+    }
   };
 
   const handleImportProblemSet = async (folderId: string, titleOverride: string, jsonText: string, stayOnScreen = false): Promise<string | null> => {
@@ -350,7 +432,8 @@ export default function App() {
   };
 
   const handleAnswer = (question: Question, selectedIndexes: number[], isReviewMode: boolean) => {
-    const answerResult = recordAnswer(dataRef.current, question, selectedIndexes, isReviewMode);
+    const answerLogId = createId('log');
+    const answerResult = recordAnswer(dataRef.current, question, selectedIndexes, isReviewMode, answerLogId);
     const savePromise = commitData(answerResult.data);
     const levelLabel = answerResult.progress.isGraduated ? '卒業' : `Level ${answerResult.progress.reviewLevel ?? 1}`;
     return {
@@ -358,6 +441,7 @@ export default function App() {
       addedToReview: answerResult.addedToReview,
       levelLabel,
       savePromise,
+      retrySave: () => commitData(recordAnswer(dataRef.current, question, selectedIndexes, isReviewMode, answerLogId).data),
     };
   };
 
@@ -393,21 +477,26 @@ export default function App() {
     }
 
     const setId = createId('set');
-    const questions: Question[] = submission.questions.map((question) => ({
-      id: createId('q'),
-      setId,
-      question: question.question.trim(),
-      choices: question.choices.map((choice) => choice.trim()) as Question['choices'],
-      answerIndex: question.answerIndex ?? 0,
-      answerText: question.answerIndex === null ? '' : question.choices[question.answerIndex]?.trim() ?? '',
-      explanation: question.explanation.trim(),
-      detailedExplanation: '',
-      sourcePage: question.sourcePage.trim(),
-      category: question.category.trim() || '未分類',
-      difficulty: submission.difficulty,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    }));
+    const questions: Question[] = submission.questions.map((question) => {
+      const choices = question.choices.map((choice) => choice.trim()) as Question['choices'];
+      const answerIndexes = getDraftAnswerIndexes({ ...question, choices });
+      return {
+        id: createId('q'),
+        setId,
+        question: question.question.trim(),
+        choices,
+        answerIndex: answerIndexes[0] ?? 0,
+        answerIndexes: answerIndexes.length > 1 ? answerIndexes : undefined,
+        answerText: answerIndexes.map((answerIndex) => choices[answerIndex]).filter(Boolean).join(' / '),
+        explanation: question.explanation.trim(),
+        detailedExplanation: question.detailedExplanation?.trim() ?? '',
+        sourcePage: question.sourcePage.trim(),
+        category: question.category.trim() || '未分類',
+        difficulty: question.difficulty ?? submission.difficulty,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+    });
     const problemSet: ProblemSet = {
       id: setId,
       folderId,
@@ -444,7 +533,103 @@ export default function App() {
       }))],
     });
     if (!saved) return '問題セットを端末へ保存できませんでした。空き容量や保存設定を確認してください。';
-    replaceScreen({ name: 'problemSetDetail', setId });
+    if (screenRef.current.name === 'createProblemSet') {
+      setCreateDraftDirty(false);
+      replaceScreen({ name: 'problemSetDetail', setId });
+    }
+    return null;
+  };
+
+  const handleUpdateProblemSet = async (setId: string, submission: CreateProblemSetSubmission): Promise<string | null> => {
+    const timestamp = nowIso();
+    const current = dataRef.current;
+    const existingSet = current.problemSets.find((problemSet) => problemSet.id === setId);
+    if (!existingSet) return '編集する問題セットが見つかりません。';
+
+    let folderId = submission.folderId;
+    let folders = current.folders;
+    if (!folderId) {
+      folderId = createId('folder');
+      folders = [{
+        id: folderId,
+        name: submission.newFolderName.trim() || 'マイ問題セット',
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }, ...folders];
+    } else {
+      folders = folders.map((folder) => folder.id === folderId ? { ...folder, updatedAt: timestamp } : folder);
+    }
+
+    const previousQuestions = current.questions.filter((question) => question.setId === setId);
+    const previousById = new Map(previousQuestions.map((question) => [question.id, question]));
+    const resetProgressIds = new Set<string>();
+    const nextQuestions: Question[] = submission.questions.map((draft) => {
+      const previous = previousById.get(draft.id);
+      const choices = draft.choices.map((choice) => choice.trim()) as Question['choices'];
+      const answerIndexes = getDraftAnswerIndexes({ ...draft, choices });
+      const id = previous?.id ?? createId('q');
+      const nextQuestion: Question = {
+        id,
+        setId,
+        question: draft.question.trim(),
+        choices,
+        answerIndex: answerIndexes[0] ?? 0,
+        answerIndexes: answerIndexes.length > 1 ? answerIndexes : undefined,
+        answerText: answerIndexes.map((answerIndex) => choices[answerIndex]).filter(Boolean).join(' / '),
+        explanation: draft.explanation.trim(),
+        detailedExplanation: draft.detailedExplanation?.trim() ?? '',
+        sourcePage: draft.sourcePage.trim(),
+        category: draft.category.trim() || '未分類',
+        difficulty: draft.difficulty ?? submission.difficulty,
+        createdAt: previous?.createdAt ?? timestamp,
+        updatedAt: timestamp,
+      };
+      if (!previous || hasQuestionLearningContentChanged(previous, nextQuestion)) resetProgressIds.add(id);
+      return nextQuestion;
+    });
+
+    const nextQuestionIds = new Set(nextQuestions.map((question) => question.id));
+    const removedQuestionIds = new Set(previousQuestions.filter((question) => !nextQuestionIds.has(question.id)).map((question) => question.id));
+    const clearedQuestionIds = new Set([...resetProgressIds, ...removedQuestionIds]);
+    const saved = await persistThenCommitData({
+      ...current,
+      folders,
+      problemSets: current.problemSets.map((problemSet) => problemSet.id === setId ? {
+        ...problemSet,
+        folderId,
+        title: makeUniqueProblemSetTitle(current, folderId, submission.title, setId),
+        source: submission.source.trim(),
+        description: submission.description.trim(),
+        subject: submission.subject.trim(),
+        audience: submission.audience.trim(),
+        difficulty: submission.difficulty,
+        creationMethod: problemSet.creationMethod ?? submission.creationMethod,
+        updatedAt: timestamp,
+      } : problemSet),
+      questions: [...current.questions.filter((question) => question.setId !== setId), ...nextQuestions],
+      progress: [
+        ...current.progress.filter((progress) => !clearedQuestionIds.has(progress.questionId)),
+        ...nextQuestions.filter((question) => resetProgressIds.has(question.id)).map((question) => ({
+          questionId: question.id,
+          answeredCount: 0,
+          correctCount: 0,
+          wrongCount: 0,
+          lastSelectedIndex: null,
+          lastAnswerCorrect: null,
+          lastAnsweredAt: null,
+          isReview: false,
+          isAmbiguous: false,
+          reviewLevel: null,
+          isGraduated: false,
+        })),
+      ],
+      answerLogs: current.answerLogs.filter((log) => !clearedQuestionIds.has(log.questionId)),
+    });
+    if (!saved) return '変更を端末へ保存できませんでした。入力内容を残したまま、空き容量や保存設定を確認してください。';
+    if (screenRef.current.name === 'createProblemSet' && screenRef.current.editSetId === setId) {
+      setCreateDraftDirty(false);
+      replaceScreen({ name: 'problemSetDetail', setId });
+    }
     return null;
   };
 
@@ -605,7 +790,7 @@ export default function App() {
       });
       if (!saved) return;
     }
-    navigate({ name: 'import', folderId, backScreen: { name: 'createProblemSet' } });
+    navigate({ name: 'import', folderId, backScreen: screenRef.current });
   };
 
   const handleToggleAmbiguous = async (questionId: string) => {
@@ -622,9 +807,21 @@ export default function App() {
     }
   };
 
-  const handleClearAll = () => {
-    void commitData(createEmptyAppData());
+  const handleClearAll = async (): Promise<boolean> => {
+    const previousData = dataRef.current;
+    const saved = await persistThenCommitData(createEmptyAppData());
+    if (!saved) return false;
+    try {
+      await deleteAllCategoryNotes();
+    } catch {
+      const restored = await persistThenCommitData(previousData);
+      setStorageError(restored
+        ? 'ノートを削除できなかったため、全データ削除を取り消しました。もう一度お試しください。'
+        : 'ノートの削除と学習データの復元に失敗しました。バックアップを書き出してから再読み込みしてください。');
+      return false;
+    }
     replaceScreen({ name: 'home' });
+    return true;
   };
 
   const handleExport = async () => {
@@ -705,9 +902,17 @@ export default function App() {
       return;
     }
 
-    const loaded = await loadAppDataAsync();
+    let loaded: AppData;
+    try {
+      loaded = await loadAppDataAsync();
+    } catch (error) {
+      setBackupImportError(error instanceof Error ? error.message : '読み込んだデータを端末から再確認できませんでした。');
+      setBackupImportBusy(false);
+      return;
+    }
     dataRevisionRef.current += 1;
     dataRef.current = loaded;
+    durableDataRef.current = loaded;
     setData(loaded);
     setPendingBackupImport(null);
     setBackupImportBusy(false);
@@ -791,16 +996,36 @@ export default function App() {
     );
   }
 
+  if (storageLoadError) {
+    return (
+      <div className="quiz-storage-recovery" role="alert">
+        <div className="quiz-storage-recovery__panel">
+          <p className="quiz-storage-recovery__eyebrow">データを保護するため停止しました</p>
+          <h1>保存データを読み込めません</h1>
+          <p>{storageLoadError}</p>
+          <p>空の状態では保存を開始していません。ブラウザやアプリを閉じずに、まず再試行してください。</p>
+          <button type="button" onClick={() => setStorageLoadAttempt((attempt) => attempt + 1)}>読み込みを再試行</button>
+        </div>
+      </div>
+    );
+  }
+
   let content;
 
   if (screen.name === 'createProblemSet') {
+    const createBackScreen = getCreateProblemSetBackScreen(screen);
     content = (
       <Suspense fallback={<div className="quiz-app-loading">作成画面を読み込み中...</div>}>
         <CreateProblemSetScreen
           data={data}
-          onSave={handleCreateProblemSet}
+          onSave={(submission) => screen.editSetId
+            ? handleUpdateProblemSet(screen.editSetId, submission)
+            : handleCreateProblemSet(submission)}
           onOpenLegacyImport={(folderId) => void handleOpenLegacyImport(folderId)}
-          onImportBackup={handleImportBackup}
+          onDirtyChange={setCreateDraftDirty}
+          initialFolderId={screen.folderId}
+          editSetId={screen.editSetId}
+          onBack={createBackScreen ? () => goBackTo(createBackScreen) : undefined}
         />
       </Suspense>
     );
@@ -813,7 +1038,7 @@ export default function App() {
           initialSetId={screen.shareSetId}
           shareToken={screen.shareToken}
           onBack={goHome}
-          onCreateProblemSet={() => navigate({ name: 'createProblemSet' })}
+          onCreateProblemSet={() => navigate({ name: 'createProblemSet', backScreen: screen })}
           onOpenLocalSet={(setId) => navigate({ name: 'problemSetDetail', setId })}
           onCopySharedSet={handleCopySharedProblemSet}
           onPracticeSharedSet={handlePracticeSharedProblemSet}
@@ -828,7 +1053,7 @@ export default function App() {
         data={data}
         folderId={screen.folderId}
         onBack={goHome}
-        onOpenImport={(folderId) => navigate({ name: 'import', folderId })}
+        onCreateProblemSet={(folderId) => navigate({ name: 'createProblemSet', folderId, backScreen: { name: 'folder', folderId } })}
         onOpenProblemSet={(setId) => navigate({ name: 'problemSetDetail', setId })}
         onDeleteProblemSet={handleDeleteProblemSet}
       />
@@ -840,7 +1065,12 @@ export default function App() {
         data={data}
         setId={screen.setId}
         onBack={() => goBackTo({ name: 'folder', folderId: problemSet?.folderId ?? '' })}
-        onOpenImport={(folderId) => navigate({ name: 'import', folderId, backScreen: { name: 'problemSetDetail', setId: screen.setId } })}
+        onEdit={() => navigate({
+          name: 'createProblemSet',
+          folderId: problemSet?.folderId,
+          editSetId: screen.setId,
+          backScreen: { name: 'problemSetDetail', setId: screen.setId },
+        })}
         onOpenProblemList={() => navigate({ name: 'problemList', setId: screen.setId })}
         onOpenNoteList={() => navigate({ name: 'noteList', setId: screen.setId })}
         onShare={() => navigate({ name: 'community', tab: 'mine', shareSetId: screen.setId })}
@@ -894,35 +1124,40 @@ export default function App() {
   } else if (screen.name === 'quiz') {
     const problemSet = data.problemSets.find((set) => set.id === screen.setId);
     content = (
-      <QuizScreen
-        key={`${screen.setId}_${screen.mode}`}
-        data={data}
-        setId={screen.setId}
-        mode={screen.mode}
-        onBack={() => goBackTo({ name: 'folder', folderId: problemSet?.folderId ?? '' })}
-        onAnswer={handleAnswer}
-        onToggleAmbiguous={handleToggleAmbiguous}
-        onSaveDetailedExplanation={handleSaveDetailedExplanation}
-        onFinish={handleFinish}
-      />
+      <Suspense fallback={<div className="quiz-app-loading">演習画面を読み込み中...</div>}>
+        <QuizScreen
+          key={`${screen.setId}_${screen.mode}`}
+          data={data}
+          setId={screen.setId}
+          mode={screen.mode}
+          onBack={() => goBackTo({ name: 'folder', folderId: problemSet?.folderId ?? '' })}
+          onAnswer={handleAnswer}
+          onToggleAmbiguous={handleToggleAmbiguous}
+          onSaveDetailedExplanation={handleSaveDetailedExplanation}
+          onFinish={handleFinish}
+        />
+      </Suspense>
     );
   } else if (screen.name === 'quizSession') {
     content = (
-      <QuizRunner
-        key={`${screen.session.setId ?? 'session'}_${screen.session.mode}_${screen.session.initialIndex ?? 0}_${screen.session.questions.map((question) => question.id).join('_')}`}
-        data={data}
-        title={screen.session.title}
-        subtitle={screen.session.subtitle}
-        questions={screen.session.questions}
-        mode={screen.session.mode}
-        setId={screen.session.setId}
-        initialIndex={screen.session.initialIndex}
-        onBack={() => goBackTo(screen.session.backScreen)}
-        onAnswer={screen.session.isPreview ? handlePreviewAnswer : handleAnswer}
-        onToggleAmbiguous={screen.session.isPreview ? async () => true : handleToggleAmbiguous}
-        onSaveDetailedExplanation={screen.session.isPreview ? async () => undefined : handleSaveDetailedExplanation}
-        onFinish={handleFinish}
-      />
+      <Suspense fallback={<div className="quiz-app-loading">演習画面を読み込み中...</div>}>
+        <QuizRunner
+          key={`${screen.session.setId ?? 'session'}_${screen.session.mode}_${screen.session.initialIndex ?? 0}_${screen.session.questions.map((question) => question.id).join('_')}`}
+          data={data}
+          title={screen.session.title}
+          subtitle={screen.session.subtitle}
+          questions={screen.session.questions}
+          mode={screen.session.mode}
+          setId={screen.session.setId}
+          initialIndex={screen.session.initialIndex}
+          readOnly={screen.session.isPreview === true}
+          onBack={() => goBackTo(screen.session.backScreen)}
+          onAnswer={screen.session.isPreview ? handlePreviewAnswer : handleAnswer}
+          onToggleAmbiguous={screen.session.isPreview ? async () => true : handleToggleAmbiguous}
+          onSaveDetailedExplanation={screen.session.isPreview ? async () => undefined : handleSaveDetailedExplanation}
+          onFinish={handleFinish}
+        />
+      </Suspense>
     );
   } else if (screen.name === 'result') {
     content = (
@@ -978,11 +1213,13 @@ export default function App() {
       />
       <ConfirmDialog
         open={pendingExitTarget !== null}
-        title="演習を終了しますか？"
-        message={'途中の演習を終了して前の画面へ戻ります。\n詳細解説に未保存の入力がある場合、その入力も破棄されます。'}
-        confirmLabel="終了する"
-        onCancel={cancelExitSession}
-        onConfirm={confirmExitSession}
+        title={pendingExitReason === 'create' ? '作成途中の内容を破棄しますか？' : '演習を終了しますか？'}
+        message={pendingExitReason === 'create'
+          ? '入力した問題や貼り付け内容はまだ保存されていません。この画面を離れると破棄されます。'
+          : '途中の演習を終了して前の画面へ戻ります。\n詳細解説に未保存の入力がある場合、その入力も破棄されます。'}
+        confirmLabel={pendingExitReason === 'create' ? '破棄して移動' : '終了する'}
+        onCancel={cancelProtectedExit}
+        onConfirm={confirmProtectedExit}
       />
       {(backupImportError || storageError || waitingWorker) ? (
         <div className="quiz-toast-stack">
@@ -1026,6 +1263,12 @@ function isQuizInProgressScreen(screen: AppScreen) {
   return screen.name === 'quiz' || screen.name === 'quizSession';
 }
 
+function getProtectedExitReason(screen: AppScreen, createDraftDirty: boolean): 'quiz' | 'create' | null {
+  if (isQuizInProgressScreen(screen)) return 'quiz';
+  if (screen.name === 'createProblemSet' && createDraftDirty) return 'create';
+  return null;
+}
+
 function getPrimaryNavItem(screen: AppScreen): PrimaryNavItem | null {
   if (screen.name === 'home') return 'home';
   if (screen.name === 'settings') return 'settings';
@@ -1034,14 +1277,15 @@ function getPrimaryNavItem(screen: AppScreen): PrimaryNavItem | null {
     if (screen.tab === 'groups') return 'groups';
     if (screen.tab === 'discover') return 'discover';
   }
+
   return null;
 }
 
-function makeUniqueProblemSetTitle(data: AppData, folderId: string, rawTitle: string) {
+function makeUniqueProblemSetTitle(data: AppData, folderId: string, rawTitle: string, excludeSetId?: string) {
   const baseTitle = rawTitle.trim() || '無題の問題セット';
   const existingTitles = new Set(
     data.problemSets
-      .filter((set) => set.folderId === folderId)
+      .filter((set) => set.folderId === folderId && set.id !== excludeSetId)
       .map((set) => set.title.trim()),
   );
 
@@ -1054,5 +1298,12 @@ function makeUniqueProblemSetTitle(data: AppData, folderId: string, rawTitle: st
     nextTitle = `${baseTitle} (${count})`;
   }
   return nextTitle;
+}
+
+function hasQuestionLearningContentChanged(previous: Question, next: Question): boolean {
+  return previous.question.trim() !== next.question.trim()
+    || JSON.stringify(previous.choices) !== JSON.stringify(next.choices)
+    || JSON.stringify([...getAnswerIndexes(previous)].sort((left, right) => left - right))
+      !== JSON.stringify([...getAnswerIndexes(next)].sort((left, right) => left - right));
 }
 

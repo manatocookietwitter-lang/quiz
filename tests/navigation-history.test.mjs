@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { getBackNavigationSteps } from '../src/utils/navigation.ts';
+import { getBackNavigationSteps, getCreateProblemSetBackScreen } from '../src/utils/navigation.ts';
 
 test('jumping home unwinds every pushed screen instead of leaving dead history entries', () => {
   const stack = [
@@ -37,5 +37,28 @@ test('unknown back targets use a single browser-history step', () => {
   assert.equal(
     getBackNavigationSteps([{ name: 'home' }, { name: 'sync' }], { name: 'folder', folderId: 'missing' }),
     1,
+  );
+});
+
+test('problem-set creation returns to the screen that opened it', () => {
+  assert.deepEqual(
+    getCreateProblemSetBackScreen({
+      name: 'createProblemSet',
+      folderId: 'folder-1',
+      backScreen: { name: 'settings' },
+    }),
+    { name: 'settings' },
+  );
+  assert.deepEqual(
+    getCreateProblemSetBackScreen({ name: 'createProblemSet', folderId: 'folder-1' }),
+    { name: 'folder', folderId: 'folder-1' },
+  );
+  assert.deepEqual(
+    getCreateProblemSetBackScreen({ name: 'createProblemSet', editSetId: 'set-1' }),
+    { name: 'problemSetDetail', setId: 'set-1' },
+  );
+  assert.deepEqual(
+    getCreateProblemSetBackScreen({ name: 'createProblemSet' }),
+    null,
   );
 });

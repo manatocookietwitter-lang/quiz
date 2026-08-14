@@ -5,7 +5,6 @@
   "start_url": "/quiz/",
   "scope": "/quiz/",
   "display": "standalone",
-  "orientation": "portrait",
   "theme_color": "#f1f7fa",
   "background_color": "#ffffff",
   "icons": [

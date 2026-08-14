@@ -152,7 +152,7 @@ export type AppScreen =
   | { name: 'community'; tab?: 'mine' | 'groups' | 'discover'; shareSetId?: string; shareToken?: string }
   | { name: 'sync' }
   | { name: 'privacy' }
-  | { name: 'createProblemSet' }
+  | { name: 'createProblemSet'; folderId?: string; editSetId?: string; backScreen?: AppScreen }
   | { name: 'folder'; folderId: string }
   | { name: 'problemSetDetail'; setId: string }
   | { name: 'problemList'; setId: string; sortMode?: ProblemSortMode }

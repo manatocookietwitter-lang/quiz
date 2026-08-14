@@ -1,5 +1,17 @@
 import assert from 'node:assert/strict';
+import { registerHooks } from 'node:module';
 import test from 'node:test';
+
+const extensionHook = registerHooks({
+  resolve(specifier, context, nextResolve) {
+    const extensionlessRelativeImport = /^\.\.?\//u.test(specifier)
+      && !/\.[cm]?[jt]sx?$/u.test(specifier)
+      && context.parentURL?.endsWith('.ts');
+    return nextResolve(extensionlessRelativeImport ? `${specifier}.ts` : specifier, context);
+  },
+});
+
+process.on('exit', () => extensionHook.deregister());
 
 class MemoryStorage {
   #values = new Map();
@@ -95,4 +107,255 @@ test('note reconciliation keeps the newest valid fallback value', () => {
   const newer = JSON.stringify({ dataUrl: 'new', updatedAt: '2026-07-29T00:00:02.000Z' });
 
   assert.equal(notes.pickNewestNoteRaw([older, null, newer]), newer);
+});
+
+test('problem-set note matching requires an exact id boundary', () => {
+  assert.equal(notes.isCategoryNoteKeyForProblemSetIds('quizMake:notes:set-1:vocabulary', ['set-1']), true);
+  assert.equal(notes.isCategoryNoteKeyForProblemSetIds('quizMake:notes:set-10:vocabulary', ['set-1']), false);
+  assert.equal(notes.isCategoryNoteKeyForProblemSetIds('quizMake:notes:set-1:vocabulary', []), false);
+  assert.equal(notes.isCategoryNoteKeyForProblemSetIds('quizMake:other:set-1:vocabulary', ['set-1']), false);
+});
+
+test('problem-set note deletion removes only matching local fallback notes', async () => {
+  delete globalThis.indexedDB;
+  localStorage.clear();
+  localStorage.setItem('quizMake:notes:set-1:vocabulary', 'first');
+  localStorage.setItem('quizMake:notes:set-1:grammar', 'second');
+  localStorage.setItem('quizMake:notes:set-10:vocabulary', 'keep-prefix-neighbor');
+  localStorage.setItem('quizMake:notes:set-2:vocabulary', 'keep-other-set');
+  localStorage.setItem('quizMake:settings', 'keep-unrelated');
+
+  assert.equal(await notes.deleteCategoryNotesForProblemSetIds(['set-1']), 2);
+  assert.equal(localStorage.getItem('quizMake:notes:set-1:vocabulary'), null);
+  assert.equal(localStorage.getItem('quizMake:notes:set-1:grammar'), null);
+  assert.equal(localStorage.getItem('quizMake:notes:set-10:vocabulary'), 'keep-prefix-neighbor');
+  assert.equal(localStorage.getItem('quizMake:notes:set-2:vocabulary'), 'keep-other-set');
+  assert.equal(localStorage.getItem('quizMake:settings'), 'keep-unrelated');
+});
+
+test('all-note deletion preserves non-note local storage entries', async () => {
+  delete globalThis.indexedDB;
+  localStorage.clear();
+  localStorage.setItem('quizMake:notes:set-1:vocabulary', 'first');
+  localStorage.setItem('quizMake:notes:set-2:grammar', 'second');
+  localStorage.setItem('quizMake:settings', 'keep-unrelated');
+
+  assert.equal(await notes.deleteAllCategoryNotes(), 2);
+  assert.equal(localStorage.getItem('quizMake:notes:set-1:vocabulary'), null);
+  assert.equal(localStorage.getItem('quizMake:notes:set-2:grammar'), null);
+  assert.equal(localStorage.getItem('quizMake:settings'), 'keep-unrelated');
+});
+
+test('replacing IndexedDB notes clears current and backup stores atomically', async () => {
+  localStorage.clear();
+  const calls = [];
+  const fakeDb = {
+    objectStoreNames: { contains: () => true },
+    transaction(storeNames, mode) {
+      calls.push(['transaction', [...storeNames], mode]);
+      const transaction = {
+        oncomplete: null,
+        onerror: null,
+        onabort: null,
+        objectStore(storeName) {
+          return {
+            clear() {
+              calls.push(['clear', storeName]);
+            },
+            put() {},
+          };
+        },
+      };
+      queueMicrotask(() => transaction.oncomplete?.());
+      return transaction;
+    },
+  };
+  globalThis.indexedDB = {
+    open() {
+      const request = { result: fakeDb, onupgradeneeded: null, onsuccess: null, onerror: null, onblocked: null };
+      queueMicrotask(() => request.onsuccess?.());
+      return request;
+    },
+  };
+
+  try {
+    assert.equal(await notes.replaceCategoryNotesRaw({}), 0);
+    assert.deepEqual(calls, [
+      ['transaction', ['categoryNotes', 'categoryNoteBackups'], 'readwrite'],
+      ['clear', 'categoryNotes'],
+      ['clear', 'categoryNoteBackups'],
+    ]);
+  } finally {
+    delete globalThis.indexedDB;
+  }
+});
+
+test('failed local note deletion restores entries removed earlier in the operation', async () => {
+  delete globalThis.indexedDB;
+  const failingStorage = new class extends MemoryStorage {
+    removeItem(key) {
+      if (String(key) === 'quizMake:notes:set-1:second') throw new Error('storage is unavailable');
+      super.removeItem(key);
+    }
+  }();
+  globalThis.localStorage = failingStorage;
+  failingStorage.setItem('quizMake:notes:set-1:first', 'first');
+  failingStorage.setItem('quizMake:notes:set-1:second', 'second');
+
+  try {
+    await assert.rejects(
+      notes.deleteCategoryNotesForProblemSetIds(['set-1']),
+      /Failed to delete local category notes/,
+    );
+    assert.equal(failingStorage.getItem('quizMake:notes:set-1:first'), 'first');
+    assert.equal(failingStorage.getItem('quizMake:notes:set-1:second'), 'second');
+  } finally {
+    globalThis.localStorage = new MemoryStorage();
+  }
+});
+
+function createLegacyQuestionData(overrides = {}) {
+  return {
+    version: 1,
+    folders: [{ id: 'folder-1', name: '英語', createdAt: 'invalid', updatedAt: '2026-08-15' }],
+    problemSets: [{
+      id: 'set-1',
+      folderId: 'folder-1',
+      title: '単語',
+      source: '',
+      creationMethod: 'ai',
+      createdAt: '2026-08-15T00:00:00.000Z',
+      updatedAt: 'invalid',
+    }],
+    questions: [{
+      id: 'question-1',
+      setId: 'set-1',
+      question: 'meaning?',
+      choices: ['a', 'b', 'c', 'd'],
+      answerIndex: 3,
+      answerIndexes: [3, 1, 3],
+      explanation: '',
+      createdAt: 'invalid',
+      updatedAt: 'invalid',
+    }],
+    ...overrides,
+  };
+}
+
+test('version 1 legacy data is normalized without rejecting missing derived state', () => {
+  const result = storage.parseBackupJson(JSON.stringify(createLegacyQuestionData()));
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+
+  assert.equal(result.data.problemSets[0].creationMethod, 'chatgpt');
+  assert.equal(result.data.problemSets[0].updatedAt, '2026-08-15T00:00:00.000Z');
+  assert.equal(result.data.folders[0].createdAt, '2026-08-15T00:00:00.000Z');
+  assert.deepEqual(result.data.questions[0].answerIndexes, [1, 3]);
+  assert.equal(result.data.questions[0].answerIndex, 1);
+  assert.equal(result.data.questions[0].answerText, 'b / d');
+  assert.equal(result.data.questions[0].difficulty, 'standard');
+  assert.deepEqual(result.data.progress, [{
+    questionId: 'question-1',
+    answeredCount: 0,
+    correctCount: 0,
+    wrongCount: 0,
+    lastSelectedIndex: null,
+    lastAnswerCorrect: null,
+    lastAnsweredAt: null,
+    isReview: false,
+    isAmbiguous: false,
+    reviewLevel: null,
+    isGraduated: false,
+  }]);
+  assert.deepEqual(result.data.answerLogs, []);
+});
+
+test('derived progress and logs are repaired without changing content relationships', () => {
+  const result = storage.parseBackupJson(JSON.stringify(createLegacyQuestionData({
+    progress: [
+      { questionId: 'missing-question', answeredCount: 10 },
+      {
+        questionId: 'question-1',
+        answeredCount: 1,
+        correctCount: 2,
+        wrongCount: 1,
+        lastSelectedIndex: 99,
+        lastAnsweredAt: '2026-08-15',
+        isReview: true,
+        isAmbiguous: false,
+        reviewLevel: 9,
+        isGraduated: false,
+      },
+    ],
+    answerLogs: [
+      {
+        id: 'log-1',
+        questionId: 'question-1',
+        setId: 'wrong-set',
+        folderId: 'wrong-folder',
+        selectedIndex: 3,
+        isCorrect: true,
+        answeredAt: '2026-08-15',
+      },
+      { id: 'orphan', questionId: 'missing-question', answeredAt: '2026-08-15' },
+    ],
+  })));
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+
+  assert.equal(result.data.progress.length, 1);
+  assert.equal(result.data.progress[0].answeredCount, 3);
+  assert.equal(result.data.progress[0].lastSelectedIndex, null);
+  assert.equal(result.data.progress[0].reviewLevel, null);
+  assert.deepEqual(result.data.answerLogs, [{
+    id: 'log-1',
+    questionId: 'question-1',
+    setId: 'set-1',
+    folderId: 'folder-1',
+    selectedIndex: 3,
+    selectedIndexes: [3],
+    isCorrect: true,
+    answeredAt: '2026-08-15T00:00:00.000Z',
+  }]);
+});
+
+test('ambiguous content corruption is rejected instead of silently reconnecting records', () => {
+  const duplicateFolder = createLegacyQuestionData();
+  duplicateFolder.folders.push({ ...duplicateFolder.folders[0] });
+  const duplicateResult = storage.parseBackupJson(JSON.stringify(duplicateFolder));
+  assert.equal(duplicateResult.ok, false);
+  if (!duplicateResult.ok) assert.match(duplicateResult.error, /重複ID/);
+
+  const brokenForeignKey = createLegacyQuestionData();
+  brokenForeignKey.questions[0].setId = 'missing-set';
+  const foreignKeyResult = storage.parseBackupJson(JSON.stringify(brokenForeignKey));
+  assert.equal(foreignKeyResult.ok, false);
+  if (!foreignKeyResult.ok) assert.match(foreignKeyResult.error, /存在しない問題セット/);
+
+  const invalidAnswer = createLegacyQuestionData();
+  invalidAnswer.questions[0].answerIndexes = [4];
+  const answerResult = storage.parseBackupJson(JSON.stringify(invalidAnswer));
+  assert.equal(answerResult.ok, false);
+  if (!answerResult.ok) assert.match(answerResult.error, /範囲外/);
+
+  const duplicateLog = createLegacyQuestionData({
+    answerLogs: [
+      { id: 'log-1', questionId: 'question-1', selectedIndex: 1, isCorrect: true, answeredAt: '2026-08-15' },
+      { id: 'log-1', questionId: 'question-1', selectedIndex: 3, isCorrect: false, answeredAt: '2026-08-15' },
+    ],
+  });
+  const duplicateLogResult = storage.parseBackupJson(JSON.stringify(duplicateLog));
+  assert.equal(duplicateLogResult.ok, false);
+  if (!duplicateLogResult.ok) assert.match(duplicateLogResult.error, /answerLogs.*重複ID/);
+});
+
+test('corrupted stored payload throws and is not replaced with empty data', async () => {
+  delete globalThis.indexedDB;
+  localStorage.clear();
+  const corruptedRaw = '{"version":1,"folders":[';
+  localStorage.setItem(storage.APP_DATA_STORAGE_KEY, corruptedRaw);
+
+  await assert.rejects(storage.loadAppDataAsync(), /空のデータで上書き/);
+  assert.equal(localStorage.getItem(storage.APP_DATA_STORAGE_KEY), corruptedRaw);
+  await assert.rejects(storage.exportAppDataRaw(), /空のバックアップ/);
 });

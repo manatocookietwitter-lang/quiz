@@ -1,6 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { getDraftIssues, parseBulkQuestionText, parseQuestionCsv } from '../src/utils/bulkQuestionParser.ts';
+import {
+  getDraftAnswerIndexes,
+  getDraftIssues,
+  parseBulkQuestionText,
+  parseQuestionCsv,
+} from '../src/utils/bulkQuestionParser.ts';
+import {
+  getImportFileSelectionError,
+  IMPORT_RESOURCE_LIMITS,
+  validateImportJson,
+} from '../src/utils/importValidator.ts';
 
 test('plain text parser reads multiple questions without guessing missing answers', () => {
   const result = parseBulkQuestionText(`
@@ -57,10 +67,214 @@ test('draft validation accepts only four or five non-empty choices and an explic
   assert.ok(getDraftIssues({ question: '問題', choices: ['1', '2', ''], answerIndex: null }).length >= 2);
 });
 
+function createValidImportQuestion(overrides = {}) {
+  return {
+    question: '問題文',
+    choices: ['選択肢1', '選択肢2', '選択肢3', '選択肢4'],
+    answerIndex: 0,
+    explanation: '解説',
+    ...overrides,
+  };
+}
+
+test('JSON import resource limits keep normal explanations and markdown tables compatible', () => {
+  const result = validateImportJson(JSON.stringify({
+    setTitle: '通常の問題セット',
+    source: '講義資料',
+    questions: [createValidImportQuestion({
+      detailedExplanation: '| 項目 | 内容 |\n| --- | --- |\n| A | 詳細解説 |',
+    })],
+  }));
+  assert.equal(result.ok, true);
+});
+
+test('JSON import rejects excessive question counts and oversized major strings', () => {
+  const tooManyQuestions = validateImportJson(JSON.stringify({
+    questions: Array.from({ length: IMPORT_RESOURCE_LIMITS.maxQuestions + 1 }, () => ({})),
+  }));
+  assert.equal(tooManyQuestions.ok, false);
+  if (!tooManyQuestions.ok) assert.match(tooManyQuestions.errors.join(' '), /2,000問以下/);
+
+  const oversizedQuestion = validateImportJson(JSON.stringify({
+    questions: [createValidImportQuestion({
+      question: '問'.repeat(IMPORT_RESOURCE_LIMITS.question + 1),
+      choices: ['選択肢1', '選択肢2', '選択肢3', '選択肢4'],
+    })],
+  }));
+  assert.equal(oversizedQuestion.ok, false);
+  if (!oversizedQuestion.ok) assert.match(oversizedQuestion.errors.join(' '), /question は20,000文字以下/);
+
+  const oversizedChoice = validateImportJson(JSON.stringify({
+    questions: [createValidImportQuestion({
+      choices: ['選'.repeat(IMPORT_RESOURCE_LIMITS.choice + 1), '2', '3', '4'],
+    })],
+  }));
+  assert.equal(oversizedChoice.ok, false);
+  if (!oversizedChoice.ok) assert.match(oversizedChoice.errors.join(' '), /choices\[0\] は10,000文字以下/);
+
+  const oversizedDetailedExplanation = validateImportJson(JSON.stringify({
+    questions: [createValidImportQuestion({
+      detailedExplanation: '詳'.repeat(IMPORT_RESOURCE_LIMITS.detailedExplanation + 1),
+    })],
+  }));
+  assert.equal(oversizedDetailedExplanation.ok, false);
+  if (!oversizedDetailedExplanation.ok) {
+    assert.match(oversizedDetailedExplanation.errors.join(' '), /detailedExplanation は250,000文字以下/);
+  }
+});
+
+test('JSON import rejects raw payloads before parsing when they exceed the text budget', () => {
+  const result = validateImportJson(' '.repeat(IMPORT_RESOURCE_LIMITS.maxJsonCharacters + 1));
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.match(result.errors.join(' '), /JSONが大きすぎます/);
+});
+
+test('file selection limits account for existing files and replacement duplicates', () => {
+  const mib = 1024 * 1024;
+  assert.match(
+    getImportFileSelectionError([], [{ id: 'large', name: 'large.json', size: 8 * mib + 1 }]),
+    /1ファイルの上限/,
+  );
+  assert.match(
+    getImportFileSelectionError(
+      Array.from({ length: IMPORT_RESOURCE_LIMITS.maxFiles }, (_, index) => ({ id: `old-${index}`, name: `${index}.json`, size: 1 })),
+      [{ id: 'new', name: 'new.json', size: 1 }],
+    ),
+    /20件まで/,
+  );
+  assert.match(
+    getImportFileSelectionError(
+      [{ id: 'one', name: 'one.json', size: 8 * mib }],
+      [
+        { id: 'two', name: 'two.json', size: 8 * mib },
+        { id: 'three', name: 'three.json', size: 8 * mib },
+        { id: 'four', name: 'four.json', size: 1 },
+      ],
+    ),
+    /合計は24MB以下/,
+  );
+  assert.equal(
+    getImportFileSelectionError(
+      [{ id: 'same', name: 'old.json', size: 8 * mib }],
+      [{ id: 'same', name: 'replacement.json', size: 1 }],
+    ),
+    null,
+  );
+});
+
 test('CSV import stays in the reviewed creation path', () => {
   const result = parseQuestionCsv('問題文,選択肢1,選択肢2,選択肢3,選択肢4,正解,解説,分類\n"2, 3, 5の次は?",7,8,9,10,7,素数の並び,数学');
   assert.equal(result.questions.length, 1);
   assert.equal(result.questions[0].question, '2, 3, 5の次は?');
   assert.equal(result.questions[0].answerIndex, 0);
   assert.equal(result.validCount, 1);
+});
+
+test('plain text import keeps multiple label answers sorted and preserves the primary answer', () => {
+  const result = parseBulkQuestionText(`
+Q1 Select both even numbers.
+A. one
+B. two
+C. three
+D. four
+Answer: D、B
+Explanation: Two and four are even.
+`);
+
+  assert.equal(result.validCount, 1);
+  assert.equal(result.needsReviewCount, 0);
+  assert.equal(result.questions[0].answerIndex, 1);
+  assert.deepEqual(result.questions[0].answerIndexes, [1, 3]);
+  assert.deepEqual(getDraftAnswerIndexes(result.questions[0]), [1, 3]);
+});
+
+test('plain text import accepts multiple exact choice texts', () => {
+  const result = parseBulkQuestionText(`
+Q1 Select the warm colors.
+A. red
+B. blue
+C. orange
+D. green
+Answer: red / orange
+`);
+
+  assert.equal(result.validCount, 1);
+  assert.equal(result.questions[0].answerIndex, 0);
+  assert.deepEqual(result.questions[0].answerIndexes, [0, 2]);
+});
+
+test('CSV import reads a quoted multiple-answer field and quoted commas', () => {
+  const result = parseQuestionCsv([
+    'question,choice1,choice2,choice3,choice4,answer,explanation',
+    '"Select the vowels, in this row",A,B,E,G,"A, C","A and E are vowels, here."',
+  ].join('\n'));
+
+  assert.equal(result.validCount, 1);
+  assert.equal(result.needsReviewCount, 0);
+  assert.equal(result.questions[0].question, 'Select the vowels, in this row');
+  assert.equal(result.questions[0].explanation, 'A and E are vowels, here.');
+  assert.equal(result.questions[0].answerIndex, 0);
+  assert.deepEqual(result.questions[0].answerIndexes, [0, 2]);
+});
+
+test('CSV import supports multiple answers across all five choices', () => {
+  const result = parseQuestionCsv([
+    'question,choice1,choice2,choice3,choice4,choice5,answer',
+    'Select two positions,first,second,third,fourth,fifth,"B, E"',
+  ].join('\n'));
+
+  assert.equal(result.validCount, 1);
+  assert.equal(result.questions[0].choices.length, 5);
+  assert.deepEqual(result.questions[0].answerIndexes, [1, 4]);
+});
+
+test('draft validation rejects a multiple-answer index outside the choice range', () => {
+  const draft = {
+    question: 'Select valid positions.',
+    choices: ['first', 'second', 'third', 'fourth'],
+    answerIndex: 0,
+    answerIndexes: [0, 4],
+  };
+
+  assert.deepEqual(getDraftAnswerIndexes(draft), [0]);
+  assert.ok(getDraftIssues(draft).length > 0);
+});
+
+test('plain text import does not silently discard an out-of-range answer label', () => {
+  const result = parseBulkQuestionText(`
+Q1 Select the first choice.
+A. first
+B. second
+C. third
+D. fourth
+Answer: A, E
+`);
+
+  assert.equal(result.validCount, 0);
+  assert.equal(result.needsReviewCount, 1);
+  assert.ok(result.questions[0].issues.some((issue) => issue.includes('範囲外')));
+});
+
+test('CSV import reports an unclosed quoted field', () => {
+  const result = parseQuestionCsv([
+    'question,choice1,choice2,choice3,choice4,answer',
+    '"This quote never closes,first,second,third,fourth,A',
+  ].join('\n'));
+
+  assert.equal(result.validCount, 0);
+  assert.ok(result.errors?.some((error) => error.includes('閉じられていません')));
+});
+
+test('answer labels take precedence when choice text itself is a label', () => {
+  const result = parseBulkQuestionText(`
+Q1 Which position is labelled A?
+A. B
+B. A
+C. C
+D. D
+Answer: A
+`);
+
+  assert.equal(result.validCount, 1);
+  assert.equal(result.questions[0].answerIndex, 0);
 });

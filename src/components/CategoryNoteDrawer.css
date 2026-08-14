@@ -3,7 +3,7 @@
   display: none;
 }
 
-@media (min-width: 900px) and (orientation: landscape) {
+@media (min-width: 768px) and (orientation: landscape) {
   :root {
     --tablet-note-width: min(56vw, 760px);
   }
@@ -22,8 +22,8 @@
     height: 100%;
     display: flex;
     flex-direction: column;
-    background: #151515;
-    color: #ffffff;
+    background: #ffffff;
+    color: #173042;
   }
 
   .category-note-tab {
@@ -39,7 +39,7 @@
     place-items: center;
     border: none;
     border-radius: 16px 0 0 16px;
-    background: #12bfc0;
+    background: #1769ff;
     color: #ffffff;
     font: inherit;
     font-size: 15px;
@@ -59,11 +59,11 @@
     max-width: 760px;
     display: flex;
     flex-direction: column;
-    background: #151515;
-    color: #ffffff;
+    background: #ffffff;
+    color: #173042;
     transform: translateX(100%);
     transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
-    box-shadow: -12px 0 32px rgba(0, 0, 0, 0.36);
+    box-shadow: -12px 0 32px rgba(42, 77, 96, 0.18);
   }
 
   .category-note-drawer--open {
@@ -91,7 +91,7 @@
     justify-content: space-between;
     gap: 12px;
     padding: 8px 12px 7px;
-    border-bottom: 1px solid #2a2a2a;
+    border-bottom: 1px solid #d6e4ea;
   }
 
   .category-note-drawer__header p,
@@ -100,7 +100,7 @@
   }
 
   .category-note-drawer__header p {
-    color: #a3a3a3;
+    color: #607586;
     font-size: 12px;
     font-weight: 800;
   }
@@ -108,7 +108,7 @@
   .category-note-drawer__header h2 {
     max-width: 360px;
     overflow: hidden;
-    color: #ffffff;
+    color: #173042;
     font-size: 19px;
     font-weight: 900;
     text-overflow: ellipsis;
@@ -129,7 +129,7 @@
 
   .category-note-drawer__title-row span {
     flex: 0 0 auto;
-    color: #cfcfcf;
+    color: #607586;
     font-size: 12px;
     font-weight: 900;
     white-space: nowrap;
@@ -143,32 +143,32 @@
     font-size: 10px !important;
     font-weight: 900 !important;
     line-height: 1;
-    color: #bdbdbd !important;
-    background: rgba(255, 255, 255, 0.08);
+    color: #607586 !important;
+    background: #edf3f6;
   }
 
   .category-note-save-state--saving {
-    color: #12bfc0 !important;
-    background: rgba(18, 191, 192, 0.14);
+    color: #244fbd !important;
+    background: #eef4ff;
   }
 
   .category-note-save-state--saved {
-    color: #bbf7d0 !important;
-    background: rgba(34, 197, 94, 0.14);
+    color: #166534 !important;
+    background: #dcfce7;
   }
 
   .category-note-save-state--error {
-    color: #fecaca !important;
-    background: rgba(239, 68, 68, 0.18);
+    color: #b42318 !important;
+    background: #fee2e2;
   }
   .category-note-drawer__header button {
     appearance: none;
     min-width: 66px;
     min-height: 38px;
-    border: 1px solid #3a3a3a;
+    border: 1px solid #d6e4ea;
     border-radius: 11px;
-    background: #252525;
-    color: #ffffff;
+    background: #f7fafc;
+    color: #173042;
     font: inherit;
     font-size: 12px;
     font-weight: 800;
@@ -215,8 +215,8 @@
     justify-content: space-between;
     gap: 8px;
     padding: 10px 12px max(10px, var(--safe-bottom, 0px));
-    background: #1d1d1d;
-    border-top: 1px solid #2a2a2a;
+    background: #ffffff;
+    border-top: 1px solid #d6e4ea;
   }
 
   .category-note-tool-group {
@@ -227,7 +227,7 @@
   }
 
   .category-note-tool-group span {
-    color: #cfcfcf;
+    color: #607586;
     font-size: 12px;
     font-weight: 800;
   }
@@ -236,18 +236,18 @@
     appearance: none;
     min-width: 38px;
     min-height: 38px;
-    border: 1px solid #3a3a3a;
+    border: 1px solid #d6e4ea;
     border-radius: 11px;
-    background: #252525;
-    color: #ffffff;
+    background: #f7fafc;
+    color: #173042;
     font: inherit;
     font-size: 12px;
     font-weight: 900;
   }
 
   .category-note-tool-group button.is-active {
-    border-color: #12bfc0;
-    box-shadow: 0 0 0 2px rgba(18, 191, 192, 0.22);
+    border-color: #1769ff;
+    box-shadow: 0 0 0 2px rgba(23, 105, 255, 0.22);
   }
 
   .category-note-svg-icon {
@@ -279,7 +279,7 @@
   }
 }
 
-@media (min-width: 900px) and (orientation: landscape) {
+@media (min-width: 768px) and (orientation: landscape) {
   .category-note-drawer__title-block {
     min-width: 0;
     flex: 1 1 auto;
@@ -301,9 +301,9 @@
   }
 
   .category-note-drawer__danger-button {
-    color: #fecdd3 !important;
-    border-color: rgba(244, 63, 94, 0.45) !important;
-    background: rgba(244, 63, 94, 0.13) !important;
+    color: #b42318 !important;
+    border-color: #fecdd3 !important;
+    background: #fff0f3 !important;
   }
 
   .category-note-drawer__header button:disabled {
@@ -322,7 +322,7 @@
 
 }
 
-@media (min-width: 900px) and (orientation: landscape) {
+@media (min-width: 768px) and (orientation: landscape) {
   .category-note-drawer__header-actions {
     gap: 8px;
   }
@@ -337,7 +337,7 @@
   }
 }
 
-@media (min-width: 900px) and (orientation: landscape) {
+@media (min-width: 768px) and (orientation: landscape) {
   .category-note-page-viewport {
     width: 100%;
     height: 100%;

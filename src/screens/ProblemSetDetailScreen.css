@@ -77,6 +77,17 @@
   line-height: 1;
 }
 
+.quiz-detail__header-edit {
+  min-width: 48px;
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
 .quiz-detail__summary {
   flex: 0 0 auto;
   margin: 12px 12px 10px;

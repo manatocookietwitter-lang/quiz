@@ -29,11 +29,16 @@ test('shared layout scrolls long screens and create actions stay above the prima
   assert.match(createCss, /bottom:\s*calc\(var\(--primary-nav-height\)/);
 });
 
-test('primary headers share one height and create root relies on the global home navigation', () => {
+test('primary headers share one height and create returns to its launch context', () => {
   assert.match(globalCss, /\.quiz-home__header \{[\s\S]*?height:\s*calc\(72px \+ var\(--safe-top\)\)/);
   assert.match(createCss, /min-height:\s*calc\(72px \+ var\(--safe-top\)\)/);
-  assert.match(createSource, /view === 'methods' \? null : <BackButton/);
-  assert.doesNotMatch(createSource, /label=\{view === 'methods' \? 'ホームへ戻る'/);
+  assert.match(globalCss, /--app-header-height:\s*72px/);
+  assert.match(globalCss, /\.quiz-runner \.quiz-runner__header/);
+  assert.match(createSource, /onBack \? <BackButton onClick=\{onBack\} label="前の画面へ戻る" \/> : null/);
+  assert.match(appSource, /backScreen:\s*\{ name: 'folder', folderId \}/);
+  assert.match(appSource, /backScreen:\s*\{ name: 'problemSetDetail', setId: screen\.setId \}/);
+  assert.match(appSource, /onBack=\{createBackScreen \? \(\) => goBackTo\(createBackScreen\) : undefined\}/);
+  assert.match(typesSource, /name: 'createProblemSet';[^{\n]*backScreen\?: AppScreen/);
 });
 
 test('review starts only from its problem set and the global review route is gone', () => {

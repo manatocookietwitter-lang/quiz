@@ -29,6 +29,7 @@ export interface CloudQuestion {
 
 export interface CloudProblemSet {
   id: string;
+  localSetId: string;
   ownerId: string;
   authorName: string;
   title: string;
@@ -191,7 +192,7 @@ export async function listMyPublishedSets(): Promise<CloudProblemSet[]> {
   if (!userData.user) return [];
   const { data, error } = await client
     .from('shared_problem_sets')
-    .select('id,owner_id,author_name,title,description,subject,audience,difficulty,creation_method,source,visibility,question_count,add_count,published_at,updated_at')
+    .select('id,local_set_id,owner_id,author_name,title,description,subject,audience,difficulty,creation_method,source,visibility,question_count,add_count,published_at,updated_at')
     .eq('owner_id', userData.user.id)
     .order('updated_at', { ascending: false });
   if (error) throw new Error(toFriendlyCloudError(error.message));
@@ -200,8 +201,9 @@ export async function listMyPublishedSets(): Promise<CloudProblemSet[]> {
 
 export async function unpublishCloudProblemSet(setId: string): Promise<void> {
   const client = requireCloudClient();
-  const { error } = await client.from('shared_problem_sets').delete().eq('id', setId);
+  const { data, error } = await client.rpc('unpublish_problem_set', { p_set_id: setId });
   if (error) throw new Error(toFriendlyCloudError(error.message));
+  if (data !== true) throw new Error('共有中の問題セットが見つからないか、停止する権限がありません。');
 }
 
 export async function getSharedProblemSet(setId: string, shareToken = ''): Promise<CloudProblemSet> {
@@ -305,6 +307,7 @@ function requireCloudClient() {
 function mapProblemSetRow(row: Record<string, unknown>): CloudProblemSet {
   return {
     id: String(row.id ?? ''),
+    localSetId: String(row.local_set_id ?? row.localSetId ?? ''),
     ownerId: String(row.owner_id ?? row.ownerId ?? ''),
     authorName: String(row.author_name ?? row.authorName ?? 'Quiz Make ユーザー'),
     title: String(row.title ?? ''),
@@ -368,7 +371,7 @@ function normalizeGroupRole(value: unknown): CloudGroup['role'] {
 function getInstallationId(): string {
   const key = 'quizMake:cloud:installationId';
   const stored = window.localStorage.getItem(key);
-  if (stored && /^[0-9a-f-]{36}$/iu.test(stored)) return stored;
+  if (stored && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(stored)) return stored;
   const value = crypto.randomUUID();
   window.localStorage.setItem(key, value);
   return value;

@@ -100,7 +100,7 @@ const SUPABASE_READ_RPC = 'quiz_sync_read';
 const SUPABASE_UPSERT_RPC = 'quiz_sync_upsert';
 const SUPABASE_PROBE_RPC = 'quiz_sync_probe';
 const SUPABASE_DELETE_RPC = 'quiz_sync_delete';
-const SUPABASE_TABLE = 'quiz_sync_data';
+const REMOTE_REQUEST_TIMEOUT_MS = 15_000;
 let syncDataOperationQueue: Promise<void> = Promise.resolve();
 let localDataRevision = 0;
 const exportedPayloadRevisions = new WeakMap<SyncPayload, number>();
@@ -374,7 +374,7 @@ async function uploadSyncDataUnlocked(
   try {
     const updatedAt = new Date().toISOString();
     const uploadPayload = { ...validation.value, updatedAt };
-    let response = await fetch(`${config.url}/rest/v1/rpc/${SUPABASE_UPSERT_RPC}`, {
+    const response = await fetchWithTimeout(`${config.url}/rest/v1/rpc/${SUPABASE_UPSERT_RPC}`, {
       method: 'POST',
       headers: createSupabaseHeaders(config.anonKey),
       body: JSON.stringify({
@@ -387,15 +387,7 @@ async function uploadSyncDataUnlocked(
     });
 
     if (!response.ok && await isMissingSyncRpc(response)) {
-      const compatibilityResult = await uploadWithLegacyTable(
-        config,
-        normalizedSyncId,
-        uploadPayload,
-        updatedAt,
-        options,
-      );
-      if (!compatibilityResult.ok) return compatibilityResult;
-      response = compatibilityResult.value;
+      return { ok: false, error: '安全な同期RPCが見つかりません。Supabaseへ最新の同期マイグレーションを適用してください。' };
     }
 
     if (!response.ok) {
@@ -441,15 +433,13 @@ export async function downloadSyncData(syncId: string): Promise<SyncResult<Remot
   if (!config) return { ok: false, error: 'Supabaseの環境変数が未設定です。VITE_SUPABASE_URL と VITE_SUPABASE_ANON_KEY を設定してください。' };
 
   try {
-    let response = await fetch(`${config.url}/rest/v1/rpc/${SUPABASE_READ_RPC}`, {
+    const response = await fetchWithTimeout(`${config.url}/rest/v1/rpc/${SUPABASE_READ_RPC}`, {
       method: 'POST',
       headers: createSupabaseHeaders(config.anonKey),
       body: JSON.stringify({ p_sync_id: normalizedSyncId }),
     });
 
-    if (!response.ok && await isMissingSyncRpc(response)) {
-      response = await fetchLegacySyncRow(config, normalizedSyncId, 'sync_id,data,updated_at');
-    }
+    if (!response.ok && await isMissingSyncRpc(response)) return { ok: false, error: '安全な同期RPCが見つかりません。Supabaseへ最新の同期マイグレーションを適用してください。' };
 
     if (!response.ok) return { ok: false, error: await responseError(response, 'クラウドからの読み込みに失敗しました。') };
 
@@ -478,15 +468,13 @@ export async function getRemoteSyncMeta(syncId: string): Promise<SyncResult<Remo
   if (!config) return { ok: false, error: 'Supabaseの環境変数が未設定です。' };
 
   try {
-    let response = await fetch(`${config.url}/rest/v1/rpc/${SUPABASE_READ_RPC}`, {
+    const response = await fetchWithTimeout(`${config.url}/rest/v1/rpc/${SUPABASE_READ_RPC}`, {
       method: 'POST',
       headers: createSupabaseHeaders(config.anonKey),
       body: JSON.stringify({ p_sync_id: normalizedSyncId }),
     });
 
-    if (!response.ok && await isMissingSyncRpc(response)) {
-      response = await fetchLegacySyncRow(config, normalizedSyncId, 'sync_id,updated_at');
-    }
+    if (!response.ok && await isMissingSyncRpc(response)) return { ok: false, error: '安全な同期RPCが見つかりません。Supabaseへ最新の同期マイグレーションを適用してください。' };
 
     if (!response.ok) return { ok: false, error: await responseError(response, 'クラウドの更新確認に失敗しました。') };
     const rows = (await response.json()) as unknown;
@@ -550,7 +538,7 @@ export async function runSyncDiagnostic(syncId: string): Promise<SyncDiagnosticR
   }
 
   try {
-    const probeResponse = await fetch(`${config.url}/rest/v1/rpc/${SUPABASE_PROBE_RPC}`, {
+    const probeResponse = await fetchWithTimeout(`${config.url}/rest/v1/rpc/${SUPABASE_PROBE_RPC}`, {
       method: 'POST',
       headers: createSupabaseHeaders(config.anonKey),
       body: JSON.stringify({ p_sync_id: normalizedSyncId }),
@@ -691,7 +679,7 @@ export async function deleteRemoteSyncData(syncId: string): Promise<SyncResult<b
   if (!config) return { ok: false, error: 'クラウド同期が設定されていません。' };
 
   try {
-    const response = await fetch(`${config.url}/rest/v1/rpc/${SUPABASE_DELETE_RPC}`, {
+    const response = await fetchWithTimeout(`${config.url}/rest/v1/rpc/${SUPABASE_DELETE_RPC}`, {
       method: 'POST',
       headers: createSupabaseHeaders(config.anonKey),
       body: JSON.stringify({ p_sync_id: normalizedSyncId }),
@@ -741,62 +729,6 @@ async function isMissingSyncRpc(response: Response): Promise<boolean> {
   const message = details.message.toLowerCase();
   return details.code?.toLowerCase() === 'pgrst202'
     || message.includes('could not find the function');
-}
-
-async function fetchLegacySyncRow(
-  config: { url: string; anonKey: string },
-  syncId: string,
-  select: string,
-): Promise<Response> {
-  const encodedSyncId = encodeURIComponent(syncId);
-  return fetch(
-    `${config.url}/rest/v1/${SUPABASE_TABLE}?sync_id=eq.${encodedSyncId}&select=${encodeURIComponent(select)}`,
-    {
-      method: 'GET',
-      headers: createSupabaseHeaders(config.anonKey),
-    },
-  );
-}
-
-async function uploadWithLegacyTable(
-  config: { url: string; anonKey: string },
-  syncId: string,
-  payload: SyncPayload,
-  updatedAt: string,
-  options: UploadSyncOptions,
-): Promise<SyncResult<Response>> {
-  if (!(options.force ?? false)) {
-    const currentResponse = await fetchLegacySyncRow(config, syncId, 'updated_at');
-    if (!currentResponse.ok) {
-      return { ok: false, error: await responseError(currentResponse, 'クラウドの競合確認に失敗しました。') };
-    }
-    const currentRows = await currentResponse.json() as unknown;
-    const currentRow = Array.isArray(currentRows) && isRecord(currentRows[0]) ? currentRows[0] : null;
-    if (currentRow && typeof currentRow.updated_at === 'string') {
-      const expected = options.expectedRemoteUpdatedAt;
-      if (!expected || !sameTimestamp(currentRow.updated_at, expected)) {
-        return {
-          ok: false,
-          code: 'conflict',
-          error: 'クラウド側に、この端末が最後に確認したものより新しいデータがあります。先にクラウドから読み込んでください。',
-        };
-      }
-    }
-  }
-
-  const response = await fetch(`${config.url}/rest/v1/${SUPABASE_TABLE}?on_conflict=sync_id`, {
-    method: 'POST',
-    headers: createSupabaseHeaders(config.anonKey, { Prefer: 'resolution=merge-duplicates,return=representation' }),
-    body: JSON.stringify([{ sync_id: syncId, data: payload, updated_at: updatedAt }]),
-  });
-  return { ok: true, value: response };
-}
-
-function sameTimestamp(first: string, second: string): boolean {
-  const firstTime = Date.parse(first);
-  const secondTime = Date.parse(second);
-  if (Number.isFinite(firstTime) && Number.isFinite(secondTime)) return firstTime === secondTime;
-  return first === second;
 }
 
 async function readSupabaseError(response: Response): Promise<{ message: string; code?: string; details?: string; hint?: string }> {
@@ -852,6 +784,19 @@ function createSupabaseHeaders(anonKey: string, extra: Record<string, string> = 
     'Content-Type': 'application/json',
     ...extra,
   };
+}
+
+async function fetchWithTimeout(input: string, init: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), REMOTE_REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error('接続がタイムアウトしました。通信状態を確認してもう一度お試しください。');
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
 }
 
 async function responseError(response: Response, fallback: string) {
@@ -945,6 +890,7 @@ function replaceQuizMakeLocalStorage(next: Record<string, string>): void {
 function isQuizMakeStorageKey(key: string): boolean {
   if (key === APP_DATA_FALLBACK_META_KEY) return false;
   if (key.startsWith('quizMake:sync:')) return false;
+  if (key.startsWith('quizMake:cloud:')) return false;
   if (key.startsWith(SYNC_BACKUP_PREFIX)) return false;
   return key === APP_DATA_STORAGE_KEY || key.startsWith('quizMake:') || key.startsWith('quiz-make:');
 }

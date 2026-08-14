@@ -20,6 +20,7 @@ export type AnswerHandlerResult = {
   levelLabel?: string;
   saveStatusLabel?: string;
   savePromise: Promise<boolean>;
+  retrySave?: () => Promise<boolean>;
 };
 
 interface QuizRunnerProps {
@@ -30,6 +31,7 @@ interface QuizRunnerProps {
   mode: 'quiz' | 'review';
   setId?: string;
   initialIndex?: number;
+  readOnly?: boolean;
   onBack: () => void;
   onAnswer: (question: Question, selectedIndexes: number[], isReviewMode: boolean) => AnswerHandlerResult;
   onToggleAmbiguous: (questionId: string) => Promise<boolean>;
@@ -37,7 +39,7 @@ interface QuizRunnerProps {
   onFinish: (result: QuizResult) => void;
 }
 
-export function QuizRunner({ data, title, subtitle, questions, mode, setId, initialIndex = 0, onBack, onAnswer, onToggleAmbiguous, onSaveDetailedExplanation, onFinish }: QuizRunnerProps) {
+export function QuizRunner({ data, title, subtitle, questions, mode, setId, initialIndex = 0, readOnly = false, onBack, onAnswer, onToggleAmbiguous, onSaveDetailedExplanation, onFinish }: QuizRunnerProps) {
   const [currentIndex, setCurrentIndex] = useState(() => Math.min(Math.max(initialIndex, 0), Math.max(questions.length - 1, 0)));
   const [selectedIndexes, setSelectedIndexes] = useState<number[]>([]);
   const [lastCorrect, setLastCorrect] = useState<boolean | null>(null);
@@ -48,9 +50,11 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
   const [answerSheetState, setAnswerSheetState] = useState<AnswerSheetState>('default');
   const [savedLevelLabel, setSavedLevelLabel] = useState('');
   const [answerMessage, setAnswerMessage] = useState('');
+  const [answerSaveState, setAnswerSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const answerRetryRef = useRef<(() => Promise<boolean>) | null>(null);
   const [noteOpen, setNoteOpen] = useState(false);
   const [isTabletLandscape, setIsTabletLandscape] = useState(false);
-  const noteFeatureEnabled = ENABLE_TABLET_NOTES && isTabletLandscape && Boolean(setId);
+  const noteFeatureEnabled = ENABLE_TABLET_NOTES && !readOnly && isTabletLandscape && Boolean(setId);
   const noteAreaOpen = noteFeatureEnabled && noteOpen;
 
   useEffect(() => {
@@ -115,6 +119,16 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
     return 'text-[18px]';
   }, [currentQuestion?.question]);
 
+  useEffect(() => {
+    if (answerSaveState !== 'saving' && answerSaveState !== 'error') return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [answerSaveState]);
+
   if (questions.length === 0 || !currentQuestion) {
     return (
       <Layout>
@@ -160,18 +174,27 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
     setLastCorrect(result.isCorrect);
     setHasAnswered(true);
     setAnswerSheetState('default');
+    answerRetryRef.current = result.retrySave ?? null;
     if (result.saveStatusLabel) {
       setSavedLevelLabel(result.saveStatusLabel);
     } else {
       setSavedLevelLabel(result.levelLabel ? `\u4fdd\u5b58\u4e2d\u2026\u30fb${result.levelLabel}` : '\u4fdd\u5b58\u4e2d\u2026');
     }
-    void result.savePromise.then((saved) => {
+    setAnswerSaveState('saving');
+    const settleSave = (savePromise: Promise<boolean>) => void savePromise.then((saved) => {
       if (visibleQuestionIdRef.current !== answeredQuestionId) return;
-      if (result.saveStatusLabel) return;
-      setSavedLevelLabel(saved
-        ? (result.levelLabel ? `\u4fdd\u5b58\u6e08\u307f\u30fb${result.levelLabel}` : '\u4fdd\u5b58\u6e08\u307f')
-        : (result.levelLabel ? `\u7aef\u672b\u306b\u672a\u4fdd\u5b58\u30fb${result.levelLabel}` : '\u7aef\u672b\u306b\u672a\u4fdd\u5b58'));
+      setAnswerSaveState(saved ? 'saved' : 'error');
+      if (!result.saveStatusLabel) {
+        setSavedLevelLabel(saved
+          ? (result.levelLabel ? `\u4fdd\u5b58\u6e08\u307f\u30fb${result.levelLabel}` : '\u4fdd\u5b58\u6e08\u307f')
+          : (result.levelLabel ? `\u7aef\u672b\u306b\u672a\u4fdd\u5b58\u30fb${result.levelLabel}` : '\u7aef\u672b\u306b\u672a\u4fdd\u5b58'));
+      }
+    }).catch(() => {
+      if (visibleQuestionIdRef.current !== answeredQuestionId) return;
+      setAnswerSaveState('error');
+      setSavedLevelLabel(result.levelLabel ? `\u7aef\u672b\u306b\u672a\u4fdd\u5b58\u30fb${result.levelLabel}` : '\u7aef\u672b\u306b\u672a\u4fdd\u5b58');
     });
+    settleSave(result.savePromise);
     setCorrectCount((value) => value + (result.isCorrect ? 1 : 0));
     setWrongCount((value) => value + (result.isCorrect ? 0 : 1));
     setAddedReviewCount((value) => value + (result.addedToReview ? 1 : 0));
@@ -191,6 +214,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
   };
 
   const handleNext = () => {
+    if (answerSaveState !== 'saved') return;
     if (currentIndex + 1 >= questions.length) {
       onFinish({
         ...makeResult(mode, title, setId, correctCount, wrongCount, addedReviewCount),
@@ -207,7 +231,26 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
     setHasAnswered(false);
     setAnswerSheetState('default');
     setSavedLevelLabel('');
+    setAnswerSaveState('idle');
+    answerRetryRef.current = null;
     setAnswerMessage('');
+  };
+
+  const handleRetryAnswerSave = () => {
+    const retrySave = answerRetryRef.current;
+    if (!retrySave || answerSaveState === 'saving') return;
+    const answeredQuestionId = currentQuestion.id;
+    setAnswerSaveState('saving');
+    setSavedLevelLabel('\u4fdd\u5b58\u3092\u518d\u8a66\u884c\u4e2d\u2026');
+    void retrySave().then((saved) => {
+      if (visibleQuestionIdRef.current !== answeredQuestionId) return;
+      setAnswerSaveState(saved ? 'saved' : 'error');
+      setSavedLevelLabel(saved ? '\u4fdd\u5b58\u6e08\u307f' : '\u7aef\u672b\u306b\u672a\u4fdd\u5b58');
+    }).catch(() => {
+      if (visibleQuestionIdRef.current !== answeredQuestionId) return;
+      setAnswerSaveState('error');
+      setSavedLevelLabel('\u7aef\u672b\u306b\u672a\u4fdd\u5b58');
+    });
   };
 
   const handleAmbiguous = () => onToggleAmbiguous(currentQuestion.id);
@@ -309,6 +352,8 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
             questionId={currentQuestion.id}
             sourcePage={currentQuestion.sourcePage}
             savedLevelLabel={savedLevelLabel}
+            answerSaveState={answerSaveState}
+            readOnly={readOnly}
             isAmbiguous={progress?.isAmbiguous ?? false}
             isLast={currentIndex + 1 >= questions.length}
             state={answerSheetState}
@@ -317,6 +362,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
             onHide={() => setAnswerSheetState('hidden')}
             onToggleAmbiguous={handleAmbiguous}
             onSaveDetailedExplanation={(value) => onSaveDetailedExplanation(currentQuestion.id, value)}
+            onRetryAnswerSave={answerRetryRef.current ? handleRetryAnswerSave : undefined}
             onNext={handleNext}
           />,
           document.body,
@@ -492,6 +538,8 @@ function AnswerPanel({
   detailedExplanation,
   sourcePage,
   savedLevelLabel,
+  answerSaveState,
+  readOnly,
   isAmbiguous,
   isLast,
   state,
@@ -500,6 +548,7 @@ function AnswerPanel({
   onHide,
   onToggleAmbiguous,
   onSaveDetailedExplanation,
+  onRetryAnswerSave,
   onNext,
 }: {
   questionId: string;
@@ -509,6 +558,8 @@ function AnswerPanel({
   detailedExplanation: string;
   sourcePage: string;
   savedLevelLabel: string;
+  answerSaveState: 'idle' | 'saving' | 'saved' | 'error';
+  readOnly: boolean;
   isAmbiguous: boolean;
   isLast: boolean;
   state: AnswerSheetState;
@@ -517,6 +568,7 @@ function AnswerPanel({
   onHide: () => void;
   onToggleAmbiguous: () => Promise<boolean>;
   onSaveDetailedExplanation: (value: string) => Promise<void>;
+  onRetryAnswerSave?: () => void;
   onNext: () => void;
 }) {
   const [isDragging, setIsDragging] = useState(false);
@@ -768,7 +820,6 @@ function AnswerPanel({
 
   const handleClipboardRead = async () => {
     try {
-      if (!navigator.clipboard?.readText) throw new Error('clipboard unavailable');
       const value = await readClipboardText();
       if (!value.trim()) {
         setDetailMessage('\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u304c\u7a7a\u3067\u3059\u3002\u5165\u529b\u4e2d\u306e\u5185\u5bb9\u306f\u305d\u306e\u307e\u307e\u3067\u3059');
@@ -867,7 +918,7 @@ function AnswerPanel({
   };
 
   const handleNextWithDraftCheck = () => {
-    if (isSavingDetail || !confirmDiscardDetail()) return;
+    if (answerSaveState !== 'saved' || isSavingDetail || !confirmDiscardDetail()) return;
     onNext();
   };
 
@@ -887,7 +938,8 @@ function AnswerPanel({
   };
 
   const hasSavedDetail = savedDetailText.trim().length > 0;
-  const canSaveDetail = hasUnsavedDetail && (detailText.trim().length > 0 || hasSavedDetail) && !isSavingDetail;
+  const detailEditingDisabled = readOnly || answerSaveState !== 'saved';
+  const canSaveDetail = !detailEditingDisabled && hasUnsavedDetail && (detailText.trim().length > 0 || hasSavedDetail) && !isSavingDetail;
 
   const answerPage = (
     <div
@@ -903,7 +955,7 @@ function AnswerPanel({
         <p className="answer-sheet__label">{'\u89e3\u8aac'}</p>
         <ExplanationContent text={explanation} className="answer-sheet__explanation-text" />
         {sourcePage ? <p className="answer-sheet__source">{'\u53c2\u7167\uff1a'}{sourcePage}</p> : null}
-        {state === 'expanded' ? (
+        {state === 'expanded' && (!detailEditingDisabled || hasSavedDetail) ? (
           <button
             ref={detailOpenRef}
             type="button"
@@ -929,7 +981,7 @@ function AnswerPanel({
           {'\u2039'} {'\u89e3\u7b54\u306b\u623b\u308b'}
         </button>
         <h2>{'\u8a73\u7d30\u89e3\u8aac'}</h2>
-        {hasSavedDetail && !isEditingDetail ? (
+        {hasSavedDetail && !isEditingDetail && !detailEditingDisabled ? (
           <button
             type="button"
             className="answer-sheet__detail-edit"
@@ -955,9 +1007,11 @@ function AnswerPanel({
           {detailMessage}
         </p>
       ) : null}
-      {hasSavedDetail && !isEditingDetail ? (
+      {(hasSavedDetail && !isEditingDetail) || detailEditingDisabled ? (
         <div className="answer-sheet__detail-reading" data-no-page-swipe>
-          <ExplanationContent text={savedDetailText} className="answer-sheet__explanation-text" />
+          {hasSavedDetail
+            ? <ExplanationContent text={savedDetailText} className="answer-sheet__explanation-text" />
+            : <p className="answer-sheet__detail-empty">{'詳細解説は登録されていません'}</p>}
         </div>
       ) : (
         <div className="answer-sheet__detail-editor" aria-busy={isSavingDetail} data-no-page-swipe>
@@ -1018,7 +1072,7 @@ function AnswerPanel({
         <div className="answer-sheet__hidden-bar">
           <span className={'answer-sheet__hidden-result ' + (isCorrect ? 'answer-sheet__hidden-result--correct' : 'answer-sheet__hidden-result--wrong')}>{isCorrect ? '\u6b63\u89e3' : '\u4e0d\u6b63\u89e3'}</span>
           <button type="button" className="answer-sheet__hidden-open" onClick={onDefault}>{'\u89e3\u7b54\u3092\u898b\u308b'}</button>
-          <button type="button" className="answer-sheet__hidden-next" onClick={handleNextWithDraftCheck} disabled={isSavingDetail}>{isLast ? '\u7d50\u679c\u3078' : '\u6b21\u3078'}</button>
+          <button type="button" className="answer-sheet__hidden-next" onClick={handleNextWithDraftCheck} disabled={answerSaveState !== 'saved' || isSavingDetail}>{isLast ? '\u7d50\u679c\u3078' : '\u6b21\u3078'}</button>
         </div>
       </section>
     );
@@ -1042,7 +1096,7 @@ function AnswerPanel({
           <div className={'answer-sheet__result ' + (isCorrect ? 'answer-sheet__result--correct' : 'answer-sheet__result--wrong')}>{isCorrect ? '\u6b63\u89e3' : '\u4e0d\u6b63\u89e3'}</div>
           {savedLevelLabel ? <p className="answer-sheet__saved">{savedLevelLabel}</p> : null}
         </div>
-          <button type="button" onClick={onHide} className="answer-sheet__hide-button" disabled={isSavingDetail || isSavingAmbiguous}>{'\u3057\u307e\u3046'}</button>
+          <button type="button" onClick={onHide} className="answer-sheet__hide-button" disabled={answerSaveState !== 'saved' || isSavingDetail || isSavingAmbiguous}>{'\u3057\u307e\u3046'}</button>
       </div>
       <div className={'answer-sheet__scroll ' + (state === 'expanded' ? 'answer-sheet__scroll--pages' : '')} {...(state === 'expanded' ? detailSwipeProps : {})}>
         {state === 'expanded' ? (
@@ -1052,11 +1106,16 @@ function AnswerPanel({
           </div>
         ) : answerPage}
       </div>
-      <div className="answer-sheet__actions">
-        <button type="button" onClick={() => void handleToggleAmbiguous()} disabled={isSavingDetail || isSavingAmbiguous} className={'answer-sheet__action answer-sheet__action--secondary' + (isAmbiguous ? ' answer-sheet__action--ambiguous' : '')}>
-          {isSavingAmbiguous ? '\u4fdd\u5b58\u4e2d\u2026' : (isAmbiguous ? '\u66d6\u6627\u3092\u89e3\u9664' : '\u66d6\u6627\u3068\u3057\u3066\u767b\u9332')}
-        </button>
-        <button type="button" onClick={handleNextWithDraftCheck} disabled={isSavingDetail || isSavingAmbiguous} className="answer-sheet__action answer-sheet__action--primary">{isLast ? '\u7d50\u679c\u3078' : '\u6b21\u3078'}</button>
+      {answerSaveState === 'error' && onRetryAnswerSave ? (
+        <button type="button" className="answer-sheet__retry-save" onClick={onRetryAnswerSave}>回答の保存を再試行</button>
+      ) : null}
+      <div className={'answer-sheet__actions' + (readOnly ? ' answer-sheet__actions--single' : '')}>
+        {!readOnly ? (
+          <button type="button" onClick={() => void handleToggleAmbiguous()} disabled={answerSaveState !== 'saved' || isSavingDetail || isSavingAmbiguous} className={'answer-sheet__action answer-sheet__action--secondary' + (isAmbiguous ? ' answer-sheet__action--ambiguous' : '')}>
+            {isSavingAmbiguous ? '\u4fdd\u5b58\u4e2d\u2026' : (isAmbiguous ? '\u66d6\u6627\u3092\u89e3\u9664' : '\u66d6\u6627\u3068\u3057\u3066\u767b\u9332')}
+          </button>
+        ) : null}
+        <button type="button" onClick={handleNextWithDraftCheck} disabled={answerSaveState !== 'saved' || isSavingDetail || isSavingAmbiguous} className="answer-sheet__action answer-sheet__action--primary">{isLast ? '\u7d50\u679c\u3078' : '\u6b21\u3078'}</button>
       </div>
     </section>
   );

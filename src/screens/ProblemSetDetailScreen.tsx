@@ -33,7 +33,7 @@ interface ProblemSetDetailScreenProps {
   data: AppData;
   setId: string;
   onBack: () => void;
-  onOpenImport: (folderId: string) => void;
+  onEdit: () => void;
   onOpenProblemList: () => void;
   onOpenNoteList: () => void;
   onShare: () => void;
@@ -51,7 +51,7 @@ export function ProblemSetDetailScreen({
   data,
   setId,
   onBack,
-  onOpenImport,
+  onEdit,
   onOpenProblemList,
   onOpenNoteList,
   onShare,
@@ -136,7 +136,7 @@ export function ProblemSetDetailScreen({
   return (
     <Layout>
       <div className="quiz-detail">
-        <DetailHeader title={problemSet.title} onBack={onBack} onOpenImport={() => onOpenImport(problemSet.folderId)} />
+        <DetailHeader title={problemSet.title} onBack={onBack} onEdit={onEdit} />
 
         <div className="quiz-detail__content-grid">
           <div className="quiz-detail__main-column">
@@ -190,6 +190,7 @@ export function ProblemSetDetailScreen({
                   type="button"
                   className={`quiz-detail__segment-item${active ? ' quiz-detail__segment-item--active' : ''}`}
                   onClick={() => setStartCategory(value)}
+                  aria-pressed={active}
                 >
                   {item}
                 </button>
@@ -205,6 +206,7 @@ export function ProblemSetDetailScreen({
                 type="button"
                 className={`quiz-detail__segment-item${reviewFilter === item.value ? ' quiz-detail__segment-item--active' : ''}`}
                 onClick={() => setReviewFilter(item.value)}
+                aria-pressed={reviewFilter === item.value}
               >
                 {item.label}
               </button>
@@ -252,14 +254,14 @@ export function ProblemSetDetailScreen({
   );
 }
 
-function DetailHeader({ title, onBack, onOpenImport }: { title: string; onBack: () => void; onOpenImport?: () => void }) {
+function DetailHeader({ title, onBack, onEdit }: { title: string; onBack: () => void; onEdit?: () => void }) {
   return (
     <header className="quiz-detail__header">
       <div className="quiz-detail__header-slope" />
       <BackButton onClick={onBack} className="quiz-detail__back-button" />
       <h1 className="quiz-detail__title">{title}</h1>
-      {onOpenImport ? (
-        <button type="button" className="quiz-detail__header-icon" aria-label={'\u65b0\u898f\u554f\u984c'} onClick={onOpenImport}>{'+'}</button>
+      {onEdit ? (
+        <button type="button" className="quiz-detail__header-icon quiz-detail__header-edit" aria-label="問題セットを編集" onClick={onEdit}>編集</button>
       ) : (
         <div className="quiz-detail__header-icon">{'\u22ef'}</div>
       )}

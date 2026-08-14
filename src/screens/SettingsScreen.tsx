@@ -26,7 +26,7 @@ import './SettingsScreen.css';
 interface SettingsScreenProps {
   onExport: () => void;
   onImportBackup: (file: File) => Promise<string | null>;
-  onClearAll: () => void;
+  onClearAll: () => Promise<boolean>;
   onOpenSync: () => void;
   onOpenPrivacy: () => void;
 }
@@ -35,6 +35,7 @@ export function SettingsScreen({ onExport, onImportBackup, onClearAll, onOpenSyn
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [message, setMessage] = useState('');
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+  const [clearBusy, setClearBusy] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState(!cloudConfigured);
   const [email, setEmail] = useState('');
@@ -137,6 +138,15 @@ export function SettingsScreen({ onExport, onImportBackup, onClearAll, onOpenSyn
     setMessage(error ?? '');
   };
 
+  const clearAllData = async () => {
+    if (clearBusy) return;
+    setClearBusy(true);
+    const cleared = await onClearAll();
+    setClearBusy(false);
+    setClearConfirmOpen(false);
+    if (!cleared) setMessage('データを削除できませんでした。画面の案内を確認して、もう一度お試しください。');
+  };
+
   return (
     <Layout>
       <div className="settings-screen">
@@ -197,7 +207,7 @@ export function SettingsScreen({ onExport, onImportBackup, onClearAll, onOpenSyn
               <h2 id="settings-danger-title">データの削除</h2>
               <p>実行すると端末内の学習データを元に戻せません。先にバックアップしてください。</p>
             </div>
-            <SettingsRow icon={<TrashIcon />} title="全データを削除" detail="フォルダ・問題・学習記録を消去" danger onClick={() => setClearConfirmOpen(true)} />
+            <SettingsRow icon={<TrashIcon />} title="端末の学習データを削除" detail="フォルダ・問題・履歴・ノートを消去" danger onClick={() => setClearConfirmOpen(true)} />
           </section>
 
           {message ? <div className={message.includes('失敗') ? 'settings-screen__notice settings-screen__notice--error' : 'settings-screen__notice'} role="status">{message}</div> : null}
@@ -207,14 +217,12 @@ export function SettingsScreen({ onExport, onImportBackup, onClearAll, onOpenSyn
 
         <ConfirmDialog
           open={clearConfirmOpen}
-          title="全データを削除しますか？"
-          message="フォルダ、問題セット、問題、回答記録、復習Level、曖昧登録をすべて削除します。この操作は元に戻せません。"
-          confirmLabel="全データ削除"
+          title="端末の学習データを削除しますか？"
+          message="フォルダ、問題セット、問題、回答記録、復習Level、曖昧登録、カテゴリーノートをこの端末から削除します。同期接続とクラウド上の同期データは削除されません。この操作は元に戻せません。"
+          confirmLabel={clearBusy ? '削除中…' : '学習データを削除'}
+          busy={clearBusy}
           onCancel={() => setClearConfirmOpen(false)}
-          onConfirm={() => {
-            onClearAll();
-            setClearConfirmOpen(false);
-          }}
+          onConfirm={() => void clearAllData()}
         />
         <ConfirmDialog
           open={deleteAccountConfirmOpen}

@@ -143,7 +143,17 @@ export function recordAnswer(
   question: Question,
   selectedIndexes: number[],
   isReviewMode: boolean,
+  answerLogId = createId('log'),
 ): { data: AppData; isCorrect: boolean; addedToReview: boolean; progress: QuestionProgress } {
+  const existingLog = data.answerLogs.find((log) => log.id === answerLogId);
+  if (existingLog) {
+    return {
+      data,
+      isCorrect: existingLog.isCorrect,
+      addedToReview: false,
+      progress: getProgress(data, question.id),
+    };
+  }
   const problemSet = data.problemSets.find((set) => set.id === question.setId);
   const folderId = problemSet?.folderId ?? '';
   const timestamp = nowIso();
@@ -190,7 +200,7 @@ export function recordAnswer(
 
   const nextProgressList = upsertProgress(data.progress, nextProgress);
   const nextLog = {
-    id: createId('log'),
+    id: answerLogId,
     questionId: question.id,
     setId: question.setId,
     folderId,

@@ -2,6 +2,59 @@ import type { ImportedProblemSet, ImportedQuestion } from '../types';
 
 type ValidationResult = { ok: true; value: ImportedProblemSet } | { ok: false; errors: string[] };
 
+export const IMPORT_RESOURCE_LIMITS = {
+  maxFiles: 20,
+  maxFileBytes: 8 * 1024 * 1024,
+  maxTotalFileBytes: 24 * 1024 * 1024,
+  maxJsonCharacters: 12 * 1024 * 1024,
+  maxQuestions: 2_000,
+  setTitle: 300,
+  source: 5_000,
+  id: 200,
+  question: 20_000,
+  choice: 10_000,
+  answerText: 50_000,
+  explanation: 100_000,
+  detailedExplanation: 250_000,
+  sourcePage: 5_000,
+  category: 300,
+  difficulty: 100,
+} as const;
+
+export interface ImportFileDescriptor {
+  id: string;
+  name: string;
+  size: number;
+}
+
+export function getImportFileSelectionError(
+  existingFiles: readonly ImportFileDescriptor[],
+  incomingFiles: readonly ImportFileDescriptor[],
+): string | null {
+  const invalidSize = incomingFiles.find((file) => !Number.isFinite(file.size) || file.size < 0);
+  if (invalidSize) return `${invalidSize.name} のファイルサイズを確認できません。`;
+
+  const oversized = incomingFiles.find((file) => file.size > IMPORT_RESOURCE_LIMITS.maxFileBytes);
+  if (oversized) {
+    return `${oversized.name} は1ファイルの上限（${formatMiB(IMPORT_RESOURCE_LIMITS.maxFileBytes)}）を超えています。`;
+  }
+
+  const incomingIds = new Set(incomingFiles.map((file) => file.id));
+  const combinedFiles = [
+    ...existingFiles.filter((file) => !incomingIds.has(file.id)),
+    ...incomingFiles,
+  ];
+  if (combinedFiles.length > IMPORT_RESOURCE_LIMITS.maxFiles) {
+    return `一度に選択できるJSONは${IMPORT_RESOURCE_LIMITS.maxFiles}件までです。`;
+  }
+
+  const totalBytes = combinedFiles.reduce((total, file) => total + file.size, 0);
+  if (totalBytes > IMPORT_RESOURCE_LIMITS.maxTotalFileBytes) {
+    return `選択したJSONの合計は${formatMiB(IMPORT_RESOURCE_LIMITS.maxTotalFileBytes)}以下にしてください。`;
+  }
+  return null;
+}
+
 export const CHATGPT_MATERIAL_TEMPLATE_PROMPT = `以下の資料をもとに、Quiz makeへ取り込む選択式問題のJSONを作成してください。
 
 【最優先】
@@ -141,6 +194,12 @@ export const CHATGPT_PAST_EXAM_TEMPLATE_PROMPT = `以下の過去問資料をも
 各年度・問題番号がquestionsのreferenceから追跡できること、同一問題が重複していないこと、異なる問題を統合していないこと、問題の漏れがないこと、原本・正答表との照合が済んでいること、categoryが増えすぎていないこと、questionsが学習順であること、choicesと正答indexが正しいこと、explanationが情報量と簡潔さを両立していること、JSON以外がないことを確認してから出力する。
 `;
 export function validateImportJson(text: string): ValidationResult {
+  if (text.length > IMPORT_RESOURCE_LIMITS.maxJsonCharacters) {
+    return {
+      ok: false,
+      errors: [`JSONが大きすぎます。${formatMiB(IMPORT_RESOURCE_LIMITS.maxJsonCharacters)}相当以下に分割してください。`],
+    };
+  }
   let parsed: unknown;
   const normalizedText = text.replace(/^\uFEFF/u, '').trim();
 
@@ -160,10 +219,14 @@ export function validateImportJson(text: string): ValidationResult {
 
   if (parsed.setTitle !== undefined && typeof parsed.setTitle !== 'string') {
     errors.push('setTitle は文字列にしてください。');
+  } else if (typeof parsed.setTitle === 'string') {
+    validateStringLength(parsed.setTitle, 'setTitle', IMPORT_RESOURCE_LIMITS.setTitle, errors);
   }
 
   if (parsed.source !== undefined && typeof parsed.source !== 'string') {
     errors.push('source は文字列にしてください。');
+  } else if (typeof parsed.source === 'string') {
+    validateStringLength(parsed.source, 'source', IMPORT_RESOURCE_LIMITS.source, errors);
   }
 
   if (!Array.isArray(parsed.questions)) {
@@ -176,17 +239,34 @@ export function validateImportJson(text: string): ValidationResult {
   if (rawQuestions.length === 0) {
     errors.push('questions が空です。1問以上入れてください。');
   }
+  if (rawQuestions.length > IMPORT_RESOURCE_LIMITS.maxQuestions) {
+    errors.push(`questions は${IMPORT_RESOURCE_LIMITS.maxQuestions.toLocaleString('ja-JP')}問以下に分割してください。現在 ${rawQuestions.length.toLocaleString('ja-JP')} 問です。`);
+  }
+  if (errors.length > 0) return { ok: false, errors };
 
   const questions: ImportedQuestion[] = [];
-  rawQuestions.forEach((rawQuestion, index) => {
+  for (let index = 0; index < rawQuestions.length; index += 1) {
+    if (errors.length >= 100) {
+      errors.push('エラーが100件を超えたため、残りの検証を省略しました。');
+      break;
+    }
+    const rawQuestion = rawQuestions[index];
     const path = `questions[${index}]`;
     if (!isRecord(rawQuestion)) {
       errors.push(`${path} はオブジェクトにしてください。`);
-      return;
+      continue;
+    }
+
+    if (rawQuestion.id !== undefined && typeof rawQuestion.id !== 'string') {
+      errors.push(`${path}.id は文字列にしてください。`);
+    } else if (typeof rawQuestion.id === 'string') {
+      validateStringLength(rawQuestion.id, `${path}.id`, IMPORT_RESOURCE_LIMITS.id, errors);
     }
 
     if (!isNonEmptyString(rawQuestion.question)) {
       errors.push(`${path}.question は空でない文字列にしてください。`);
+    } else {
+      validateStringLength(rawQuestion.question, `${path}.question`, IMPORT_RESOURCE_LIMITS.question, errors);
     }
 
     if (!Array.isArray(rawQuestion.choices)) {
@@ -197,32 +277,57 @@ export function validateImportJson(text: string): ValidationResult {
       rawQuestion.choices.forEach((choice, choiceIndex) => {
         if (!isNonEmptyString(choice)) {
           errors.push(`${path}.choices[${choiceIndex}] は空でない文字列にしてください。`);
+        } else {
+          validateStringLength(choice, `${path}.choices[${choiceIndex}]`, IMPORT_RESOURCE_LIMITS.choice, errors);
         }
       });
     }
 
     if (!isNonEmptyString(rawQuestion.explanation)) {
       errors.push(`${path}.explanation は空でない文字列にしてください。`);
+    } else {
+      validateStringLength(rawQuestion.explanation, `${path}.explanation`, IMPORT_RESOURCE_LIMITS.explanation, errors);
     }
 
     if (rawQuestion.answerText !== undefined && typeof rawQuestion.answerText !== 'string') {
       errors.push(`${path}.answerText は文字列にしてください。`);
+    } else if (typeof rawQuestion.answerText === 'string') {
+      validateStringLength(rawQuestion.answerText, `${path}.answerText`, IMPORT_RESOURCE_LIMITS.answerText, errors);
+    }
+
+    if (rawQuestion.detailedExplanation !== undefined && typeof rawQuestion.detailedExplanation !== 'string') {
+      errors.push(`${path}.detailedExplanation は文字列にしてください。`);
+    } else if (typeof rawQuestion.detailedExplanation === 'string') {
+      validateStringLength(
+        rawQuestion.detailedExplanation,
+        `${path}.detailedExplanation`,
+        IMPORT_RESOURCE_LIMITS.detailedExplanation,
+        errors,
+      );
     }
 
     if (rawQuestion.sourcePage !== undefined && typeof rawQuestion.sourcePage !== 'string') {
       errors.push(`${path}.sourcePage は文字列にしてください。`);
+    } else if (typeof rawQuestion.sourcePage === 'string') {
+      validateStringLength(rawQuestion.sourcePage, `${path}.sourcePage`, IMPORT_RESOURCE_LIMITS.sourcePage, errors);
     }
 
     if (rawQuestion.reference !== undefined && typeof rawQuestion.reference !== 'string') {
       errors.push(`${path}.reference は文字列にしてください。`);
+    } else if (typeof rawQuestion.reference === 'string') {
+      validateStringLength(rawQuestion.reference, `${path}.reference`, IMPORT_RESOURCE_LIMITS.sourcePage, errors);
     }
 
     if (rawQuestion.category !== undefined && typeof rawQuestion.category !== 'string') {
       errors.push(`${path}.category は文字列にしてください。`);
+    } else if (typeof rawQuestion.category === 'string') {
+      validateStringLength(rawQuestion.category, `${path}.category`, IMPORT_RESOURCE_LIMITS.category, errors);
     }
 
     if (rawQuestion.difficulty !== undefined && typeof rawQuestion.difficulty !== 'string') {
       errors.push(`${path}.difficulty は文字列にしてください。`);
+    } else if (typeof rawQuestion.difficulty === 'string') {
+      validateStringLength(rawQuestion.difficulty, `${path}.difficulty`, IMPORT_RESOURCE_LIMITS.difficulty, errors);
     }
 
     const choices = Array.isArray(rawQuestion.choices) && (rawQuestion.choices.length === 4 || rawQuestion.choices.length === 5)
@@ -255,7 +360,7 @@ export function validateImportJson(text: string): ValidationResult {
         difficulty: typeof rawQuestion.difficulty === 'string' ? rawQuestion.difficulty : 'basic',
       });
     }
-  });
+  }
 
   if (errors.length > 0) return { ok: false, errors };
 
@@ -277,6 +382,16 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
+function validateStringLength(value: string, path: string, maxLength: number, errors: string[]): void {
+  if (value.length > maxLength) {
+    errors.push(`${path} は${maxLength.toLocaleString('ja-JP')}文字以下にしてください。現在 ${value.length.toLocaleString('ja-JP')}文字です。`);
+  }
+}
+
+function formatMiB(bytes: number): string {
+  return `${Math.round(bytes / (1024 * 1024))}MB`;
+}
+
 function getSourcePage(rawQuestion: Record<string, unknown>) {
   if (typeof rawQuestion.sourcePage === 'string') return rawQuestion.sourcePage;
   if (typeof rawQuestion.reference === 'string') return rawQuestion.reference;
@@ -293,6 +408,10 @@ function getAnswerIndexes(rawQuestion: Record<string, unknown>, choiceCount: num
   if (Array.isArray(rawQuestion.answerIndexes)) {
     if (rawQuestion.answerIndexes.length === 0) {
       errors.push(`${path}.answerIndexes は1つ以上指定してください。`);
+      return { value: [], errors };
+    }
+    if (rawQuestion.answerIndexes.length > choiceCount) {
+      errors.push(`${path}.answerIndexes は選択肢数（${choiceCount}個）以下にしてください。`);
       return { value: [], errors };
     }
 

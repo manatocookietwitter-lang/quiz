@@ -31,7 +31,7 @@ export function NoteListScreen({ data, setId, onBack }: NoteListScreenProps) {
   }, [noteCategories, selectedCategory]);
 
   useEffect(() => {
-    const query = window.matchMedia('(min-width: 900px) and (orientation: landscape)');
+    const query = window.matchMedia('(min-width: 768px) and (orientation: landscape)');
     const update = () => setIsTabletLandscape(query.matches);
     update();
     query.addEventListener?.('change', update);
@@ -93,5 +93,5 @@ export function NoteListScreen({ data, setId, onBack }: NoteListScreenProps) {
 
 function getIsTabletLandscape() {
   if (typeof window === 'undefined') return false;
-  return window.matchMedia('(min-width: 900px) and (orientation: landscape)').matches;
+  return window.matchMedia('(min-width: 768px) and (orientation: landscape)').matches;
 }

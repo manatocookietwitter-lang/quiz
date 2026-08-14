@@ -47,6 +47,7 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
   const [error, setError] = useState('');
   const [clearBackupsConfirmOpen, setClearBackupsConfirmOpen] = useState(false);
   const [deleteCloudConfirmOpen, setDeleteCloudConfirmOpen] = useState(false);
+  const [pendingGeneratedSyncId, setPendingGeneratedSyncId] = useState('');
   const [pendingCloudImport, setPendingCloudImport] = useState<{ payload: SyncPayload; summary: SyncPayloadSummary } | null>(null);
   const [pendingCloudOverwrite, setPendingCloudOverwrite] = useState<{
     payload: SyncPayload;
@@ -56,7 +57,7 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
 
   const normalizedSyncId = syncId.trim();
   const syncIdValid = isStrongSyncId(normalizedSyncId);
-  const canRun = syncIdValid && !busy;
+  const canRun = configured && syncIdValid && !busy;
   const autoCanRun = autoEnabled && configured && syncIdValid;
 
   useEffect(() => {
@@ -99,7 +100,16 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
 
   const handleGenerate = () => {
     const nextId = generateSyncId();
+    if (normalizedSyncId) {
+      setPendingGeneratedSyncId(nextId);
+      return;
+    }
+    applyGeneratedSyncId(nextId);
+  };
+
+  const applyGeneratedSyncId = (nextId: string) => {
     updateSyncId(nextId);
+    setPendingGeneratedSyncId('');
     setError('');
     setMessage('同期IDを生成しました。ほかの端末にも同じIDを入力してください。');
   };
@@ -230,6 +240,10 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
   };
 
   const handleUpload = async () => {
+    if (!configured) {
+      setError('クラウド同期の接続設定が完了していません。');
+      return;
+    }
     if (!normalizedSyncId) {
       setError('同期IDを入力してください。');
       return;
@@ -279,6 +293,10 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
   };
 
   const handleDownload = async () => {
+    if (!configured) {
+      setError('クラウド同期の接続設定が完了していません。');
+      return;
+    }
     if (!normalizedSyncId) {
       setError('同期IDを入力してください。');
       return;
@@ -561,6 +579,14 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
         </details>
       </main>
 
+      <ConfirmDialog
+        open={Boolean(pendingGeneratedSyncId)}
+        title="同期IDを作り直しますか？"
+        message={'現在の同期IDとの接続は解除されます。ほかの端末と引き続き同期する場合は、現在のIDを先に控えてください。'}
+        confirmLabel="新しいIDへ変更"
+        onCancel={() => setPendingGeneratedSyncId('')}
+        onConfirm={() => applyGeneratedSyncId(pendingGeneratedSyncId)}
+      />
       <ConfirmDialog
         open={pendingCloudImport !== null}
         title={'クラウドから読み込みますか？'}

@@ -177,7 +177,7 @@
 
 .community-primary,
 .community-danger { min-height: 46px; padding: 0 18px; border: 0; border-radius: 14px; font-weight: 900; }
-.community-primary { background: #168f96; color: #fff; }
+.community-primary { background: #1769ff; color: #fff; }
 .community-danger { background: #c34d4d; color: #fff; }
 .community-primary:disabled,
 .community-danger:disabled { opacity: .45; cursor: default; }

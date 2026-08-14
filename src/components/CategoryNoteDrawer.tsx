@@ -152,6 +152,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   const widthRef = useRef<number>(1);
   const noteSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const latestNoteSaveIdRef = useRef(0);
+  const closingRef = useRef(false);
 
   const [note, setNote] = useState<CategoryNote>(() => createEmptyNote(problemSetId ?? '', normalizedCategory));
   const [pageIndex, setPageIndex] = useState(0);
@@ -167,6 +168,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [saveError, setSaveError] = useState('');
   const [deletePageConfirmOpen, setDeletePageConfirmOpen] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
 
   const getPagePanMetrics = (scale = pageScaleRef.current) => {
     const page = canvasRef.current?.parentElement as HTMLElement | null;
@@ -787,12 +789,28 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
     drawDataUrlToContext(context, pageDataUrlRef.current, width, height);
   };
 
-  const handleClose = () => {
-    updateCurrentPage();
-    const pendingSave = noteSaveQueueRef.current;
-    void pendingSave
-      .catch(() => undefined)
-      .then(() => onClose?.());
+  const handleClose = async () => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    setIsClosing(true);
+
+    try {
+      updateCurrentPage();
+      await noteSaveQueueRef.current;
+    } catch (error) {
+      console.warn('Failed to save category note before closing.', error);
+      setSaveState('error');
+      setSaveError(error instanceof Error
+        ? error.message
+        : '\u30ce\u30fc\u30c8\u306e\u4fdd\u5b58\u306b\u5931\u6557\u3057\u307e\u3057\u305f\u3002\u753b\u9762\u3092\u9589\u3058\u305a\u306b\u518d\u8a66\u884c\u3057\u3066\u304f\u3060\u3055\u3044\u3002');
+      closingRef.current = false;
+      setIsClosing(false);
+      return;
+    }
+
+    closingRef.current = false;
+    setIsClosing(false);
+    onClose?.();
   };
   const selectColor = (key: NoteColorKey) => {
     setColorKey(key);
@@ -814,7 +832,11 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
           <button type="button" onClick={() => addPage('before')}>{'前に追加'}</button>
           <button type="button" onClick={() => addPage('after')}>{'後ろに追加'}</button>
           <button type="button" className="category-note-drawer__danger-button" disabled={pages.length <= 1} onClick={deletePage}>{'\u524a\u9664'}</button>
-          {onClose ? <button type="button" onClick={handleClose}>{'\u9589\u3058\u308b'}</button> : null}
+          {onClose ? (
+            <button type="button" disabled={isClosing} aria-busy={isClosing} onClick={handleClose}>
+              {isClosing ? '\u4fdd\u5b58\u4e2d\u2026' : '\u9589\u3058\u308b'}
+            </button>
+          ) : null}
         </div>
       </header>
 

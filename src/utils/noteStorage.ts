@@ -5,10 +5,19 @@ export const CATEGORY_NOTE_KEY_PREFIX = 'quizMake:notes:';
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 let persistenceRequested = false;
-let noteSaveQueue: Promise<void> = Promise.resolve();
+let noteSaveQueue: Promise<unknown> = Promise.resolve();
 
 export function isCategoryNoteKey(key: string): boolean {
   return key.startsWith(CATEGORY_NOTE_KEY_PREFIX);
+}
+
+export function isCategoryNoteKeyForProblemSetIds(key: string, problemSetIds: Iterable<string>): boolean {
+  if (!isCategoryNoteKey(key)) return false;
+  for (const problemSetId of problemSetIds) {
+    if (typeof problemSetId !== 'string' || problemSetId.length === 0) continue;
+    if (key.startsWith(`${CATEGORY_NOTE_KEY_PREFIX}${problemSetId}:`)) return true;
+  }
+  return false;
 }
 
 export function isIndexedDbAvailable(): boolean {
@@ -55,15 +64,53 @@ export async function requestPersistentStorage(): Promise<boolean> {
 }
 
 export async function saveCategoryNoteRaw(key: string, raw: string): Promise<void> {
-  const queuedSave = noteSaveQueue
-    .catch(() => undefined)
-    .then(() => saveCategoryNoteRawNow(key, raw));
-  noteSaveQueue = queuedSave;
-  return queuedSave;
+  return enqueueCategoryNoteOperation(() => saveCategoryNoteRawNow(key, raw));
 }
 
 export async function waitForPendingCategoryNoteSaves(): Promise<void> {
   await noteSaveQueue;
+}
+
+export async function deleteCategoryNotesForProblemSetIds(problemSetIds: Iterable<string>): Promise<number> {
+  const ids = new Set(Array.from(problemSetIds).filter((id) => typeof id === 'string' && id.length > 0));
+  if (ids.size === 0) return 0;
+  return enqueueCategoryNoteOperation(() => deleteCategoryNotesWhere((key) => (
+    isCategoryNoteKeyForProblemSetIds(key, ids)
+  )));
+}
+
+export async function deleteAllCategoryNotes(): Promise<number> {
+  return enqueueCategoryNoteOperation(() => deleteCategoryNotesWhere(isCategoryNoteKey));
+}
+
+function enqueueCategoryNoteOperation<T>(operation: () => Promise<T>): Promise<T> {
+  const queuedOperation = noteSaveQueue
+    .catch(() => undefined)
+    .then(operation);
+  noteSaveQueue = queuedOperation;
+  return queuedOperation;
+}
+
+async function deleteCategoryNotesWhere(predicate: (key: string) => boolean): Promise<number> {
+  const localNotes = collectLegacyLocalStorageNotesOrThrow(predicate);
+  removeLegacyLocalStorageNotesOrThrow(localNotes);
+
+  try {
+    const indexedDbKeys = isIndexedDbAvailable()
+      ? await deleteIndexedDbNotesWhere(predicate)
+      : new Set<string>();
+    return new Set([...localNotes.map(([key]) => key), ...indexedDbKeys]).size;
+  } catch (error) {
+    try {
+      restoreLegacyLocalStorageNotes(localNotes);
+    } catch (rollbackError) {
+      throw new Error(
+        `Failed to delete category notes and restore their local fallback copies. `
+        + `Delete error: ${getErrorMessage(error)} Restore error: ${getErrorMessage(rollbackError)}`,
+      );
+    }
+    throw error;
+  }
 }
 
 async function saveCategoryNoteRawNow(key: string, raw: string): Promise<void> {
@@ -294,12 +341,42 @@ async function exportIndexedDbNoteBackups(): Promise<Record<string, string>> {
     transaction.onerror = () => reject(transaction.error ?? new Error('Failed to export note backups.'));
   });
 }
+
+async function deleteIndexedDbNotesWhere(predicate: (key: string) => boolean): Promise<Set<string>> {
+  const db = await openNoteDb();
+  return new Promise((resolve, reject) => {
+    const deletedKeys = new Set<string>();
+    const transaction = db.transaction([NOTE_STORE_NAME, NOTE_BACKUP_STORE_NAME], 'readwrite');
+
+    [NOTE_STORE_NAME, NOTE_BACKUP_STORE_NAME].forEach((storeName) => {
+      const request = transaction.objectStore(storeName).openCursor();
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) return;
+        const key = String(cursor.key);
+        if (predicate(key)) {
+          cursor.delete();
+          deletedKeys.add(key);
+        }
+        cursor.continue();
+      };
+      request.onerror = () => reject(request.error ?? new Error('Failed to inspect category notes for deletion.'));
+    });
+
+    transaction.oncomplete = () => resolve(deletedKeys);
+    transaction.onerror = () => reject(transaction.error ?? new Error('Failed to delete category notes.'));
+    transaction.onabort = () => reject(transaction.error ?? new Error('Failed to delete category notes.'));
+  });
+}
+
 async function replaceIndexedDbNotes(notes: Record<string, string>): Promise<void> {
   const db = await openNoteDb();
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction(NOTE_STORE_NAME, 'readwrite');
+    const transaction = db.transaction([NOTE_STORE_NAME, NOTE_BACKUP_STORE_NAME], 'readwrite');
     const store = transaction.objectStore(NOTE_STORE_NAME);
+    const backupStore = transaction.objectStore(NOTE_BACKUP_STORE_NAME);
     store.clear();
+    backupStore.clear();
     Object.entries(notes).forEach(([key, value]) => store.put(value, key));
     transaction.oncomplete = () => resolve();
     transaction.onerror = () => reject(transaction.error ?? new Error('Failed to import notes.'));
@@ -320,6 +397,47 @@ function collectLegacyLocalStorageNotes(): Array<[string, string]> {
     // localStorage may be unavailable in private/restricted contexts.
   }
   return notes;
+}
+
+function collectLegacyLocalStorageNotesOrThrow(predicate: (key: string) => boolean): Array<[string, string]> {
+  if (typeof localStorage === 'undefined') return [];
+  const notes: Array<[string, string]> = [];
+  try {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key || !predicate(key)) continue;
+      const value = localStorage.getItem(key);
+      if (value !== null) notes.push([key, value]);
+    }
+    return notes;
+  } catch (error) {
+    throw new Error(`Failed to inspect local category notes. ${getErrorMessage(error)}`);
+  }
+}
+
+function removeLegacyLocalStorageNotesOrThrow(notes: Array<[string, string]>): void {
+  if (notes.length === 0) return;
+  const removed: Array<[string, string]> = [];
+  try {
+    notes.forEach(([key, value]) => {
+      localStorage.removeItem(key);
+      removed.push([key, value]);
+    });
+  } catch (error) {
+    try {
+      restoreLegacyLocalStorageNotes(removed);
+    } catch (rollbackError) {
+      throw new Error(
+        `Failed to delete local category notes and restore the notes already removed. `
+        + `Delete error: ${getErrorMessage(error)} Restore error: ${getErrorMessage(rollbackError)}`,
+      );
+    }
+    throw new Error(`Failed to delete local category notes. ${getErrorMessage(error)}`);
+  }
+}
+
+function restoreLegacyLocalStorageNotes(notes: Array<[string, string]>): void {
+  notes.forEach(([key, value]) => localStorage.setItem(key, value));
 }
 
 function removeAllLegacyLocalStorageNotes(): void {
@@ -348,6 +466,10 @@ function isQuotaExceededError(error: unknown): boolean {
     || error.name === 'NS_ERROR_DOM_QUOTA_REACHED'
     || error.message.toLowerCase().includes('quota')
     || error.message.includes('exceeded the quota');
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export function pickNewestNoteRaw(candidates: Array<string | null>): string | null {

@@ -1,9 +1,13 @@
-import { type ChangeEvent, useState } from 'react';
+import { type ChangeEvent, useEffect, useRef, useState } from 'react';
 import { BackButton } from '../components/BackButton';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Layout } from '../components/Layout';
-import { CHATGPT_MATERIAL_TEMPLATE_PROMPT, CHATGPT_PAST_EXAM_TEMPLATE_PROMPT } from '../utils/importValidator';
-import { readClipboardText, writeClipboardText } from '../utils/nativePlatform';
+import {
+  getImportFileSelectionError,
+  IMPORT_RESOURCE_LIMITS,
+  type ImportFileDescriptor,
+} from '../utils/importValidator';
+import { readClipboardText } from '../utils/nativePlatform';
 import './ImportScreen.css';
 
 interface ImportScreenProps {
@@ -25,6 +29,7 @@ interface ImportFileItem {
   detectedSetTitle: string;
   editableSetTitle: string;
   userEditedTitle: boolean;
+  size: number;
   rawText: string;
   readError?: string;
 }
@@ -35,23 +40,24 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
   const [jsonText, setJsonText] = useState('');
   const [importFiles, setImportFiles] = useState<ImportFileItem[]>([]);
   const [error, setError] = useState('');
-  const [copied, setCopied] = useState('');
   const [isImporting, setIsImporting] = useState(false);
   const [isPreparingFiles, setIsPreparingFiles] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [importProgress, setImportProgress] = useState('');
   const [notice, setNotice] = useState('');
   const [pendingClipboardText, setPendingClipboardText] = useState<string | null>(null);
+  const completionTimeoutRef = useRef<number | null>(null);
 
-  const handleCopyTemplate = async (template: string, label: string) => {
-    try {
-      await writeClipboardText(template);
-      setCopied(label);
-      setNotice(`${label}テンプレートをクリップボードにコピーしました`);
-      window.setTimeout(() => setCopied(''), 1600);
-    } catch {
-      setError('テンプレートのコピーに失敗しました。端末のコピー権限を確認してください。');
-    }
+  useEffect(() => () => {
+    if (completionTimeoutRef.current !== null) window.clearTimeout(completionTimeoutRef.current);
+  }, []);
+
+  const scheduleImportComplete = () => {
+    if (completionTimeoutRef.current !== null) window.clearTimeout(completionTimeoutRef.current);
+    completionTimeoutRef.current = window.setTimeout(() => {
+      completionTimeoutRef.current = null;
+      onImportComplete();
+    }, 700);
   };
 
   const handleReadClipboard = async () => {
@@ -90,6 +96,19 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
     const files = Array.from(event.target.files ?? []);
     event.target.value = '';
     if (files.length === 0) return;
+    const incomingFiles: ImportFileDescriptor[] = files.map((file) => ({
+      id: `${file.name}_${file.lastModified}_${file.size}`,
+      name: file.name,
+      size: file.size,
+    }));
+    const selectionError = getImportFileSelectionError(
+      importFiles.map((file) => ({ id: file.id, name: file.fileName, size: file.size })),
+      incomingFiles,
+    );
+    if (selectionError) {
+      setError(selectionError);
+      return;
+    }
     setIsPreparingFiles(true);
     const items = await Promise.all(files.map(async (file) => {
       const fallbackTitle = getFileBaseName(file.name);
@@ -103,6 +122,7 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
           detectedSetTitle,
           editableSetTitle: detectedSetTitle || fallbackTitle || '無題の問題セット',
           userEditedTitle: false,
+          size: file.size,
           rawText,
         };
       } catch (readError) {
@@ -113,6 +133,7 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
           detectedSetTitle: '',
           editableSetTitle: fallbackTitle || '無題の問題セット',
           userEditedTitle: false,
+          size: file.size,
           rawText: '',
           readError: readError instanceof Error ? readError.message : 'ファイルの読み込みに失敗しました。',
         };
@@ -177,7 +198,7 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
       setImportResult({ successCount: 1, failures: [] });
       setImportProgress('取り込み完了');
       setNotice('取り込み完了。問題セット一覧へ戻ります');
-      window.setTimeout(onImportComplete, 700);
+      scheduleImportComplete();
       return;
     }
 
@@ -238,7 +259,7 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
     if (successCount > 0 && failures.length === 0) {
       setImportProgress('取り込み完了');
       setNotice('取り込み完了。問題セット一覧へ戻ります');
-      window.setTimeout(onImportComplete, 700);
+      scheduleImportComplete();
       return;
     }
     setIsImporting(false);
@@ -269,28 +290,14 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
               value={title}
               onChange={(event) => handleTitleChange(event.target.value)}
               placeholder="JSONのsetTitleを読み込むか入力"
+              maxLength={IMPORT_RESOURCE_LIMITS.setTitle}
               className="quiz-import__input"
             />
           </section>
 
-          <section className="quiz-import__tool-card">
-            <div className="quiz-import__card-heading">
-              <span>2</span>
-              <h2>ChatGPTで作る</h2>
-            </div>
-            <div className="quiz-import__template-actions">
-              <button type="button" onClick={() => handleCopyTemplate(CHATGPT_MATERIAL_TEMPLATE_PROMPT, '資料から問題作成')} className="quiz-import__template-button">
-                {copied === '資料から問題作成' ? 'コピーしました' : '資料から問題作成'}
-              </button>
-              <button type="button" onClick={() => handleCopyTemplate(CHATGPT_PAST_EXAM_TEMPLATE_PROMPT, '過去問を集約')} className="quiz-import__template-button quiz-import__template-button--secondary">
-                {copied === '過去問を集約' ? 'コピーしました' : '過去問を集約'}
-              </button>
-            </div>
-          </section>
-
           <section className="quiz-import__file-card">
             <div className="quiz-import__card-heading">
-              <span>3</span>
+              <span>2</span>
               <h2>JSONを読み込む</h2>
             </div>
             <button type="button" onClick={handleReadClipboard} className="quiz-import__clipboard-button">
@@ -325,6 +332,7 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
                       onChange={(event) => handleFileTitleChange(file.id, event.target.value)}
                       className="quiz-import__file-title-input"
                       placeholder="問題セット名"
+                      maxLength={IMPORT_RESOURCE_LIMITS.setTitle}
                       aria-label={`${file.fileName}の問題セット名`}
                     />
                     {file.readError ? <small>{file.readError}</small> : null}
@@ -336,7 +344,7 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
 
           <section className="quiz-import__json-card">
             <div className="quiz-import__card-heading">
-              <span>4</span>
+              <span>3</span>
               <h2>JSON貼り付け欄</h2>
             </div>
             <label htmlFor="jsonText" className="quiz-import__label">JSON貼り付け欄</label>

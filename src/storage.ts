@@ -1,4 +1,5 @@
 import type { AppData } from './types';
+import { normalizeAppData } from './utils/appDataValidation';
 
 export const APP_DATA_STORAGE_KEY = 'quiz-make-app-data-v1';
 export const APP_DATA_FALLBACK_META_KEY = 'quiz-make-app-data-v1:fallback-saved-at';
@@ -23,18 +24,25 @@ export function createEmptyAppData(): AppData {
 }
 
 export function loadAppData(): AppData {
+  const raw = getLocalFallbackRecord().raw;
+  if (!raw) return createEmptyAppData();
   try {
-    return parseAppDataRaw(getLocalFallbackRecord().raw);
+    const parsed = JSON.parse(raw) as unknown;
+    const result = normalizeAppData(parsed);
+    if (result.ok) return result.data;
+    throw new Error(result.error);
   } catch (error) {
     console.error('Failed to load Quiz make data.', error);
-    return createEmptyAppData();
+    throw new Error(`保存データを読み込めませんでした。空のデータでは上書きしていません。${error instanceof Error ? ` (${error.message})` : ''}`);
   }
 }
 
 export async function loadAppDataAsync(): Promise<AppData> {
   await waitForPendingAppDataSaves();
+  let indexedDbReadError: unknown = null;
   const indexedRecord = await getAppDataRecordFromIndexedDb().catch((error) => {
     console.warn('Failed to load Quiz make data from IndexedDB.', error);
+    indexedDbReadError = error;
     return { raw: null, savedAt: null };
   });
   const fallbackRecord = getLocalFallbackRecord();
@@ -46,7 +54,17 @@ export async function loadAppDataAsync(): Promise<AppData> {
     fallbackRecord.savedAt,
   );
   const preferredData = tryParseAppDataRaw(preferredRaw);
-  if (!preferredData) return createEmptyAppData();
+  if (!preferredData) {
+    const unreadableStoredDataExists = indexedRecord.raw !== null || fallbackRaw !== null;
+    if (indexedDbReadError || unreadableStoredDataExists) {
+      throw new Error(
+        unreadableStoredDataExists
+          ? '保存データを読み取れませんでした。空のデータで上書きせず、読み込みを停止しました。'
+          : '端末の保存領域へ接続できませんでした。空のデータで上書きせず、読み込みを停止しました。',
+      );
+    }
+    return createEmptyAppData();
+  }
 
   if (preferredRaw === fallbackRaw) {
     // Reconcile a newer localStorage fallback back into IndexedDB when it becomes
@@ -82,13 +100,14 @@ export async function waitForPendingAppDataSaves(): Promise<boolean> {
 }
 
 async function saveAppDataNow(data: AppData): Promise<boolean> {
-  if (!isAppData(data)) {
+  const normalized = normalizeAppData(data);
+  if (!normalized.ok) {
     console.error('Refused to save invalid Quiz make data.');
     return false;
   }
   let raw: string;
   try {
-    raw = JSON.stringify(data);
+    raw = JSON.stringify(normalized.data);
   } catch (error) {
     console.error('Failed to serialize Quiz make data.', error);
     return false;
@@ -135,6 +154,10 @@ export async function exportAppDataRaw(): Promise<string> {
   );
   if (tryParseAppDataRaw(preferredRaw)) return preferredRaw as string;
 
+  if (indexedRecord.raw !== null || fallbackRaw !== null) {
+    throw new Error('保存データが破損しているため、空のバックアップには置き換えませんでした。');
+  }
+
   return JSON.stringify(createEmptyAppData());
 }
 
@@ -145,41 +168,31 @@ export async function importAppDataRaw(raw: string): Promise<boolean> {
 }
 
 export function isAppData(value: unknown): value is AppData {
-  if (!isRecord(value)) return false;
-  return (
-    value.version === 1 &&
-    isArrayOf(value.folders, isFolder) &&
-    isArrayOf(value.problemSets, isProblemSet) &&
-    isArrayOf(value.questions, isQuestion) &&
-    isArrayOf(value.progress, isQuestionProgress) &&
-    isArrayOf(value.answerLogs, isAnswerLog)
-  );
+  return normalizeAppData(value).ok;
 }
 
 export function parseBackupJson(text: string): { ok: true; data: AppData } | { ok: false; error: string } {
   try {
     const parsed = JSON.parse(text) as unknown;
-    if (!isAppData(parsed)) {
+    const result = normalizeAppData(parsed);
+    if (!result.ok) {
       return {
         ok: false,
-        error: 'AppData形式ではありません。version, folders, problemSets, questions, progress, answerLogs を確認してください。',
+        error: `AppData形式を安全に読み込めません: ${result.error}`,
       };
     }
-    return { ok: true, data: parsed };
+    return result;
   } catch (error) {
     return { ok: false, error: error instanceof Error ? `JSONの解析に失敗しました: ${error.message}` : 'JSONの解析に失敗しました。' };
   }
-}
-
-function parseAppDataRaw(raw: string | null): AppData {
-  return tryParseAppDataRaw(raw) ?? createEmptyAppData();
 }
 
 function tryParseAppDataRaw(raw: string | null): AppData | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as unknown;
-    return isAppData(parsed) ? parsed : null;
+    const result = normalizeAppData(parsed);
+    return result.ok ? result.data : null;
   } catch {
     return null;
   }
@@ -378,7 +391,9 @@ async function getAppDataRecordFromIndexedDb(): Promise<{ raw: string | null; sa
       }
       const backupRequest = backupStore.get(APP_DATA_STORAGE_KEY);
       backupRequest.onsuccess = () => resolve({
-        raw: typeof backupRequest.result === 'string' ? backupRequest.result : null,
+        raw: typeof backupRequest.result === 'string'
+          ? backupRequest.result
+          : (typeof request.result === 'string' ? request.result : null),
         savedAt: null,
       });
       backupRequest.onerror = () => reject(backupRequest.error ?? new Error('Failed to read app data backup.'));
@@ -415,10 +430,15 @@ function safeLocalStorageGet(key: string): string | null {
 }
 
 function getLocalFallbackRecord(): { raw: string | null; savedAt: string | null } {
-  const atomicRecord = parseFallbackRecord(safeLocalStorageGet(APP_DATA_FALLBACK_RECORD_KEY));
+  const atomicRecordRaw = safeLocalStorageGet(APP_DATA_FALLBACK_RECORD_KEY);
+  const atomicRecord = parseFallbackRecord(atomicRecordRaw);
   const legacyRaw = safeLocalStorageGet(APP_DATA_STORAGE_KEY);
   const legacySavedAt = safeLocalStorageGet(APP_DATA_FALLBACK_META_KEY);
-  if (!atomicRecord) return { raw: legacyRaw, savedAt: legacySavedAt };
+  if (!atomicRecord) {
+    return legacyRaw !== null
+      ? { raw: legacyRaw, savedAt: legacySavedAt }
+      : { raw: atomicRecordRaw, savedAt: null };
+  }
   if (!tryParseAppDataRaw(legacyRaw)) return atomicRecord;
 
   const preferredRaw = pickPreferredAppDataRaw(

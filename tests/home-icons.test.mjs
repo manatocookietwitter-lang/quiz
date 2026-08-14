@@ -10,6 +10,7 @@ const manifestSource = readSource('../public/manifest.webmanifest');
 const iconSource = readSource('../public/icons/quiz-make-icon.svg');
 const htmlSource = readSource('../index.html');
 const workerSource = readSource('../public/sw.js');
+const globalCss = readSource('../src/index.css');
 
 test('home and folder navigation use outline icons while retaining learning counts', () => {
   assert.match(homeSource, /FolderOutlineIcon/);
@@ -20,6 +21,7 @@ test('home and folder navigation use outline icons while retaining learning coun
   assert.match(homeSource, /🏷 \{questionCount\}/);
   assert.match(homeSource, /🔖 \{reviewCount\}/);
   assert.match(homeSource, /✅ \{correctRate\}%/);
+  assert.match(globalCss, /\.quiz-home \.quiz-home__folder-stats \{[\s\S]*?font-size:\s*clamp\(15px, 2vw, 17px\)/);
   assert.doesNotMatch(homeSource, /quiz-home__folder-tab/);
   for (const icon of ['HomeIcon', 'SearchIcon', 'GroupIcon', 'AddSquareIcon', 'SettingsIcon']) {
     assert.match(primaryNavSource, new RegExp(icon));

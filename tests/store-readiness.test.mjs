@@ -56,3 +56,14 @@ test('store review can exercise the app without an external account', () => {
   assert.match(sample, /英語サンプル/);
   assert.match(notes, /アカウント登録やログインを必要としません/);
 });
+
+test('root render failures show recovery actions instead of a blank screen', () => {
+  const main = readSource('../src/main.tsx');
+  const boundary = readSource('../src/components/AppErrorBoundary.tsx');
+  assert.match(main, /<AppErrorBoundary>/);
+  assert.match(boundary, /getDerivedStateFromError/);
+  assert.match(boundary, /再読み込み/);
+  assert.match(boundary, /端末データを書き出す/);
+  assert.match(boundary, /exportQuizMakeData/);
+  assert.match(boundary, /support\.html/);
+});

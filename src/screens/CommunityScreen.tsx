@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import type { AppData, ProblemSetVisibility } from '../types';
 import { BackButton } from '../components/BackButton';
@@ -72,6 +72,7 @@ export function CommunityScreen({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [publicSets, setPublicSets] = useState<CloudProblemSet[]>([]);
+  const [publicLoading, setPublicLoading] = useState(false);
   const [publishedSets, setPublishedSets] = useState<CloudProblemSet[]>([]);
   const [groups, setGroups] = useState<CloudGroup[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState('');
@@ -92,6 +93,7 @@ export function CommunityScreen({
   const [reportTarget, setReportTarget] = useState<CloudProblemSet | null>(null);
   const [reportReason, setReportReason] = useState('incorrect_answer');
   const [reportDetails, setReportDetails] = useState('');
+  const publicRequestIdRef = useRef(0);
   const isPrimaryRoot = !initialSetId && !shareToken && (initialTab === 'discover' || initialTab === 'groups');
   const selectedGroup = groups.find((group) => group.id === selectedGroupId);
   const canManageSelectedGroup = selectedGroup?.role === 'owner' || selectedGroup?.role === 'admin';
@@ -100,6 +102,9 @@ export function CommunityScreen({
     (subjectFilter === 'all' || set.subject === subjectFilter)
     && (difficultyFilter === 'all' || set.difficulty === difficultyFilter)
   )), [publicSets, subjectFilter, difficultyFilter]);
+  const orphanedPublishedSets = useMemo(() => publishedSets.filter((published) => !data.problemSets.some((local) => (
+    local.cloudSetId === published.id || local.id === published.localSetId
+  ))), [data.problemSets, publishedSets]);
 
   useEffect(() => {
     let active = true;
@@ -121,22 +126,48 @@ export function CommunityScreen({
 
   useEffect(() => {
     if (!cloudConfigured || tab !== 'discover' || shareToken) return;
-    const timer = window.setTimeout(() => void loadPublicSets(), 180);
-    return () => window.clearTimeout(timer);
+    const requestId = ++publicRequestIdRef.current;
+    const timer = window.setTimeout(() => {
+      setPublicLoading(true);
+      setError('');
+      void listPublicProblemSets(query, sort)
+        .then((nextSets) => {
+          if (publicRequestIdRef.current === requestId) setPublicSets(nextSets);
+        })
+        .catch((reason) => {
+          if (publicRequestIdRef.current === requestId) setError(getErrorMessage(reason));
+        })
+        .finally(() => {
+          if (publicRequestIdRef.current === requestId) setPublicLoading(false);
+        });
+    }, 180);
+    return () => {
+      window.clearTimeout(timer);
+      if (publicRequestIdRef.current === requestId) publicRequestIdRef.current += 1;
+    };
   }, [tab, query, sort, shareToken]);
 
   useEffect(() => {
+    let cancelled = false;
     if (!session) {
       setGroups([]);
       setPublishedSets([]);
-      return;
+      return () => {
+        cancelled = true;
+      };
     }
     void Promise.all([listMyGroups(), listMyPublishedSets()])
       .then(([nextGroups, nextSets]) => {
+        if (cancelled) return;
         setGroups(nextGroups);
         setPublishedSets(nextSets);
       })
-      .catch((reason) => setError(getErrorMessage(reason)));
+      .catch((reason) => {
+        if (!cancelled) setError(getErrorMessage(reason));
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [session]);
 
   useEffect(() => {
@@ -153,15 +184,6 @@ export function CommunityScreen({
     if (!initialSetId || shareToken || !authReady || session) return;
     setLoginOpen(true);
   }, [initialSetId, shareToken, authReady, session]);
-
-  const loadPublicSets = async () => {
-    try {
-      setError('');
-      setPublicSets(await listPublicProblemSets(query, sort));
-    } catch (reason) {
-      setError(getErrorMessage(reason));
-    }
-  };
 
   const requireLogin = () => {
     if (session) return true;
@@ -207,7 +229,12 @@ export function CommunityScreen({
         groupIds: shareGroupIds,
         authorName: profileName || session.user.user_metadata.display_name || session.user.email?.split('@')[0] || 'Quiz Make ユーザー',
       });
-      await onPublished(shareLocalSetId, result);
+      try {
+        await onPublished(shareLocalSetId, result);
+      } catch (localSaveError) {
+        await unpublishCloudProblemSet(result.id).catch(() => undefined);
+        throw localSaveError;
+      }
       const url = buildShareUrl(result.id, result.shareToken);
       setShareResult({ url, visibility: result.visibility });
       setPublishedSets(await listMyPublishedSets());
@@ -264,12 +291,14 @@ export function CommunityScreen({
     }
   };
 
-  const stopSharing = async (localSetId: string, cloudSetId: string) => {
+  const stopSharing = async (localSetId: string | undefined, cloudSetId: string) => {
     setBusy(true);
     setError('');
     try {
       await unpublishCloudProblemSet(cloudSetId);
-      await onUnpublished(localSetId);
+      if (localSetId && data.problemSets.some((problemSet) => problemSet.id === localSetId)) {
+        await onUnpublished(localSetId);
+      }
       setPublishedSets((items) => items.filter((item) => item.id !== cloudSetId));
       setAuthMessage('共有を停止しました。端末内の問題セットは残っています。');
     } catch (reason) {
@@ -367,7 +396,12 @@ export function CommunityScreen({
   };
 
   const submitReport = async () => {
-    if (!reportTarget || !requireLogin()) return;
+    if (!reportTarget) return;
+    if (!session) {
+      setReportTarget(null);
+      setLoginOpen(true);
+      return;
+    }
     setBusy(true);
     setError('');
     try {
@@ -409,7 +443,7 @@ export function CommunityScreen({
               <div className="community-card-list">
                 {data.problemSets.map((set) => {
                   const count = data.questions.filter((question) => question.setId === set.id).length;
-                  const published = publishedSets.find((item) => item.id === set.cloudSetId);
+                  const published = publishedSets.find((item) => item.id === set.cloudSetId || item.localSetId === set.id);
                   return (
                     <article key={set.id} className="community-set-card">
                       <button type="button" className="community-set-card__main" onClick={() => onOpenLocalSet(set.id)}>
@@ -423,6 +457,17 @@ export function CommunityScreen({
                     </article>
                   );
                 })}
+                {orphanedPublishedSets.map((published) => (
+                  <article key={published.id} className="community-set-card community-set-card--cloud-only">
+                    <div className="community-set-card__main">
+                      <span className="community-set-card__icon" aria-hidden="true"><DocumentOutlineIcon size={23} /></span>
+                      <span><strong>{published.title}</strong><small>{published.questionCount}問 · クラウドにのみ残っています</small></span>
+                    </div>
+                    <div className="community-set-card__actions">
+                      <button type="button" disabled={busy} onClick={() => void stopSharing(undefined, published.id)}>共有を停止</button>
+                    </div>
+                  </article>
+                ))}
                 {data.problemSets.length === 0 ? <EmptyState title="問題セットはまだありません" body="まず1つ作ると、ここから共有できます。" action="問題セットを作る" onAction={onCreateProblemSet} /> : null}
               </div>
             </section>
@@ -483,8 +528,9 @@ export function CommunityScreen({
                     <label>科目<select value={subjectFilter} onChange={(event) => setSubjectFilter(event.target.value)}><option value="all">すべて</option>{subjectOptions.map((subject) => <option key={subject} value={subject}>{subject}</option>)}</select></label>
                     <label>難易度<select value={difficultyFilter} onChange={(event) => setDifficultyFilter(event.target.value)}><option value="all">すべて</option><option value="basic">基礎</option><option value="standard">標準</option><option value="advanced">発展</option></select></label>
                   </div>
-                  <ProblemSetCards sets={visiblePublicSets} busy={busy} onCopy={(set) => void copySharedSet(set)} onPractice={(set) => void practiceSharedSet(set)} onDetail={(set) => void openSharedDetail(set, 'discover')} onReport={setReportTarget} />
-                  {cloudConfigured && visiblePublicSets.length === 0 && !busy ? <EmptyState title="条件に合うセットはありません" body="検索条件を変えるか、自分のセットを最初に公開してみましょう。" /> : null}
+                  {publicLoading ? <div className="community-notice" role="status">公開問題セットを読み込み中…</div> : null}
+                  <ProblemSetCards sets={visiblePublicSets} busy={busy || publicLoading} onCopy={(set) => void copySharedSet(set)} onPractice={(set) => void practiceSharedSet(set)} onDetail={(set) => void openSharedDetail(set, 'discover')} onReport={setReportTarget} />
+                  {cloudConfigured && visiblePublicSets.length === 0 && !publicLoading ? <EmptyState title="条件に合うセットはありません" body="検索条件を変えるか、自分のセットを最初に公開してみましょう。" /> : null}
                 </>
               )}
             </section>

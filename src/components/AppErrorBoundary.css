@@ -1,0 +1,133 @@
+.app-error-boundary {
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: calc(32px + env(safe-area-inset-top, 0px)) 20px
+    calc(32px + env(safe-area-inset-bottom, 0px));
+  display: grid;
+  place-items: center;
+  background: #f5f7fb;
+  color: #172033;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.app-error-boundary__panel {
+  width: min(100%, 480px);
+  padding: 32px 24px;
+  border: 1px solid #dde3ee;
+  border-radius: 20px;
+  background: #ffffff;
+  box-shadow: 0 12px 36px rgb(23 32 51 / 8%);
+  text-align: center;
+}
+
+.app-error-boundary__mark {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #fff1e6;
+  color: #a54200;
+  font-size: 25px;
+  font-weight: 750;
+}
+
+.app-error-boundary__eyebrow {
+  margin: 0 0 6px;
+  color: #244fbd;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.app-error-boundary h1 {
+  margin: 0;
+  font-size: clamp(22px, 6vw, 28px);
+  line-height: 1.35;
+}
+
+.app-error-boundary__description {
+  margin: 16px 0 24px;
+  color: #566176;
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.app-error-boundary__actions {
+  display: grid;
+  gap: 10px;
+}
+
+.app-error-boundary button {
+  min-height: 48px;
+  padding: 12px 18px;
+  border-radius: 12px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.app-error-boundary button:focus-visible,
+.app-error-boundary__support:focus-visible {
+  outline: 3px solid rgb(36 79 189 / 28%);
+  outline-offset: 3px;
+}
+
+.app-error-boundary__primary {
+  border: 1px solid #244fbd;
+  background: #244fbd;
+  color: #ffffff;
+}
+
+.app-error-boundary__secondary {
+  border: 1px solid #cbd3e1;
+  background: #ffffff;
+  color: #24314a;
+}
+
+.app-error-boundary__secondary:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+.app-error-boundary__status {
+  margin: 14px 0 0;
+  color: #26704a;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.app-error-boundary__status--error {
+  color: #a23a32;
+}
+
+.app-error-boundary__support {
+  min-height: 44px;
+  margin-top: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #244fbd;
+  font-size: 14px;
+  font-weight: 650;
+  text-underline-offset: 3px;
+}
+
+@media (max-width: 359px) {
+  .app-error-boundary {
+    padding-inline: 14px;
+  }
+
+  .app-error-boundary__panel {
+    padding: 26px 18px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-error-boundary *,
+  .app-error-boundary *::before,
+  .app-error-boundary *::after {
+    scroll-behavior: auto !important;
+  }
+}

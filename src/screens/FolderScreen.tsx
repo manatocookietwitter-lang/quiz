@@ -12,12 +12,12 @@ interface FolderScreenProps {
   data: AppData;
   folderId: string;
   onBack: () => void;
-  onOpenImport: (folderId: string) => void;
+  onCreateProblemSet: (folderId: string) => void;
   onOpenProblemSet: (setId: string) => void;
   onDeleteProblemSet: (setId: string) => void;
 }
 
-export function FolderScreen({ data, folderId, onBack, onOpenImport, onOpenProblemSet, onDeleteProblemSet }: FolderScreenProps) {
+export function FolderScreen({ data, folderId, onBack, onCreateProblemSet, onOpenProblemSet, onDeleteProblemSet }: FolderScreenProps) {
   const folder = data.folders.find((item) => item.id === folderId);
   const problemSets = getProblemSetsByFolder(data, folderId);
   const [editMode, setEditMode] = useState(false);
@@ -48,7 +48,7 @@ export function FolderScreen({ data, folderId, onBack, onOpenImport, onOpenProbl
         ) : (
           <section className="quiz-folder__actions" aria-label="操作">
             <FolderCircleButton icon="delete" label="削除" onClick={() => setEditMode(true)} />
-            <FolderCircleButton icon="add" label="新規問題" onClick={() => onOpenImport(folder.id)} />
+            <FolderCircleButton icon="add" label="問題セットを作る" onClick={() => onCreateProblemSet(folder.id)} />
           </section>
         )}
 
@@ -58,8 +58,8 @@ export function FolderScreen({ data, folderId, onBack, onOpenImport, onOpenProbl
               <div className="quiz-folder__empty-icon" aria-hidden="true"><PlusIcon size={24} /></div>
               <h2>問題セットがありません</h2>
               <p>問題を追加すると、ここから演習を始められます。</p>
-              <button type="button" onClick={() => onOpenImport(folder.id)}>
-                最初の問題を追加
+              <button type="button" onClick={() => onCreateProblemSet(folder.id)}>
+                最初の問題セットを作る
               </button>
             </div>
           ) : problemSets.map((problemSet) => {
