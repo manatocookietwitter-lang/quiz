@@ -227,14 +227,11 @@ export function setLastSyncState(state: Partial<LastSyncState>): void {
 
 export function generateSyncId(): string {
   const cryptoApi = globalThis.crypto;
-  const bytes = new Uint8Array(18);
-  if (cryptoApi?.getRandomValues) {
-    cryptoApi.getRandomValues(bytes);
-  } else {
-    for (let index = 0; index < bytes.length; index += 1) {
-      bytes[index] = Math.floor(Math.random() * 256);
-    }
+  if (!cryptoApi?.getRandomValues) {
+    throw new Error('安全な乱数生成機能を利用できません。');
   }
+  const bytes = new Uint8Array(18);
+  cryptoApi.getRandomValues(bytes);
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 

@@ -190,6 +190,22 @@
   gap: 10px;
 }
 
+.sync-id-connect {
+  grid-column: 1 / -1;
+}
+
+.sync-card__connection-state {
+  margin: -2px 0 10px;
+  color: #91611e;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.sync-card__connection-state--connected {
+  color: #14756f;
+}
+
 .sync-button,
 .sync-toggle__button {
   appearance: none;

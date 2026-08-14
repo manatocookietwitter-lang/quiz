@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { Session } from '@supabase/supabase-js';
 import type { AppData, ProblemSetVisibility } from '../types';
 import { BackButton } from '../components/BackButton';
@@ -562,18 +563,15 @@ export function CommunityScreen({
         </main>
 
         {loginOpen ? (
-          <div className="community-overlay" onMouseDown={(event) => event.target === event.currentTarget && setLoginOpen(false)}>
-            <section className="community-sheet" role="dialog" aria-modal="true" aria-label="ログイン">
+          <CommunityModal ariaLabel="ログイン" busy={busy} onClose={() => setLoginOpen(false)}>
               <h2>共有機能にログイン</h2><p>入力したメールへログイン用リンクを送ります。問題作成と学習だけならログインは不要です。</p>
-              <label>メールアドレス<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" autoComplete="email" /></label>
+              <label>メールアドレス<input data-dialog-autofocus type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" autoComplete="email" /></label>
               <div className="community-sheet__actions"><button type="button" onClick={() => setLoginOpen(false)}>キャンセル</button><button type="button" className="community-primary" disabled={busy || !email.trim()} onClick={() => void submitMagicLink()}>リンクを送る</button></div>
-            </section>
-          </div>
+          </CommunityModal>
         ) : null}
 
         {shareLocalSetId && session ? (
-          <div className="community-overlay" onMouseDown={(event) => event.target === event.currentTarget && setShareLocalSetId('')}>
-            <section className="community-sheet" role="dialog" aria-modal="true" aria-label="問題セットを共有">
+          <CommunityModal ariaLabel="問題セットを共有" busy={busy} onClose={() => setShareLocalSetId('')}>
               <h2>問題セットを共有</h2>
               <p>{data.problemSets.find((set) => set.id === shareLocalSetId)?.title}</p>
               {!shareResult ? (
@@ -590,23 +588,99 @@ export function CommunityScreen({
                   <button type="button" onClick={() => setShareLocalSetId('')}>閉じる</button>
                 </>
               )}
-            </section>
-          </div>
+          </CommunityModal>
         ) : null}
 
         {reportTarget ? (
-          <div className="community-overlay" onMouseDown={(event) => event.target === event.currentTarget && setReportTarget(null)}>
-            <section className="community-sheet" role="dialog" aria-modal="true" aria-label="問題セットを通報">
+          <CommunityModal ariaLabel="問題セットを通報" busy={busy} onClose={() => setReportTarget(null)}>
               <h2>問題セットを通報</h2><p>{reportTarget.title}</p>
-              <label>理由<select value={reportReason} onChange={(event) => setReportReason(event.target.value)}><option value="incorrect_answer">正解が誤っている</option><option value="incorrect_explanation">解説が誤っている</option><option value="unclear_question">問題文が不明確</option><option value="duplicate">重複している</option><option value="copyright">著作権上の問題</option><option value="other">その他</option></select></label>
+              <label>理由<select data-dialog-autofocus value={reportReason} onChange={(event) => setReportReason(event.target.value)}><option value="incorrect_answer">正解が誤っている</option><option value="incorrect_explanation">解説が誤っている</option><option value="unclear_question">問題文が不明確</option><option value="duplicate">重複している</option><option value="copyright">著作権上の問題</option><option value="other">その他</option></select></label>
               <label>詳細<textarea value={reportDetails} onChange={(event) => setReportDetails(event.target.value)} placeholder="確認に必要な情報（任意）" /></label>
               <div className="community-sheet__actions"><button type="button" onClick={() => setReportTarget(null)}>キャンセル</button><button type="button" className="community-danger" disabled={busy} onClick={() => void submitReport()}>通報する</button></div>
-            </section>
-          </div>
+          </CommunityModal>
         ) : null}
 
       </div>
     </Layout>
+  );
+}
+
+function CommunityModal({ ariaLabel, busy = false, onClose, children }: {
+  ariaLabel: string;
+  busy?: boolean;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const dialogRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  const busyRef = useRef(busy);
+  onCloseRef.current = onClose;
+  busyRef.current = busy;
+
+  useEffect(() => {
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const frame = window.requestAnimationFrame(() => {
+      const preferred = dialogRef.current?.querySelector<HTMLElement>('[data-dialog-autofocus]');
+      const first = dialogRef.current?.querySelector<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])');
+      (preferred ?? first ?? dialogRef.current)?.focus();
+    });
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        if (!busyRef.current) onCloseRef.current();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), a[href], [tabindex]:not([tabindex="-1"])',
+      ) ?? []);
+      if (focusable.length === 0) {
+        event.preventDefault();
+        dialogRef.current?.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener('keydown', handleKeyDown);
+      previouslyFocused?.focus();
+    };
+  }, []);
+
+  return createPortal(
+    <div
+      className="community-overlay"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (!busy && event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section
+        ref={dialogRef}
+        className="community-sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-label={ariaLabel}
+        aria-busy={busy}
+        tabIndex={-1}
+      >
+        {children}
+      </section>
+    </div>,
+    document.body,
   );
 }
 

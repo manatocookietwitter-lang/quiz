@@ -35,7 +35,7 @@ test('home and folder navigation use outline icons while retaining learning coun
 });
 
 test('PWA icon manifest points to the light QuizMake mark', () => {
-  const iconRevision = '20260804-4';
+  const iconRevision = '20260815-5';
   assert.match(manifestSource, /"theme_color": "#f1f7fa"/);
   assert.match(manifestSource, /"background_color": "#ffffff"/);
   assert.match(manifestSource, new RegExp(`icon-192\\.png\\?v=${iconRevision}`));

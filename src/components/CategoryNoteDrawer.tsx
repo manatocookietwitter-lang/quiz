@@ -914,8 +914,8 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
           <button
             type="button"
             className={`category-note-icon-button${tool === 'eraser' ? ' is-active' : ''}`}
-            aria-label="\u6d88\u3057\u30b4\u30e0"
-            title="\u6d88\u3057\u30b4\u30e0"
+            aria-label="消しゴム"
+            title="消しゴム"
             onClick={() => setTool('eraser')}
           >
             <EraserIcon />
@@ -923,8 +923,8 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
           <button
             type="button"
             className="category-note-icon-button"
-            aria-label="\u623b\u3059"
-            title="\u623b\u3059"
+            aria-label="戻す"
+            title="戻す"
             disabled={!canUndo}
             onClick={undo}
           >

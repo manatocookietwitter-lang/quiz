@@ -37,6 +37,7 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
   const configured = useMemo(() => isSyncConfigured(), []);
   const environmentStatus = useMemo(() => getSyncEnvironmentStatus(), []);
   const [syncId, setSyncId] = useState(() => getStoredSyncId());
+  const [activeSyncId, setActiveSyncId] = useState(() => getStoredSyncId().trim());
   const [autoEnabled, setAutoEnabledState] = useState(() => getAutoSyncSettings().enabled);
   const [lastState, setLastState] = useState<LastSyncState>(() => getLastSyncState());
   const [busy, setBusy] = useState(false);
@@ -48,6 +49,7 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
   const [clearBackupsConfirmOpen, setClearBackupsConfirmOpen] = useState(false);
   const [deleteCloudConfirmOpen, setDeleteCloudConfirmOpen] = useState(false);
   const [pendingGeneratedSyncId, setPendingGeneratedSyncId] = useState('');
+  const [pendingConnectSyncId, setPendingConnectSyncId] = useState('');
   const [pendingCloudImport, setPendingCloudImport] = useState<{ payload: SyncPayload; summary: SyncPayloadSummary } | null>(null);
   const [pendingCloudOverwrite, setPendingCloudOverwrite] = useState<{
     payload: SyncPayload;
@@ -57,8 +59,9 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
 
   const normalizedSyncId = syncId.trim();
   const syncIdValid = isStrongSyncId(normalizedSyncId);
-  const canRun = configured && syncIdValid && !busy;
-  const autoCanRun = autoEnabled && configured && syncIdValid;
+  const syncIdConnected = syncIdValid && normalizedSyncId === activeSyncId;
+  const canRun = configured && syncIdConnected && !busy;
+  const autoCanRun = autoEnabled && configured && syncIdConnected;
 
   useEffect(() => {
     const refreshSyncState = () => {
@@ -92,26 +95,74 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
     };
   }, [message, error]);
 
-  const updateSyncId = (value: string) => {
+  const updateSyncIdDraft = (value: string) => {
+    if (autoEnabled && value.trim() !== activeSyncId) {
+      const result = setAutoSyncEnabled(false);
+      if (!result.ok) {
+        setMessage('');
+        setError(`同期IDの編集中に自動同期を停止できませんでした: ${result.error}`);
+        return;
+      }
+      setSyncId(value);
+      setAutoEnabledState(false);
+      setLastState(getLastSyncState());
+      setError('');
+      setMessage('同期IDの入力内容が変わったため、自動同期をOFFにしました。');
+      return;
+    }
     setSyncId(value);
-    setStoredSyncId(value);
+    setMessage('');
     setError('');
+  };
+
+  const applyConnectedSyncId = (nextId: string) => {
+    const normalizedNextId = nextId.trim();
+    if (!isStrongSyncId(normalizedNextId)) {
+      setError('同期IDは「新しいIDを作る」で作成した36文字のIDを使用してください。');
+      return;
+    }
+    if (autoEnabled && normalizedNextId !== activeSyncId) {
+      setAutoSyncEnabled(false);
+      setAutoEnabledState(false);
+    }
+    setStoredSyncId(normalizedNextId);
+    setSyncId(normalizedNextId);
+    setActiveSyncId(normalizedNextId);
+    setPendingConnectSyncId('');
+    setLastState(getLastSyncState());
+    setError('');
+    setMessage(autoEnabled && normalizedNextId !== activeSyncId
+      ? '同期IDへ接続しました。誤った自動送信を防ぐため、自動同期はOFFにしました。'
+      : '同期IDへ接続しました。');
+  };
+
+  const handleConnectSyncId = () => {
+    if (!syncIdValid || normalizedSyncId === activeSyncId) return;
+    if (activeSyncId) {
+      setPendingConnectSyncId(normalizedSyncId);
+      return;
+    }
+    applyConnectedSyncId(normalizedSyncId);
   };
 
   const handleGenerate = () => {
-    const nextId = generateSyncId();
-    if (normalizedSyncId) {
-      setPendingGeneratedSyncId(nextId);
-      return;
+    try {
+      const nextId = generateSyncId();
+      if (activeSyncId) {
+        setPendingGeneratedSyncId(nextId);
+        return;
+      }
+      applyGeneratedSyncId(nextId);
+    } catch {
+      setMessage('');
+      setError('この端末では安全な同期IDを生成できません。OSまたはブラウザを更新してください。');
     }
-    applyGeneratedSyncId(nextId);
   };
 
   const applyGeneratedSyncId = (nextId: string) => {
-    updateSyncId(nextId);
+    applyConnectedSyncId(nextId);
     setPendingGeneratedSyncId('');
-    setError('');
-    setMessage('同期IDを生成しました。ほかの端末にも同じIDを入力してください。');
+    setMessage('同期IDを生成しました。ほかの端末では、このIDを入力して「このIDに接続」を押してください。');
   };
 
   const handleCopySyncId = async () => {
@@ -133,6 +184,11 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
   const handleToggleAutoSync = () => {
     setMessage('');
     setError('');
+
+    if (!autoEnabled && (!configured || !syncIdConnected)) {
+      setError('自動同期をONにする前に、同期IDを入力して「このIDに接続」を押してください。');
+      return;
+    }
 
     const result = setAutoSyncEnabled(!autoEnabled);
     if (!result.ok) {
@@ -411,7 +467,7 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
           <input
             className="sync-input"
             value={syncId}
-            onChange={(event) => updateSyncId(event.target.value)}
+            onChange={(event) => updateSyncIdDraft(event.target.value)}
             placeholder="36文字の同期IDを入力"
             aria-label="同期ID"
             autoComplete="off"
@@ -422,7 +478,16 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
               安全のため、「同期IDを生成」で作成した36文字のIDを使用してください。
             </p>
           ) : null}
+          {syncIdValid ? (
+            <p className={`sync-card__connection-state${syncIdConnected ? ' sync-card__connection-state--connected' : ''}`} role="status">
+              {syncIdConnected ? 'この同期IDに接続済みです' : '入力内容はまだ保存されていません。「このIDに接続」を押してください。'}
+            </p>
+          ) : null}
           <div className="sync-id-actions">
+            <button type="button" className="sync-button sync-button--primary sync-id-connect" onClick={handleConnectSyncId} disabled={busy || !syncIdValid || syncIdConnected}>
+              <SyncIcon size={19} />
+              <span>{syncIdConnected ? '接続済み' : 'このIDに接続'}</span>
+            </button>
             <button type="button" className="sync-button sync-button--secondary" onClick={handleGenerate} disabled={busy}>
               <SyncIcon size={19} />
               <span>新しいIDを作る</span>
@@ -470,6 +535,7 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
               className={`sync-toggle__button${autoEnabled ? ' sync-toggle__button--active' : ''}`}
               onClick={handleToggleAutoSync}
               aria-pressed={autoEnabled}
+              disabled={!autoEnabled && (!configured || !syncIdConnected)}
             >
               {autoEnabled ? 'ON' : 'OFF'}
             </button>
@@ -579,6 +645,14 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
         </details>
       </main>
 
+      <ConfirmDialog
+        open={Boolean(pendingConnectSyncId)}
+        title="同期先を変更しますか？"
+        message={'現在の同期IDとの接続を解除し、入力したIDへ切り替えます。誤った自動送信を防ぐため、自動同期はOFFになります。'}
+        confirmLabel="このIDへ変更"
+        onCancel={() => setPendingConnectSyncId('')}
+        onConfirm={() => applyConnectedSyncId(pendingConnectSyncId)}
+      />
       <ConfirmDialog
         open={Boolean(pendingGeneratedSyncId)}
         title="同期IDを作り直しますか？"

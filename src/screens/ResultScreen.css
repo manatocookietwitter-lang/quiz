@@ -13,21 +13,25 @@
 
 .result-screen {
   position: relative;
+  display: flex;
+  flex-direction: column;
   width: 100%;
   height: 100%;
+  min-height: 0;
   overflow: hidden;
   background: #0e0e0e;
   color: #ffffff;
-  padding: calc(var(--safe-top) + 16px) max(16px, var(--safe-right)) calc(var(--safe-bottom) + 96px) max(16px, var(--safe-left));
+  padding: calc(var(--safe-top) + 16px) max(16px, var(--safe-right)) calc(var(--safe-bottom) + 14px) max(16px, var(--safe-left));
 }
 
 .result-screen__inner {
+  flex: 1 1 auto;
   width: 100%;
   max-width: 430px;
-  height: 100%;
+  min-height: 0;
   margin: 0 auto;
   overflow-y: auto;
-  padding-bottom: 24px;
+  padding-bottom: 16px;
   scrollbar-width: none;
 }
 
@@ -133,17 +137,80 @@
 }
 
 .result-actions {
-  position: fixed;
-  left: max(16px, var(--safe-left));
-  right: max(16px, var(--safe-right));
-  bottom: calc(var(--safe-bottom) + 14px);
-  z-index: 20;
-  width: auto;
+  position: static;
+  flex: 0 0 auto;
+  width: 100%;
   max-width: 430px;
   margin: 0 auto;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
+}
+
+@media (min-width: 700px) and (orientation: landscape) {
+  .result-screen {
+    padding-top: max(8px, var(--safe-top));
+    padding-bottom: max(8px, var(--safe-bottom));
+  }
+
+  .result-screen__inner,
+  .result-actions {
+    max-width: 760px;
+  }
+
+  .result-screen__inner {
+    padding-bottom: 10px;
+  }
+
+  .result-header {
+    padding-top: 0;
+  }
+
+  .result-header h1 {
+    font-size: 22px;
+  }
+
+  .result-header p {
+    margin-top: 4px;
+  }
+
+  .result-summary-card {
+    margin: 8px 0;
+    border-radius: 18px;
+    padding: 10px 16px;
+  }
+
+  .result-rate-value {
+    margin-top: 4px;
+    font-size: 34px;
+  }
+
+  .result-message {
+    margin-bottom: 8px;
+    padding: 9px 12px;
+  }
+
+  .result-stats-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .result-stat-card {
+    border-radius: 14px;
+    padding: 10px 12px;
+  }
+
+  .result-stat-card span {
+    margin-bottom: 5px;
+  }
+
+  .result-stat-card strong {
+    font-size: 24px;
+  }
+
+  .result-button {
+    min-height: 46px;
+  }
 }
 
 .result-button {

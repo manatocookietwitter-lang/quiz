@@ -203,4 +203,6 @@ test('sync network access is timeout-bound and never falls back to direct table 
   assert.doesNotMatch(syncServiceSource, /SUPABASE_TABLE|fetchLegacySyncRow|uploadWithLegacyTable|sameTimestamp/);
   assert.doesNotMatch(syncServiceSource, /\/rest\/v1\/quiz_sync_data|\.from\(['"]quiz_sync_data['"]\)/);
   assert.match(syncServiceSource, /if\s*\(!response\.ok\s*&&\s*await\s+isMissingSyncRpc\(response\)\)/);
+  assert.match(syncServiceSource, /if\s*\(!cryptoApi\?\.getRandomValues\)\s*\{[\s\S]*?throw new Error/);
+  assert.doesNotMatch(syncServiceSource, /Math\.random\(\)/);
 });

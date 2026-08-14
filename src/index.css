@@ -900,7 +900,7 @@ button:disabled {
   font-weight: 900;
 }
 
-@media (min-width: 900px) and (orientation: landscape) {
+@media (min-width: 768px) and (orientation: landscape) {
   body.quiz-note-open .safe-bottom,
   .quiz-runner--note-open {
     overflow: visible !important;
@@ -937,7 +937,7 @@ button:disabled {
     transform: translateX(-50%);
   }
 }
-@media (min-width: 900px) and (orientation: landscape) {
+@media (min-width: 768px) and (orientation: landscape) {
   body.quiz-note-open .answer-sheet {
     --answer-sheet-x: translateX(-50%);
     left: calc((100vw - var(--tablet-note-width, min(56vw, 760px))) / 2);
@@ -968,7 +968,7 @@ button:disabled {
   font-weight: 850;
 }
 
-@media (min-width: 900px) and (orientation: landscape) {
+@media (min-width: 768px) and (orientation: landscape) {
   .quiz-runner--note-open main,
   .quiz-runner--note-open main *,
   body.quiz-note-open .answer-sheet,
@@ -2084,7 +2084,7 @@ body,
   color: var(--ui-text-muted);
 }
 
-@media (min-width: 900px) and (orientation: landscape) {
+@media (min-width: 768px) and (orientation: landscape) {
   .category-note-panel,
   .category-note-drawer,
   .category-note-toolbar {

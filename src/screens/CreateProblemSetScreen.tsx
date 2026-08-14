@@ -286,7 +286,7 @@ export function CreateProblemSetScreen({ data, onSave, onOpenLegacyImport, onDir
               </button>
             </section>
             <DraftList drafts={reviewedDrafts} onEdit={editQuestion} onDelete={(index) => setDrafts((items) => items.filter((_, itemIndex) => itemIndex !== index))} />
-            <SaveBar count={reviewedDrafts.length} busy={busy} disabled={reviewedDrafts.length === 0} label={editingProblemSet ? '変更を保存' : '問題セットを保存'} onSave={() => void submit()} />
+            {reviewedDrafts.length > 0 ? <SaveBar count={reviewedDrafts.length} busy={busy} disabled={false} label={editingProblemSet ? '変更を保存' : '問題セットを保存'} onSave={() => void submit()} /> : null}
           </div>
         ) : null}
 

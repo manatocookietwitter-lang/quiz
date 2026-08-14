@@ -12,39 +12,39 @@ interface ResultScreenProps {
 export function ResultScreen({ result, returnLabel, onReturn, onRetry }: ResultScreenProps) {
   const correctRate = result.answered === 0 ? 0 : Math.round((result.correct / result.answered) * 100);
   const completionMessage = result.mode === 'review'
-    ? '\u5fa9\u7fd2\u304c\u5b8c\u4e86\u3057\u307e\u3057\u305f\u3002'
-    : '\u901a\u5e38\u5b66\u7fd2\u304c\u5b8c\u4e86\u3057\u307e\u3057\u305f\u3002';
+    ? '復習が完了しました。'
+    : '通常学習が完了しました。';
 
   return (
     <Layout>
       <main className="result-screen">
         <div className="result-screen__inner">
           <header className="result-header">
-            <h1>{'\u7d50\u679c'}</h1>
+            <h1>結果</h1>
             <p>{result.title}</p>
           </header>
 
-          <section className="result-summary-card" aria-label="\u4eca\u56de\u306e\u6b63\u7b54\u7387">
-            <div className="result-rate-label">{'\u4eca\u56de\u306e\u6b63\u7b54\u7387'}</div>
+          <section className="result-summary-card" aria-label="今回の正答率">
+            <div className="result-rate-label">今回の正答率</div>
             <div className="result-rate-value">{correctRate}%</div>
           </section>
 
           <p className="result-message">{completionMessage}</p>
 
-          <section className="result-stats-grid" aria-label="\u7d50\u679c\u8a73\u7d30">
-            <ResultStat label="\u89e3\u3044\u305f\u554f\u984c\u6570" value={result.answered} />
-            <ResultStat label="\u6b63\u89e3\u6570" value={result.correct} />
-            <ResultStat label="\u4e0d\u6b63\u89e3\u6570" value={result.wrong} />
-            <ResultStat label="\u5fa9\u7fd2\u306b\u8ffd\u52a0" value={result.addedReviewCount} />
+          <section className="result-stats-grid" aria-label="結果詳細">
+            <ResultStat label="解いた問題数" value={result.answered} />
+            <ResultStat label="正解数" value={result.correct} />
+            <ResultStat label="不正解数" value={result.wrong} />
+            <ResultStat label="復習に追加" value={result.addedReviewCount} />
           </section>
         </div>
 
-        <section className="result-actions" aria-label="\u7d50\u679c\u64cd\u4f5c">
+        <section className="result-actions" aria-label="結果操作">
           <button type="button" onClick={onReturn} className="result-button result-button--secondary">
             {returnLabel}
           </button>
           <button type="button" onClick={onRetry} className="result-button result-button--primary">
-            {'\u3082\u3046\u4e00\u5ea6\u89e3\u304f'}
+            もう一度解く
           </button>
         </section>
       </main>

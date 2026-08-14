@@ -347,16 +347,22 @@
 
 .quiz-home__sheet-button {
   height: 52px;
+  border: 1px solid var(--ui-border, #d7e3ea);
+  background: var(--ui-surface-muted, #f7fafc);
+  color: var(--ui-text, #173042);
   font-size: 16px;
 }
 
 .quiz-home__sheet-button--primary {
-  background: #12bfc0;
+  border-color: var(--ui-accent, #1769ff);
+  background: var(--ui-accent, #1769ff);
+  color: #ffffff;
 }
 
 .quiz-home__sheet-button:disabled {
-  background: #2b2b2b;
-  color: #777777;
+  border-color: #e3ebef;
+  background: #eef3f5;
+  color: #71848f;
 }
 
 .quiz-home__menu {

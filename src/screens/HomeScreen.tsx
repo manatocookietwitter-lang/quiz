@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { AppData, Folder } from '../types';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Layout } from '../components/Layout';
@@ -184,7 +185,7 @@ function CreateFolderDialog({
   const dialogRef = useModalFocus<HTMLFormElement>(onCancel);
   const titleId = useId();
 
-  return (
+  return createPortal(
     <div
       className="quiz-home__overlay"
       role="presentation"
@@ -221,7 +222,8 @@ function CreateFolderDialog({
           </button>
         </div>
       </form>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

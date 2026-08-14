@@ -14,6 +14,7 @@ import { readClipboardText } from '../utils/nativePlatform';
 type AnswerSheetState = 'expanded' | 'default' | 'hidden';
 
 const ENABLE_TABLET_NOTES = true;
+const TABLET_LANDSCAPE_QUERY = '(min-width: 768px) and (orientation: landscape)';
 
 export type AnswerHandlerResult = {
   isCorrect: boolean;
@@ -66,7 +67,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
   useEffect(() => {
     if (!ENABLE_TABLET_NOTES) return;
 
-    const query = window.matchMedia('(min-width: 900px) and (orientation: landscape)');
+    const query = window.matchMedia(TABLET_LANDSCAPE_QUERY);
     const update = () => setIsTabletLandscape(query.matches);
     update();
 

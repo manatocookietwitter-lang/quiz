@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const readSource = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 const homeSource = readSource('../src/screens/HomeScreen.tsx');
+const homeCss = readSource('../src/screens/HomeScreen.css');
 const settingsSource = readSource('../src/screens/SettingsScreen.tsx');
 const createSource = readSource('../src/screens/CreateProblemSetScreen.tsx');
 const detailSource = readSource('../src/screens/ProblemSetDetailScreen.tsx');
@@ -13,6 +14,12 @@ const syncSource = readSource('../src/screens/SyncScreen.tsx');
 const globalCss = readSource('../src/index.css');
 const layoutSource = readSource('../src/components/Layout.tsx');
 const createCss = readSource('../src/screens/CreateProblemSetScreen.css');
+const communitySource = readSource('../src/screens/CommunityScreen.tsx');
+const communityCss = readSource('../src/screens/CommunityScreen.css');
+const quizRunnerSource = readSource('../src/screens/QuizRunner.tsx');
+const resultSource = readSource('../src/screens/ResultScreen.tsx');
+const resultCss = readSource('../src/screens/ResultScreen.css');
+const noteDrawerSource = readSource('../src/components/CategoryNoteDrawer.tsx');
 
 test('template actions explain what is copied and what to do next', () => {
   assert.doesNotMatch(settingsSource, /ChatGPTで問題を作る|資料から問題を作る|過去問をまとめる/);
@@ -23,10 +30,34 @@ test('template actions explain what is copied and what to do next', () => {
   assert.doesNotMatch(homeSource, /ChatGPTで問題を作る|quiz-home__menu-button/);
 });
 
-test('shared layout scrolls long screens and create actions stay above the primary navigation', () => {
+test('shared layout scrolls long screens and create actions never float over form controls', () => {
   assert.match(layoutSource, /overflow-y-auto/);
   assert.doesNotMatch(layoutSource, /flex-col overflow-hidden/);
-  assert.match(createCss, /bottom:\s*calc\(var\(--primary-nav-height\)/);
+  assert.match(createCss, /\.create-set \{[^}]*flex:\s*0 0 auto[^}]*padding:\s*0/);
+  assert.match(createCss, /\.create-set::after \{[^}]*height:\s*calc\(var\(--primary-nav-height\) \+ var\(--safe-bottom\) \+ 24px\)/);
+  assert.match(createCss, /\.create-set__save-bar \{[^}]*position:\s*static/);
+  assert.doesNotMatch(createCss, /\.create-set__save-bar \{[^}]*bottom:/);
+  assert.match(createSource, /reviewedDrafts\.length > 0 \? <SaveBar/);
+});
+
+test('folder creation dialog is portaled above the fixed primary navigation', () => {
+  assert.match(homeSource, /import \{ createPortal \} from 'react-dom'/);
+  assert.match(homeSource, /return createPortal\([\s\S]*?quiz-home__overlay[\s\S]*?document\.body/);
+  assert.match(homeCss, /\.quiz-home__sheet-button \{[^}]*background:\s*var\(--ui-surface-muted/);
+  assert.match(homeCss, /\.quiz-home__sheet-button--primary \{[^}]*background:\s*var\(--ui-accent/);
+});
+
+test('community dialogs stay above navigation and support keyboard focus', () => {
+  assert.match(communitySource, /return createPortal\(/);
+  assert.match(communitySource, /event\.key === 'Escape'/);
+  assert.match(communitySource, /event\.key !== 'Tab'/);
+  assert.match(communitySource, /previouslyFocused\?\.focus\(\)/);
+  assert.match(communityCss, /\.community-overlay \{[^}]*z-index:\s*100100/);
+});
+
+test('tablet note behavior and styles share the 768px landscape boundary', () => {
+  assert.match(quizRunnerSource, /TABLET_LANDSCAPE_QUERY = '\(min-width: 768px\) and \(orientation: landscape\)'/);
+  assert.match(globalCss, /@media \(min-width: 768px\) and \(orientation: landscape\) \{[\s\S]*?body\.quiz-note-open \.quiz-runner__answer-actions/);
 });
 
 test('primary headers share one height and create returns to its launch context', () => {
@@ -57,6 +88,24 @@ test('sync screen shows two primary steps and keeps maintenance options collapse
   assert.match(syncSource, /クラウドからこの端末へ読込/);
   assert.match(syncSource, /<details className="sync-advanced">/);
   assert.doesNotMatch(syncSource, /Supabase設定済み|VITE_SUPABASE_URL/);
+});
+
+test('sync id edits stay as a draft until the user explicitly connects', () => {
+  const draftHandler = syncSource.match(/const updateSyncIdDraft = \(value: string\) => \{([\s\S]*?)\n  \};/);
+  assert.ok(draftHandler, 'draft handler should exist');
+  assert.match(draftHandler[1], /setSyncId\(value\)/);
+  assert.doesNotMatch(draftHandler[1], /setStoredSyncId/);
+  assert.match(syncSource, /const applyConnectedSyncId[\s\S]*?setStoredSyncId\(normalizedNextId\)/);
+  assert.match(syncSource, /['"]このIDに接続['"]/);
+  assert.match(syncSource, /if \(!autoEnabled && \(!configured \|\| !syncIdConnected\)\)/);
+  assert.match(syncSource, /disabled=\{!autoEnabled && \(!configured \|\| !syncIdConnected\)\}/);
+});
+
+test('result actions do not overlay landscape stats and labels render as Japanese', () => {
+  assert.match(resultCss, /\.result-actions \{[^}]*position:\s*static/);
+  assert.match(resultCss, /@media \(min-width: 700px\) and \(orientation: landscape\)[\s\S]*?grid-template-columns:\s*repeat\(4,/);
+  assert.doesNotMatch(resultSource, /(?:aria-label|label|title)="\\u[0-9a-fA-F]{4}/);
+  assert.doesNotMatch(noteDrawerSource, /(?:aria-label|label|title)="\\u[0-9a-fA-F]{4}/);
 });
 
 test('folder and problem-set rows are visually separated into individual cards', () => {

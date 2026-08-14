@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import test from 'node:test';
 
 const readSource = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
@@ -12,6 +12,29 @@ test('native store projects use the stable QuizMake application id', () => {
   assert.match(capacitor, new RegExp(appId.replaceAll('.', '\\.')));
   assert.match(android, new RegExp(appId.replaceAll('.', '\\.')));
   assert.match(ios, new RegExp(appId.replaceAll('.', '\\.')));
+});
+
+test('Android adaptive launchers use the QuizMake artwork at every density', () => {
+  const expectedMinimumSizes = {
+    ldpi: 3_000,
+    mdpi: 5_000,
+    hdpi: 10_000,
+    xhdpi: 20_000,
+    xxhdpi: 40_000,
+    xxxhdpi: 80_000,
+  };
+
+  for (const [density, minimumSize] of Object.entries(expectedMinimumSizes)) {
+    const foreground = new URL(
+      `../android/app/src/main/res/mipmap-${density}/ic_launcher_foreground.png`,
+      import.meta.url,
+    );
+    assert.equal(existsSync(foreground), true, `${density} adaptive foreground should exist`);
+    assert.ok(
+      statSync(foreground).size > minimumSize,
+      `${density} adaptive foreground should contain the detailed QuizMake artwork`,
+    );
+  }
 });
 
 test('Windows sync leaves iOS Swift package paths usable on macOS', () => {
