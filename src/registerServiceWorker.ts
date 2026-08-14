@@ -1,4 +1,5 @@
 import { Capacitor } from '@capacitor/core';
+import { getActiveProtectedWorkReason } from './utils/protectedWork';
 
 declare global {
   interface WindowEventMap {
@@ -16,6 +17,7 @@ let lastUpdateCheckAt = 0;
 const notifiedWorkers = new WeakSet<ServiceWorker>();
 const observedWorkers = new WeakSet<ServiceWorker>();
 const observedRegistrations = new WeakSet<ServiceWorkerRegistration>();
+const reloadReadyWorkers = new WeakSet<ServiceWorker>();
 
 export function registerServiceWorker() {
   if (!('serviceWorker' in navigator) || !import.meta.env.PROD || Capacitor.isNativePlatform()) return;
@@ -23,12 +25,28 @@ export function registerServiceWorker() {
 
   navigator.serviceWorker.addEventListener('controllerchange', async () => {
     if (!wasControlledAtStartup || refreshing) return;
+    const controller = navigator.serviceWorker.controller;
+    if (!controller) return;
+    if (getActiveProtectedWorkReason()) {
+      notifyReloadReady(controller);
+      return;
+    }
     refreshing = true;
-    await Promise.all([
-      waitForPendingAppDataSaves(),
-      waitForPendingCategoryNoteSaves(),
-    ]);
-    window.location.reload();
+    try {
+      const [appDataSaved] = await Promise.all([
+        waitForPendingAppDataSaves(),
+        waitForPendingCategoryNoteSaves(),
+      ]);
+      if (!appDataSaved || getActiveProtectedWorkReason()) {
+        refreshing = false;
+        notifyReloadReady(controller);
+        return;
+      }
+      window.location.reload();
+    } catch {
+      refreshing = false;
+      notifyReloadReady(controller);
+    }
   });
 
   const start = () => {
@@ -53,6 +71,12 @@ export function registerServiceWorker() {
 function notifyUpdate(worker: ServiceWorker) {
   if (notifiedWorkers.has(worker)) return;
   notifiedWorkers.add(worker);
+  window.dispatchEvent(new CustomEvent('quiz-make-sw-update', { detail: { worker } }));
+}
+
+function notifyReloadReady(worker: ServiceWorker) {
+  if (reloadReadyWorkers.has(worker)) return;
+  reloadReadyWorkers.add(worker);
   window.dispatchEvent(new CustomEvent('quiz-make-sw-update', { detail: { worker } }));
 }
 

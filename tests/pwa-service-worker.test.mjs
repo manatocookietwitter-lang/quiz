@@ -1,11 +1,23 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, relative } from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 
 const workerSource = readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8');
+const projectRoot = fileURLToPath(new URL('..', import.meta.url));
 const origin = 'https://example.test';
 const scope = `${origin}/quiz/`;
+
+function listFiles(directory) {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(directory, entry.name);
+    return entry.isDirectory() ? listFiles(path) : [path];
+  });
+}
 
 function createWorkerHarness(fetchHandler = async () => new Response('ok')) {
   const handlers = new Map();
@@ -66,7 +78,7 @@ function createWorkerHarness(fetchHandler = async () => new Response('ok')) {
   });
 
   vm.runInContext(
-    `${workerSource}\nglobalThis.__workerTest = { networkFirst, staleWhileRevalidate, extractBuildAssetUrls };`,
+    `${workerSource}\nglobalThis.__workerTest = { networkFirst, staleWhileRevalidate, extractBuildAssetUrls, parsePrecacheManifest };`,
     context,
   );
 
@@ -125,7 +137,30 @@ test('install-time asset discovery includes only this app build assets', () => {
   );
 });
 
-test('install precaches the current HTML and its hashed JS/CSS for offline reloads', async () => {
+test('generated precache entries are resolved inside the scoped assets directory', () => {
+  const harness = createWorkerHarness();
+  const urls = harness.api.parsePrecacheManifest({
+    version: 1,
+    files: [
+      'assets/index-a.js',
+      'assets/QuizRunner-lazy.js',
+      'assets/QuizRunner-lazy.css',
+      'assets/QuizRunner-lazy.js',
+    ],
+  });
+
+  assert.deepEqual(Array.from(urls), [
+    `${scope}assets/index-a.js`,
+    `${scope}assets/QuizRunner-lazy.js`,
+    `${scope}assets/QuizRunner-lazy.css`,
+  ]);
+  assert.throws(
+    () => harness.api.parsePrecacheManifest({ version: 1, files: ['../outside.js'] }),
+    /Invalid precache manifest asset/,
+  );
+});
+
+test('install precaches entry and lazy build chunks for offline navigation', async () => {
   const indexHtml = `
     <!doctype html>
     <link rel="stylesheet" href="/quiz/assets/index-a.css">
@@ -134,6 +169,17 @@ test('install precaches the current HTML and its hashed JS/CSS for offline reloa
   const harness = createWorkerHarness(async (input) => {
     const url = new URL(typeof input === 'string' ? input : input.url);
     if (url.pathname === '/quiz/index.html') return new Response(indexHtml, { status: 200 });
+    if (url.pathname === '/quiz/precache-manifest.json') {
+      return Response.json({
+        version: 1,
+        files: [
+          'assets/index-a.css',
+          'assets/index-b.js',
+          'assets/QuizRunner-lazy.js',
+          'assets/QuizRunner-lazy.css',
+        ],
+      });
+    }
     return new Response(`asset:${url.pathname}`, { status: 200 });
   });
   let installation;
@@ -149,6 +195,32 @@ test('install precaches the current HTML and its hashed JS/CSS for offline reloa
   assert.equal(await harness.entries.get(`${scope}index.html`).text(), indexHtml);
   assert.equal(harness.entries.has(`${scope}assets/index-a.css`), true);
   assert.equal(harness.entries.has(`${scope}assets/index-b.js`), true);
+  assert.equal(harness.entries.has(`${scope}assets/QuizRunner-lazy.js`), true);
+  assert.equal(harness.entries.has(`${scope}assets/QuizRunner-lazy.css`), true);
+  assert.equal(harness.entries.has(`${scope}precache-manifest.json?v=build-1`), true);
+});
+
+test('install fails atomically when a required lazy chunk cannot be cached', async () => {
+  const harness = createWorkerHarness(async (input) => {
+    const url = new URL(typeof input === 'string' ? input : input.url);
+    if (url.pathname === '/quiz/index.html') return new Response('<main>QuizMake</main>', { status: 200 });
+    if (url.pathname === '/quiz/precache-manifest.json') {
+      return Response.json({ version: 1, files: ['assets/missing-lazy.js'] });
+    }
+    if (url.pathname === '/quiz/assets/missing-lazy.js') {
+      return new Response('missing', { status: 404 });
+    }
+    return new Response('ok', { status: 200 });
+  });
+  let installation;
+  harness.handlers.get('install')({
+    waitUntil(promise) {
+      installation = promise;
+    },
+  });
+
+  await assert.rejects(installation, /Unable to precache .*missing-lazy\.js \(404\)/);
+  assert.deepEqual(harness.deletedCaches, ['quiz-make-cache-build-1']);
 });
 
 test('cached static assets remain available when revalidation returns 5xx', async () => {
@@ -168,4 +240,38 @@ test('cached static assets remain available when revalidation returns 5xx', asyn
   assert.equal(response.status, 200);
   assert.equal(await response.text(), 'cached asset');
   assert.deepEqual(harness.networkRequests, [assetUrl]);
+});
+
+test('Vite emits a manifest covering every generated asset, including lazy chunks', { timeout: 30_000 }, () => {
+  const buildDirectory = mkdtempSync(join(tmpdir(), 'quiz-make-pwa-build-'));
+  const viteCli = fileURLToPath(new URL('../node_modules/vite/bin/vite.js', import.meta.url));
+
+  try {
+    execFileSync(
+      process.execPath,
+      [viteCli, 'build', '--outDir', buildDirectory, '--emptyOutDir'],
+      { cwd: projectRoot, stdio: 'pipe' },
+    );
+
+    const manifest = JSON.parse(readFileSync(join(buildDirectory, 'precache-manifest.json'), 'utf8'));
+    const generatedAssets = listFiles(join(buildDirectory, 'assets'))
+      .map((fileName) => relative(buildDirectory, fileName).replaceAll('\\', '/'))
+      .sort();
+    const manifestAssets = [...manifest.files].sort();
+    const indexHtml = readFileSync(join(buildDirectory, 'index.html'), 'utf8');
+    const entryAssets = new Set(
+      [...indexHtml.matchAll(/(?:src|href)=["']\/quiz\/(assets\/[^"']+)["']/g)]
+        .map((match) => match[1]),
+    );
+
+    assert.equal(manifest.version, 1);
+    assert.deepEqual(manifestAssets, generatedAssets);
+    assert.equal(
+      manifestAssets.some((fileName) => fileName.endsWith('.js') && !entryAssets.has(fileName)),
+      true,
+      'at least one lazy JavaScript chunk must be present in the precache manifest',
+    );
+  } finally {
+    rmSync(buildDirectory, { recursive: true, force: true });
+  }
 });

@@ -268,7 +268,25 @@ export function exportQuizMakeData(updatedAt = new Date().toISOString()): Promis
 }
 
 export function importQuizMakeData(payload: SyncPayload): Promise<SyncResult<number>> {
-  return runSyncDataOperation(() => importQuizMakeDataUnlocked(payload));
+  return runSyncDataOperation(async () => {
+    try {
+      const [appDataSaved] = await Promise.all([
+        waitForPendingAppDataSaves(),
+        waitForPendingCategoryNoteSaves(),
+      ]);
+      if (!appDataSaved) {
+        return { ok: false, error: '端末内に未保存の変更があるため、クラウドからの読み込みを中止しました。' };
+      }
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error
+          ? `ノートを保存できないため、クラウドからの読み込みを中止しました: ${error.message}`
+          : 'ノートを保存できないため、クラウドからの読み込みを中止しました。',
+      };
+    }
+    return importQuizMakeDataUnlocked(payload);
+  });
 }
 
 async function importQuizMakeDataUnlocked(payload: SyncPayload): Promise<SyncResult<number>> {

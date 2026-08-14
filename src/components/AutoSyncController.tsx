@@ -11,16 +11,25 @@ import {
   setLastSyncState,
   uploadSyncData,
 } from '../utils/syncService';
+import type { ProtectedWorkReason } from '../utils/protectedWork';
 import { ConfirmDialog } from './ConfirmDialog';
 
 const AUTO_SYNC_INTERVAL_MS = 60000;
 const REMOTE_CHECK_COOLDOWN_MS = 60000;
 
-export function AutoSyncController() {
+interface AutoSyncControllerProps {
+  protectedWorkReason: ProtectedWorkReason | null;
+}
+
+export function AutoSyncController({ protectedWorkReason }: AutoSyncControllerProps) {
   const uploadRunningRef = useRef(false);
   const remoteCheckRunningRef = useRef(false);
   const lastRemoteCheckAtRef = useRef(0);
   const promptedRemoteUpdatedAtRef = useRef('');
+  const protectedWorkReasonRef = useRef(protectedWorkReason);
+  const previousProtectedWorkReasonRef = useRef(protectedWorkReason);
+  const resumeSyncRef = useRef<(() => void) | null>(null);
+  protectedWorkReasonRef.current = protectedWorkReason;
   const [pendingRemoteImport, setPendingRemoteImport] = useState<{ syncId: string; updatedAt: string } | null>(null);
   const [remoteImportBusy, setRemoteImportBusy] = useState(false);
 
@@ -33,6 +42,18 @@ export function AutoSyncController() {
   const confirmRemoteImport = async () => {
     const target = pendingRemoteImport;
     if (!target || remoteImportBusy) return;
+    if (protectedWorkReasonRef.current) {
+      setLastSyncState({ status: 'クラウド読み込みは作業終了後に確認します', error: '' });
+      return;
+    }
+
+    const settings = getAutoSyncSettings();
+    if (!settings.enabled || settings.syncId !== target.syncId) {
+      setPendingRemoteImport(null);
+      promptedRemoteUpdatedAtRef.current = '';
+      setLastSyncState({ status: '同期設定が変わったため読み込みを中止しました', error: '' });
+      return;
+    }
     setRemoteImportBusy(true);
     setLastSyncState({ status: 'クラウドから読み込み中...', error: '' });
 
@@ -49,6 +70,21 @@ export function AutoSyncController() {
       setLastSyncState({ status: 'クラウドデータが見つかりません', error: '' });
       setPendingRemoteImport(null);
       setRemoteImportBusy(false);
+      return;
+    }
+
+    if (protectedWorkReasonRef.current) {
+      setLastSyncState({ status: 'クラウド読み込みは作業終了後に確認します', error: '' });
+      setRemoteImportBusy(false);
+      return;
+    }
+
+    const latestSettings = getAutoSyncSettings();
+    if (!latestSettings.enabled || latestSettings.syncId !== target.syncId) {
+      setPendingRemoteImport(null);
+      promptedRemoteUpdatedAtRef.current = '';
+      setRemoteImportBusy(false);
+      setLastSyncState({ status: '同期設定が変わったため読み込みを中止しました', error: '' });
       return;
     }
 
@@ -71,23 +107,36 @@ export function AutoSyncController() {
   };
 
   useEffect(() => {
+    if (!pendingRemoteImport || !protectedWorkReason) return;
+    setLastSyncState({ status: 'クラウドに新しいデータがあります（作業終了後に確認）', error: '' });
+  }, [pendingRemoteImport, protectedWorkReason]);
+
+  useEffect(() => {
     cleanupLegacySyncBackups();
 
     const uploadIfChanged = async () => {
       const settings = getAutoSyncSettings();
       if (!settings.enabled || !settings.syncId || !settings.configured) return;
-      if (uploadRunningRef.current) return;
+      if (protectedWorkReasonRef.current) {
+        setLastSyncState({ status: '自動同期: 作業終了後に保存します', error: '' });
+        return;
+      }
+      if (uploadRunningRef.current || remoteCheckRunningRef.current) return;
 
       uploadRunningRef.current = true;
+      let shouldCheckRemoteAfterUpload = false;
       try {
         const payload = await exportQuizMakeData();
+        if (protectedWorkReasonRef.current) {
+          setLastSyncState({ status: '自動同期: 作業終了後に保存します', error: '' });
+          return;
+        }
         const hash = computePayloadHash(payload);
         const lastState = getLastSyncState();
         if (!lastState.lastSyncAt && !lastState.lastUploadHash) {
           setLastSyncState({ status: '自動同期: 初回は手動保存または読み込みをしてください', error: '' });
           return;
         }
-        if (remoteCheckRunningRef.current) return;
         if (hash === lastState.lastUploadHash) {
           setLastSyncState({ status: '自動同期: 待機中', error: '' });
           return;
@@ -104,7 +153,7 @@ export function AutoSyncController() {
             status: result.code === 'conflict' ? 'クラウドに新しいデータがあります' : '自動同期失敗',
             error: result.error,
           });
-          if (result.code === 'conflict') void checkRemote(true);
+          if (result.code === 'conflict') shouldCheckRemoteAfterUpload = true;
           return;
         }
         setLastSyncState({ status: '自動保存しました', error: '' });
@@ -114,13 +163,14 @@ export function AutoSyncController() {
         setLastSyncState({ status: '自動同期失敗', error: message });
       } finally {
         uploadRunningRef.current = false;
+        if (shouldCheckRemoteAfterUpload) void checkRemote(true);
       }
     };
 
     const checkRemote = async (force = false) => {
       const settings = getAutoSyncSettings();
       if (!settings.enabled || !settings.syncId || !settings.configured) return;
-      if (remoteCheckRunningRef.current) return;
+      if (remoteCheckRunningRef.current || uploadRunningRef.current) return;
 
       const now = Date.now();
       if (!force && now - lastRemoteCheckAtRef.current < REMOTE_CHECK_COOLDOWN_MS) return;
@@ -158,6 +208,10 @@ export function AutoSyncController() {
       }
     };
 
+    resumeSyncRef.current = () => {
+      void uploadIfChanged().then(() => checkRemote(true));
+    };
+
     const intervalId = window.setInterval(uploadIfChanged, AUTO_SYNC_INTERVAL_MS);
     const handleFocus = () => void checkRemote(false);
     const handleVisibility = () => {
@@ -178,12 +232,19 @@ export function AutoSyncController() {
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('quiz-make-sync-settings-change', handleSettingsChange);
+      resumeSyncRef.current = null;
     };
   }, []);
 
+  useEffect(() => {
+    const previousReason = previousProtectedWorkReasonRef.current;
+    previousProtectedWorkReasonRef.current = protectedWorkReason;
+    if (previousReason && !protectedWorkReason) resumeSyncRef.current?.();
+  }, [protectedWorkReason]);
+
   return (
     <ConfirmDialog
-      open={pendingRemoteImport !== null}
+      open={pendingRemoteImport !== null && protectedWorkReason === null}
       title={'クラウドに新しいデータがあります'}
       message={'この端末のデータをクラウドの内容で上書きします。\n必要な場合は同期設定画面の「現在データをJSONバックアップ」で先に保存してください。'}
       confirmLabel={remoteImportBusy ? '読み込み中…' : '読み込む'}

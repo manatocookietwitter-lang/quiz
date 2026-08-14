@@ -4,6 +4,7 @@ const CACHE_NAME = `${CACHE_PREFIX}${BUILD_ID}`;
 const BASE_URL = new URL(self.registration.scope);
 const BASE_PATH = BASE_URL.pathname;
 const INDEX_URL = new URL('index.html', BASE_URL).href;
+const PRECACHE_MANIFEST_URL = new URL(`precache-manifest.json?v=${encodeURIComponent(BUILD_ID)}`, BASE_URL).href;
 const APP_SHELL = [
   BASE_URL.href,
   INDEX_URL,
@@ -55,24 +56,58 @@ self.addEventListener('fetch', (event) => {
 });
 
 async function precacheAppShell() {
-  const cache = await caches.open(CACHE_NAME);
-  const indexRequest = new Request(INDEX_URL, { cache: 'reload' });
-  const indexResponse = await fetch(indexRequest);
-  if (!indexResponse.ok) {
-    throw new Error(`Unable to precache app shell (${indexResponse.status})`);
+  try {
+    const cache = await caches.open(CACHE_NAME);
+    const indexRequest = new Request(INDEX_URL, { cache: 'reload' });
+    const indexResponse = await fetch(indexRequest);
+    if (!indexResponse.ok) {
+      throw new Error(`Unable to precache app shell (${indexResponse.status})`);
+    }
+
+    await Promise.all([
+      cache.put(INDEX_URL, indexResponse.clone()),
+      cache.put(BASE_URL.href, indexResponse.clone()),
+    ]);
+
+    const html = await indexResponse.text();
+    const manifestResponse = await fetch(new Request(PRECACHE_MANIFEST_URL, { cache: 'reload' }));
+    if (!manifestResponse.ok) {
+      throw new Error(`Unable to load precache manifest (${manifestResponse.status})`);
+    }
+
+    const htmlAssetUrls = extractBuildAssetUrls(html);
+    const manifestAssetUrls = parsePrecacheManifest(await manifestResponse.clone().json());
+    const assetUrls = [...new Set([...htmlAssetUrls, ...manifestAssetUrls])];
+    await cache.put(PRECACHE_MANIFEST_URL, manifestResponse);
+    await Promise.all(assetUrls.map((url) => fetchAndCache(cache, url, true)));
+
+    const optionalShellUrls = APP_SHELL.filter((url) => url !== BASE_URL.href && url !== INDEX_URL);
+    await Promise.all(optionalShellUrls.map((url) => fetchAndCache(cache, url, false)));
+  } catch (error) {
+    await caches.delete(CACHE_NAME);
+    throw error;
+  }
+}
+
+function parsePrecacheManifest(value) {
+  if (!value || value.version !== 1 || !Array.isArray(value.files)) {
+    throw new Error('Invalid precache manifest');
   }
 
-  await Promise.all([
-    cache.put(INDEX_URL, indexResponse.clone()),
-    cache.put(BASE_URL.href, indexResponse.clone()),
-  ]);
+  const urls = new Set();
+  for (const fileName of value.files) {
+    if (typeof fileName !== 'string' || !fileName.startsWith('assets/')) {
+      throw new Error('Invalid precache manifest asset');
+    }
 
-  const html = await indexResponse.text();
-  const assetUrls = extractBuildAssetUrls(html);
-  await Promise.all(assetUrls.map((url) => fetchAndCache(cache, url, true)));
+    const url = new URL(fileName, BASE_URL);
+    if (url.origin !== self.location.origin || !url.pathname.startsWith(`${BASE_PATH}assets/`)) {
+      throw new Error('Precache manifest asset is outside the app scope');
+    }
+    urls.add(url.href);
+  }
 
-  const optionalShellUrls = APP_SHELL.filter((url) => url !== BASE_URL.href && url !== INDEX_URL);
-  await Promise.all(optionalShellUrls.map((url) => fetchAndCache(cache, url, false)));
+  return [...urls];
 }
 
 function extractBuildAssetUrls(html) {

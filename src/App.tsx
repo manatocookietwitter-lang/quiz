@@ -45,6 +45,7 @@ import { exportQuizMakeData, importQuizMakeData, summarizeSyncPayload, validateS
 import { deleteAllCategoryNotes, deleteCategoryNotesForProblemSetIds, waitForPendingCategoryNoteSaves } from './utils/noteStorage';
 import { saveJsonBackup } from './utils/nativePlatform';
 import { createSampleAppData } from './utils/sampleData';
+import { setActiveProtectedWorkReason, type ProtectedWorkReason } from './utils/protectedWork';
 import type { CloudProblemSet, CloudPublishResult } from './utils/cloudService';
 const CommunityScreen = lazy(() => import('./screens/CommunityScreen').then((module) => ({ default: module.CommunityScreen })));
 const CreateProblemSetScreen = lazy(() => import('./screens/CreateProblemSetScreen').then((module) => ({ default: module.CreateProblemSetScreen })));
@@ -119,6 +120,17 @@ export default function App() {
   useEffect(() => {
     createDraftDirtyRef.current = createDraftDirty;
   }, [createDraftDirty]);
+
+  const protectedWorkReason = getSyncProtectedWorkReason(
+    screen,
+    createDraftDirty,
+    pendingBackupImport !== null || backupImportBusy,
+  );
+
+  useEffect(() => {
+    setActiveProtectedWorkReason(protectedWorkReason);
+    return () => setActiveProtectedWorkReason(null);
+  }, [protectedWorkReason]);
 
   useEffect(() => {
     window.history.replaceState({ quizMake: true }, '');
@@ -849,6 +861,15 @@ export default function App() {
   };
 
   const handleApplyUpdate = async () => {
+    const initialProtectedWorkReason = getSyncProtectedWorkReason(
+      screenRef.current,
+      createDraftDirtyRef.current,
+      pendingBackupImport !== null || backupImportBusy,
+    );
+    if (initialProtectedWorkReason) {
+      setStorageError(getUpdateBlockedMessage(initialProtectedWorkReason));
+      return;
+    }
     try {
       const [appDataSaved] = await Promise.all([
         waitForPendingAppDataSaves(),
@@ -860,6 +881,19 @@ export default function App() {
       }
     } catch {
       setStorageError('未保存のノートがあるため更新を中止しました。端末の空き容量や保存設定を確認してから、もう一度お試しください。');
+      return;
+    }
+    const latestProtectedWorkReason = getSyncProtectedWorkReason(
+      screenRef.current,
+      createDraftDirtyRef.current,
+      pendingBackupImport !== null || backupImportBusy,
+    );
+    if (latestProtectedWorkReason) {
+      setStorageError(getUpdateBlockedMessage(latestProtectedWorkReason));
+      return;
+    }
+    if (waitingWorker?.state === 'activated') {
+      window.location.reload();
       return;
     }
     waitingWorker?.postMessage({ type: 'SKIP_WAITING' });
@@ -1221,7 +1255,7 @@ export default function App() {
 
   return (
     <>
-      <AutoSyncController />
+      <AutoSyncController protectedWorkReason={protectedWorkReason} />
       <div key={getScreenKey(screen)} className={`quiz-screen-transition quiz-screen-transition--${transitionDirection}`}>
         {content}
       </div>
@@ -1263,8 +1297,8 @@ export default function App() {
           ) : null}
           {waitingWorker ? (
             <div className="quiz-update-toast" role="status" aria-live="polite">
-              <span>新しいバージョンがあります</span>
-              <button type="button" onClick={() => void handleApplyUpdate()}>更新する</button>
+              <span>{protectedWorkReason ? getUpdateBlockedMessage(protectedWorkReason) : '新しいバージョンがあります'}</span>
+              <button type="button" disabled={protectedWorkReason !== null} onClick={() => void handleApplyUpdate()}>更新する</button>
             </div>
           ) : null}
         </div>
@@ -1293,6 +1327,24 @@ function getProtectedExitReason(screen: AppScreen, createDraftDirty: boolean): '
   if (isQuizInProgressScreen(screen)) return 'quiz';
   if (screen.name === 'createProblemSet' && createDraftDirty) return 'create';
   return null;
+}
+
+function getSyncProtectedWorkReason(screen: AppScreen, createDraftDirty: boolean, backupImportActive = false) {
+  if (backupImportActive) return 'backup' as const;
+  if (screen.name === 'import') return 'import' as const;
+  if (screen.name === 'noteList') return 'notes' as const;
+  if (screen.name === 'sync') return 'sync' as const;
+  return getProtectedExitReason(screen, createDraftDirty);
+}
+
+function getUpdateBlockedMessage(reason: ProtectedWorkReason) {
+  if (reason === 'backup') return '新しいバージョンがあります。バックアップの読み込みを終えてから更新できます。';
+  if (reason === 'import') return '新しいバージョンがあります。問題セットの取り込みを終えてから更新できます。';
+  if (reason === 'notes') return '新しいバージョンがあります。ノートを閉じてから更新できます。';
+  if (reason === 'sync') return '新しいバージョンがあります。同期設定を閉じてから更新できます。';
+  return reason === 'create'
+    ? '新しいバージョンがあります。作成中の内容を保存してから更新できます。'
+    : '新しいバージョンがあります。演習を終了してから更新できます。';
 }
 
 function getPrimaryNavItem(screen: AppScreen): PrimaryNavItem | null {
