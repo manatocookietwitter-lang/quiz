@@ -1,6 +1,13 @@
-import { type PointerEvent, useEffect, useRef, useState } from 'react';
+import { forwardRef, type PointerEvent, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { ConfirmDialog } from './ConfirmDialog';
+import {
+  getNoteSaveErrorMessage,
+  NoteLoadError,
+  runAfterSuccessfulNoteFlush,
+  shouldSnapshotNoteOnExit,
+  waitForNoteSave,
+} from './noteExitGuard';
 import { createId } from '../utils/id';
 import { loadCategoryNoteRaw, saveCategoryNoteRaw } from '../utils/noteStorage';
 import './CategoryNoteDrawer.css';
@@ -23,6 +30,9 @@ type NoteColorKey = keyof typeof NOTE_COLORS;
 type PenSize = (typeof PEN_WIDTHS)[number];
 type EraserSize = (typeof ERASER_WIDTHS)[number];
 type NoteTool = 'pen' | 'eraser';
+type NoteLoadState = 'loading' | 'ready' | 'error';
+type NotePaintState = 'loading' | 'ready' | 'error';
+type NoteSaveQueueState = 'idle' | 'pending' | 'saved' | 'error';
 
 type NotePage = {
   id: string;
@@ -45,22 +55,90 @@ interface CategoryNoteProps {
   onClose?: () => void;
 }
 
+export interface CategoryNotePanelHandle {
+  flush: () => Promise<void>;
+}
+
+export interface CategoryNoteDrawerHandle {
+  close: () => Promise<boolean>;
+  flush: () => Promise<void>;
+}
+
 interface CategoryNoteDrawerProps extends CategoryNoteProps {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }
 
-export function CategoryNoteDrawer({ problemSetId, category, open, onOpenChange }: CategoryNoteDrawerProps) {
+export const CategoryNoteDrawer = forwardRef<CategoryNoteDrawerHandle, CategoryNoteDrawerProps>(function CategoryNoteDrawer(
+  { problemSetId, category, open, onOpenChange },
+  ref,
+) {
   const dragStartRef = useRef<number | null>(null);
+  const panelRef = useRef<CategoryNotePanelHandle>(null);
+  const drawerTransitionQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+  const closePromiseRef = useRef<Promise<boolean> | null>(null);
+  const latestProblemSetIdRef = useRef(problemSetId);
+  const latestCategoryRef = useRef(category);
   const [internalOpen, setInternalOpen] = useState(false);
   const [dragOffset, setDragOffset] = useState(0);
   const [dragging, setDragging] = useState(false);
+  const [panelProblemSetId, setPanelProblemSetId] = useState(problemSetId);
+  const [panelCategory, setPanelCategory] = useState(category);
   const isOpen = open ?? internalOpen;
+  latestProblemSetIdRef.current = problemSetId;
+  latestCategoryRef.current = category;
 
   const setOpen = (nextOpen: boolean) => {
     if (open === undefined) setInternalOpen(nextOpen);
     onOpenChange?.(nextOpen);
   };
+
+  const enqueuePanelTransition = (proceed: () => void): Promise<boolean> => {
+    const execute = () => runAfterSuccessfulNoteFlush(
+      () => panelRef.current?.flush() ?? Promise.resolve(),
+      proceed,
+    );
+    const queued = drawerTransitionQueueRef.current.then(execute, execute);
+    drawerTransitionQueueRef.current = queued.then(() => undefined, () => undefined);
+    return queued;
+  };
+
+  const requestClose = (): Promise<boolean> => {
+    if (closePromiseRef.current) return closePromiseRef.current;
+    const pendingClose = enqueuePanelTransition(() => {
+      setPanelProblemSetId(latestProblemSetIdRef.current);
+      setPanelCategory(latestCategoryRef.current);
+      setOpen(false);
+    });
+    closePromiseRef.current = pendingClose;
+    void pendingClose.then(
+      () => {
+        if (closePromiseRef.current === pendingClose) closePromiseRef.current = null;
+      },
+      () => {
+        if (closePromiseRef.current === pendingClose) closePromiseRef.current = null;
+      },
+    );
+    return pendingClose;
+  };
+
+  useImperativeHandle(ref, () => ({
+    close: requestClose,
+    flush: async () => {
+      await drawerTransitionQueueRef.current;
+      await (panelRef.current?.flush() ?? Promise.resolve());
+    },
+  }));
+
+  useEffect(() => {
+    if (problemSetId === panelProblemSetId && category === panelCategory) return;
+    void enqueuePanelTransition(
+      () => {
+        setPanelProblemSetId(latestProblemSetIdRef.current);
+        setPanelCategory(latestCategoryRef.current);
+      },
+    );
+  }, [category, panelCategory, panelProblemSetId, problemSetId]);
 
   const beginDrag = (event: PointerEvent<HTMLElement>) => {
     dragStartRef.current = event.clientX;
@@ -78,7 +156,7 @@ export function CategoryNoteDrawer({ problemSetId, category, open, onOpenChange 
   const endDrag = (event: PointerEvent<HTMLElement>) => {
     if (dragStartRef.current === null) return;
     const delta = event.clientX - dragStartRef.current;
-    if (isOpen && delta > 90) setOpen(false);
+    if (isOpen && delta > 90) void requestClose();
     if (!isOpen && delta < -70) setOpen(true);
     dragStartRef.current = null;
     setDragging(false);
@@ -116,13 +194,21 @@ export function CategoryNoteDrawer({ problemSetId, category, open, onOpenChange 
           onPointerUp={endDrag}
           onPointerCancel={endDrag}
         />
-        <CategoryNotePanel problemSetId={problemSetId} category={category} onClose={() => setOpen(false)} />
+        <CategoryNotePanel
+          ref={panelRef}
+          problemSetId={panelProblemSetId}
+          category={panelCategory}
+          onClose={() => void requestClose()}
+        />
       </aside>
     </>
   );
-}
+});
 
-export function CategoryNotePanel({ problemSetId, category, className = '', onClose }: CategoryNoteProps) {
+export const CategoryNotePanel = forwardRef<CategoryNotePanelHandle, CategoryNoteProps>(function CategoryNotePanel(
+  { problemSetId, category, className = '', onClose },
+  ref,
+) {
   const normalizedCategory = normalizeCategory(category);
   const noteKey = problemSetId ? getNoteKey(problemSetId, normalizedCategory) : '';
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -152,7 +238,20 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   const widthRef = useRef<number>(1);
   const noteSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const latestNoteSaveIdRef = useRef(0);
-  const closingRef = useRef(false);
+  const pendingDrawSaveTimerRef = useRef<number | null>(null);
+  const flushPromiseRef = useRef<Promise<void> | null>(null);
+  const flushingRef = useRef(false);
+  const noteLoadPromiseRef = useRef<Promise<void>>(Promise.resolve());
+  const noteLoadStateRef = useRef<NoteLoadState>('loading');
+  const noteLoadRequestIdRef = useRef(0);
+  const renderedNoteKeyRef = useRef('');
+  const renderedPageIdRef = useRef('');
+  const notePaintPromiseRef = useRef<Promise<void>>(Promise.resolve());
+  const notePaintStateRef = useRef<NotePaintState>('loading');
+  const notePaintRequestIdRef = useRef(0);
+  const canvasDirtyRef = useRef(false);
+  const noteSaveQueueStateRef = useRef<NoteSaveQueueState>('idle');
+  const latestNoteSaveCandidateRef = useRef<{ noteKey: string; note: CategoryNote } | null>(null);
 
   const [note, setNote] = useState<CategoryNote>(() => createEmptyNote(problemSetId ?? '', normalizedCategory));
   const [pageIndex, setPageIndex] = useState(0);
@@ -168,7 +267,10 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [saveError, setSaveError] = useState('');
   const [deletePageConfirmOpen, setDeletePageConfirmOpen] = useState(false);
-  const [isClosing, setIsClosing] = useState(false);
+  const [isFlushing, setIsFlushing] = useState(false);
+  const [noteLoadState, setNoteLoadState] = useState<NoteLoadState>('loading');
+  const [noteLoadError, setNoteLoadError] = useState('');
+  const [notePaintState, setNotePaintState] = useState<NotePaintState>('loading');
 
   const getPagePanMetrics = (scale = pageScaleRef.current) => {
     const page = canvasRef.current?.parentElement as HTMLElement | null;
@@ -264,7 +366,12 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   const currentPage = pages[currentPageIndex] ?? pages[0];
   const activeWidth = tool === 'eraser' ? eraserSize : penSize;
   const activeWidths = tool === 'eraser' ? ERASER_WIDTHS : PEN_WIDTHS;
-  const saveStatusText = saveState === 'error' ? '保存失敗' : '';
+  const noteInteractionDisabled = isFlushing || noteLoadState !== 'ready' || notePaintState !== 'ready';
+  const saveStatusText = noteLoadState === 'loading' || notePaintState === 'loading'
+    ? '読み込み中'
+    : noteLoadState === 'error' || notePaintState === 'error'
+      ? '読み込み失敗'
+      : saveState === 'error' ? '保存失敗' : '';
 
   useEffect(() => {
     toolRef.current = tool;
@@ -278,33 +385,58 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
     widthRef.current = activeWidth;
   }, [activeWidth]);
 
-  useEffect(() => {
-    if (!problemSetId || !noteKey) return;
-    let cancelled = false;
+  const startNoteLoad = () => {
+    const requestId = noteLoadRequestIdRef.current + 1;
+    noteLoadRequestIdRef.current = requestId;
+    renderedNoteKeyRef.current = '';
+    renderedPageIdRef.current = '';
+    notePaintRequestIdRef.current += 1;
+    notePaintStateRef.current = 'loading';
+    setNotePaintState('loading');
+    canvasDirtyRef.current = false;
+    noteLoadStateRef.current = 'loading';
+    setNoteLoadState('loading');
+    setNoteLoadError('');
     setSaveState('idle');
     setSaveError('');
 
-    void loadCategoryNoteRaw(noteKey)
+    if (!problemSetId || !noteKey) {
+      noteLoadStateRef.current = 'ready';
+      setNoteLoadState('ready');
+      const pending = Promise.resolve();
+      noteLoadPromiseRef.current = pending;
+      return { requestId, pending };
+    }
+
+    const pending = loadCategoryNoteRaw(noteKey)
       .then((raw) => {
-        if (cancelled) return;
+        if (noteLoadRequestIdRef.current !== requestId) return;
         const loaded = parseNote(raw, problemSetId, normalizedCategory);
         setNote(loaded);
         setPageIndex(Math.min(loaded.currentPageIndex, Math.max(loaded.pages.length - 1, 0)));
         clearHistory();
+        noteLoadStateRef.current = 'ready';
+        setNoteLoadState('ready');
       })
       .catch((error) => {
-        if (cancelled) return;
+        if (noteLoadRequestIdRef.current !== requestId) return;
         console.warn('Failed to load category note.', error);
-        const fallback = createEmptyNote(problemSetId, normalizedCategory);
-        setNote(fallback);
-        setPageIndex(0);
-        clearHistory();
-        setSaveState('error');
-        setSaveError('ノートの読み込みに失敗しました');
+        const loadError = new NoteLoadError();
+        noteLoadStateRef.current = 'error';
+        setNoteLoadState('error');
+        setNoteLoadError(getNoteSaveErrorMessage(loadError));
+        throw loadError;
       });
+    noteLoadPromiseRef.current = pending;
+    void pending.catch(() => undefined);
+    return { requestId, pending };
+  };
+
+  useEffect(() => {
+    const { requestId } = startNoteLoad();
 
     return () => {
-      cancelled = true;
+      if (noteLoadRequestIdRef.current === requestId) noteLoadRequestIdRef.current += 1;
     };
   }, [problemSetId, noteKey, normalizedCategory]);
 
@@ -314,69 +446,66 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || noteLoadState !== 'ready') return;
 
     pageDataUrlRef.current = currentPage?.dataUrl ?? '';
 
     const setupCanvas = (forceDraw = false) => {
       const { width, height } = getCanvasLogicalSize(canvas);
       if (width === 0 || height === 0) return;
-      if (drawingRef.current) {
+      if (drawingRef.current || canvasDirtyRef.current) {
         pendingResizeRef.current = true;
         return;
       }
 
       const ratio = window.devicePixelRatio || 1;
-      const nextWidth = Math.round(width * ratio);
-      const nextHeight = Math.round(height * ratio);
-      const sizeChanged = canvas.width !== nextWidth || canvas.height !== nextHeight;
-
-      if (sizeChanged) {
-        canvas.width = nextWidth;
-        canvas.height = nextHeight;
-      }
-
-      const context = canvas.getContext('2d');
-      if (!context) return;
-      ctxRef.current = context;
-      context.setTransform(ratio, 0, 0, ratio, 0, 0);
-
+      const sizeChanged = canvas.width !== Math.round(width * ratio) || canvas.height !== Math.round(height * ratio);
       if (sizeChanged || forceDraw) {
-        drawDataUrlToContext(context, pageDataUrlRef.current, width, height);
+        drawDataUrlToCanvas(pageDataUrlRef.current, currentPage?.id ?? '');
       }
     };
 
     setupCanvas(true);
     const observer = new ResizeObserver(() => setupCanvas(false));
     observer.observe(canvas);
-    return () => observer.disconnect();
-  }, [currentPage?.id, noteKey]);
+    return () => {
+      observer.disconnect();
+      notePaintRequestIdRef.current += 1;
+    };
+  }, [currentPage?.id, noteKey, noteLoadState]);
 
   const snapshot = () => canvasRef.current?.toDataURL('image/png') ?? '';
 
-  const persistNote = (nextNote: CategoryNote): Promise<void> => {
-    if (!noteKey) return Promise.resolve();
+  const persistNote = (nextNote: CategoryNote, targetNoteKey = noteKey): Promise<void> => {
+    if (!targetNoteKey) return Promise.resolve();
 
     const raw = JSON.stringify(nextNote);
     const saveId = latestNoteSaveIdRef.current + 1;
     latestNoteSaveIdRef.current = saveId;
+    latestNoteSaveCandidateRef.current = { noteKey: targetNoteKey, note: nextNote };
+    noteSaveQueueStateRef.current = 'pending';
     setSaveState('saving');
     setSaveError('');
 
     const queuedSave = noteSaveQueueRef.current
       .catch(() => undefined)
-      .then(() => saveCategoryNoteRaw(noteKey, raw));
+      .then(() => saveCategoryNoteRaw(targetNoteKey, raw));
     noteSaveQueueRef.current = queuedSave;
 
     void queuedSave
       .then(() => {
-        if (latestNoteSaveIdRef.current === saveId) setSaveState('saved');
+        if (latestNoteSaveIdRef.current === saveId) {
+          noteSaveQueueStateRef.current = 'saved';
+          setSaveState('saved');
+          setSaveError('');
+        }
       })
       .catch((error) => {
         if (latestNoteSaveIdRef.current !== saveId) return;
         console.warn('Failed to save category note.', error);
+        noteSaveQueueStateRef.current = 'error';
         setSaveState('error');
-        setSaveError(error instanceof Error ? error.message : 'ノートの保存に失敗しました。');
+        setSaveError(getNoteSaveErrorMessage(error));
       });
 
     return queuedSave;
@@ -393,16 +522,115 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
       updatedAt: new Date().toISOString(),
     };
     pageDataUrlRef.current = dataUrl;
+    canvasDirtyRef.current = false;
     setNote(nextNote);
     setPageIndex(nextIndex);
     persistNote(nextNote);
     return nextNote;
   };
 
+  const flushPendingNote = (): Promise<void> => {
+    if (flushPromiseRef.current) return flushPromiseRef.current;
+
+    const pendingFlush = (async () => {
+      flushingRef.current = true;
+      setIsFlushing(true);
+      setSaveError('');
+      let failurePhase: 'load' | 'paint' | 'save' = 'load';
+
+      try {
+        if (noteLoadStateRef.current === 'error') {
+          await waitForNoteSave(startNoteLoad().pending);
+        } else if (noteLoadStateRef.current === 'loading') {
+          await waitForNoteSave(noteLoadPromiseRef.current);
+        }
+        if (noteLoadStateRef.current !== 'ready') throw new NoteLoadError();
+
+        if (pendingDrawSaveTimerRef.current !== null) {
+          window.clearTimeout(pendingDrawSaveTimerRef.current);
+          pendingDrawSaveTimerRef.current = null;
+        }
+        drawingRef.current = false;
+        lastPointRef.current = null;
+
+        if (canvasDirtyRef.current) {
+          failurePhase = 'paint';
+          if (notePaintStateRef.current === 'loading') {
+            await waitForNoteSave(notePaintPromiseRef.current);
+          }
+          if (!shouldSnapshotNoteOnExit({
+            dirty: canvasDirtyRef.current,
+            loadReady: noteLoadStateRef.current === 'ready',
+            paintReady: notePaintStateRef.current === 'ready',
+            renderedNoteMatches: renderedNoteKeyRef.current === noteKey,
+            renderedPageMatches: renderedPageIdRef.current === (currentPage?.id ?? ''),
+          })) {
+            throw new NoteLoadError();
+          }
+          updateCurrentPage();
+        }
+
+        failurePhase = 'save';
+        if (noteSaveQueueStateRef.current === 'error') {
+          const retryCandidate = latestNoteSaveCandidateRef.current;
+          if (retryCandidate) persistNote(retryCandidate.note, retryCandidate.noteKey);
+        }
+        await waitForNoteSave(noteSaveQueueRef.current);
+        if (noteSaveQueueStateRef.current !== 'idle') setSaveState('saved');
+      } catch (error) {
+        console.warn('Failed to save category note before leaving.', error);
+        if (failurePhase === 'load' || failurePhase === 'paint') {
+          if (failurePhase === 'load' && noteLoadStateRef.current === 'loading') {
+            noteLoadRequestIdRef.current += 1;
+            noteLoadStateRef.current = 'error';
+            setNoteLoadState('error');
+          }
+          if (failurePhase === 'paint') {
+            notePaintRequestIdRef.current += 1;
+            notePaintStateRef.current = 'error';
+            setNotePaintState('error');
+          }
+          const message = error instanceof NoteLoadError
+            ? getNoteSaveErrorMessage(error)
+            : 'ノートの準備に時間がかっています。もう一度お試しください。';
+          setNoteLoadError(message);
+        } else {
+          setSaveState('error');
+          setSaveError(getNoteSaveErrorMessage(error));
+        }
+        throw error;
+      } finally {
+        flushingRef.current = false;
+        setIsFlushing(false);
+      }
+    })();
+
+    flushPromiseRef.current = pendingFlush;
+    void pendingFlush.then(
+      () => {
+        if (flushPromiseRef.current === pendingFlush) flushPromiseRef.current = null;
+      },
+      () => {
+        if (flushPromiseRef.current === pendingFlush) flushPromiseRef.current = null;
+      },
+    );
+    return pendingFlush;
+  };
+
+  useImperativeHandle(ref, () => ({ flush: flushPendingNote }));
+
   function clearHistory() {
     historyRef.current = [];
     setCanUndo(false);
   }
+
+  const markCanvasPaintPending = () => {
+    notePaintRequestIdRef.current += 1;
+    renderedNoteKeyRef.current = '';
+    renderedPageIdRef.current = '';
+    notePaintStateRef.current = 'loading';
+    setNotePaintState('loading');
+  };
 
   const pushHistory = () => {
     const image = snapshot();
@@ -412,15 +640,17 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   };
 
   const undo = () => {
+    if (flushingRef.current || noteLoadStateRef.current !== 'ready' || notePaintStateRef.current !== 'ready') return;
     const previous = historyRef.current[historyRef.current.length - 1];
     if (!previous) return;
     historyRef.current = historyRef.current.slice(0, -1);
     setCanUndo(historyRef.current.length > 0);
-    drawDataUrlToCanvas(previous);
+      drawDataUrlToCanvas(previous);
     updateCurrentPage(previous);
   };
 
   const addPage = (position: 'before' | 'after') => {
+    if (flushingRef.current || noteLoadStateRef.current !== 'ready' || notePaintStateRef.current !== 'ready') return;
     const saved = updateCurrentPage();
     const insertionIndex = position === 'before' ? currentPageIndex : currentPageIndex + 1;
     const nextPages = [...saved.pages];
@@ -434,6 +664,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
       updatedAt: new Date().toISOString(),
     };
     pageDataUrlRef.current = '';
+    markCanvasPaintPending();
     setNote(nextNote);
     setPageIndex(nextIndex);
     resetPageView();
@@ -442,11 +673,13 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   };
 
   const deletePage = () => {
+    if (flushingRef.current || noteLoadStateRef.current !== 'ready' || notePaintStateRef.current !== 'ready') return;
     if (pages.length <= 1) return;
     setDeletePageConfirmOpen(true);
   };
 
   const confirmDeletePage = () => {
+    if (flushingRef.current || noteLoadStateRef.current !== 'ready' || notePaintStateRef.current !== 'ready') return;
     setDeletePageConfirmOpen(false);
     if (pages.length <= 1) return;
     const saved = updateCurrentPage();
@@ -460,6 +693,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
       updatedAt: new Date().toISOString(),
     };
     pageDataUrlRef.current = nextPages[nextIndex]?.dataUrl ?? '';
+    markCanvasPaintPending();
     setNote(nextNote);
     setPageIndex(nextIndex);
     resetPageView();
@@ -468,10 +702,12 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   };
 
   const goToPage = (nextIndex: number) => {
+    if (flushingRef.current || noteLoadStateRef.current !== 'ready' || notePaintStateRef.current !== 'ready') return;
     if (nextIndex < 0 || nextIndex >= pages.length) return;
     const saved = updateCurrentPage();
     const nextNote = { ...saved, currentPageIndex: nextIndex, updatedAt: new Date().toISOString() };
     pageDataUrlRef.current = nextNote.pages[nextIndex]?.dataUrl ?? '';
+    markCanvasPaintPending();
     setNote(nextNote);
     setPageIndex(nextIndex);
     resetPageView();
@@ -480,6 +716,13 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
   };
 
   const beginPageSwipe = (event: PointerEvent<HTMLCanvasElement>) => {
+    if (
+      flushingRef.current
+      || noteLoadStateRef.current !== 'ready'
+      || notePaintStateRef.current !== 'ready'
+      || renderedNoteKeyRef.current !== noteKey
+      || renderedPageIdRef.current !== (currentPage?.id ?? '')
+    ) return;
     if (event.pointerType !== 'touch') return;
     event.preventDefault();
     if (touchPointsRef.current.size === 0) {
@@ -654,6 +897,8 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
       currentPageIndex: targetIndex,
       updatedAt: new Date().toISOString(),
     };
+    canvasDirtyRef.current = false;
+    persistNote(nextNote);
     preloadNoteImage(nextPages[targetIndex]?.dataUrl ?? '');
 
     const finishCommit = () => {
@@ -663,13 +908,13 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
       resetPageView();
       rail.style.transition = 'none';
       rail.style.transform = 'translate3d(-33.333333%, 0, 0)';
+      markCanvasPaintPending();
       flushSync(() => {
         setNote(nextNote);
         setPageIndex(targetIndex);
         clearHistory();
       });
-      drawDataUrlToCanvas(pageDataUrlRef.current);
-      persistNote(nextNote);
+      drawDataUrlToCanvas(pageDataUrlRef.current, nextPages[targetIndex]?.id ?? '');
       void rail.offsetHeight;
       rail.style.transition = '';
     };
@@ -692,6 +937,13 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
     });
   };
   const beginDraw = (event: PointerEvent<HTMLCanvasElement>) => {
+    if (
+      flushingRef.current
+      || noteLoadStateRef.current !== 'ready'
+      || notePaintStateRef.current !== 'ready'
+      || renderedNoteKeyRef.current !== noteKey
+      || renderedPageIdRef.current !== (currentPage?.id ?? '')
+    ) return;
     if (!canDraw(event)) {
       beginPageSwipe(event);
       return;
@@ -730,6 +982,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
     context.lineTo(nextPoint.x, nextPoint.y);
     context.stroke();
     context.restore();
+    canvasDirtyRef.current = true;
     lastPointRef.current = nextPoint;
   };
 
@@ -742,7 +995,8 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
     drawingRef.current = false;
     lastPointRef.current = null;
     canvasRef.current?.releasePointerCapture?.(event.pointerId);
-    window.setTimeout(() => {
+    pendingDrawSaveTimerRef.current = window.setTimeout(() => {
+      pendingDrawSaveTimerRef.current = null;
       updateCurrentPage();
       if (pendingResizeRef.current) {
         pendingResizeRef.current = false;
@@ -751,11 +1005,17 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
     }, 0);
   };
 
-  const drawDataUrlToCanvas = (dataUrl: string) => {
+  function drawDataUrlToCanvas(dataUrl: string, targetPageId = currentPage?.id ?? '') {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const { width, height } = getCanvasLogicalSize(canvas);
     if (width === 0 || height === 0) return;
+    const paintRequestId = notePaintRequestIdRef.current + 1;
+    notePaintRequestIdRef.current = paintRequestId;
+    renderedNoteKeyRef.current = '';
+    renderedPageIdRef.current = '';
+    notePaintStateRef.current = 'loading';
+    setNotePaintState('loading');
     const ratio = window.devicePixelRatio || 1;
     const nextWidth = Math.round(width * ratio);
     const nextHeight = Math.round(height * ratio);
@@ -764,81 +1024,93 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
       canvas.height = nextHeight;
     }
     const context = canvas.getContext('2d');
-    if (!context) return;
-    ctxRef.current = context;
-    context.setTransform(ratio, 0, 0, ratio, 0, 0);
-    drawDataUrlToContext(context, dataUrl, width, height);
-  };
-
-  const redrawCanvasFromCurrentImage = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const { width, height } = getCanvasLogicalSize(canvas);
-    if (width === 0 || height === 0) return;
-    const ratio = window.devicePixelRatio || 1;
-    const nextWidth = Math.round(width * ratio);
-    const nextHeight = Math.round(height * ratio);
-    if (canvas.width !== nextWidth || canvas.height !== nextHeight) {
-      canvas.width = nextWidth;
-      canvas.height = nextHeight;
-    }
-    const context = canvas.getContext('2d');
-    if (!context) return;
-    ctxRef.current = context;
-    context.setTransform(ratio, 0, 0, ratio, 0, 0);
-    drawDataUrlToContext(context, pageDataUrlRef.current, width, height);
-  };
-
-  const handleClose = async () => {
-    if (closingRef.current) return;
-    closingRef.current = true;
-    setIsClosing(true);
-
-    try {
-      updateCurrentPage();
-      await noteSaveQueueRef.current;
-    } catch (error) {
-      console.warn('Failed to save category note before closing.', error);
-      setSaveState('error');
-      setSaveError(error instanceof Error
-        ? error.message
-        : '\u30ce\u30fc\u30c8\u306e\u4fdd\u5b58\u306b\u5931\u6557\u3057\u307e\u3057\u305f\u3002\u753b\u9762\u3092\u9589\u3058\u305a\u306b\u518d\u8a66\u884c\u3057\u3066\u304f\u3060\u3055\u3044\u3002');
-      closingRef.current = false;
-      setIsClosing(false);
+    if (!context) {
+      notePaintStateRef.current = 'error';
+      setNotePaintState('error');
+      setNoteLoadError('ノートを表示できませんでした。もう一度お試しください。');
       return;
     }
+    ctxRef.current = context;
+    context.setTransform(ratio, 0, 0, ratio, 0, 0);
+    const pendingPaint = drawDataUrlToContext(
+      context,
+      dataUrl,
+      width,
+      height,
+      () => notePaintRequestIdRef.current === paintRequestId,
+    );
+    notePaintPromiseRef.current = pendingPaint;
+    void pendingPaint.then(
+      () => {
+        if (notePaintRequestIdRef.current !== paintRequestId) return;
+        renderedNoteKeyRef.current = noteKey;
+        renderedPageIdRef.current = targetPageId;
+        notePaintStateRef.current = 'ready';
+        setNotePaintState('ready');
+        setNoteLoadError('');
+      },
+      (error) => {
+        if (notePaintRequestIdRef.current !== paintRequestId) return;
+        console.warn('Failed to decode category note image.', error);
+        notePaintStateRef.current = 'error';
+        setNotePaintState('error');
+        setNoteLoadError('ノートを表示できませんでした。もう一度お試しください。');
+      },
+    );
+  }
 
-    closingRef.current = false;
-    setIsClosing(false);
-    onClose?.();
+  const redrawCanvasFromCurrentImage = () => {
+    drawDataUrlToCanvas(pageDataUrlRef.current);
   };
+
   const selectColor = (key: NoteColorKey) => {
     setColorKey(key);
     setTool('pen');
   };
 
   return (
-    <section className={`category-note-panel ${className}`.trim()}>
+    <section
+      className={`category-note-panel${isFlushing ? ' category-note-panel--flushing' : ''} ${className}`.trim()}
+      aria-busy={isFlushing}
+    >
       <header className="category-note-drawer__header">
         <div className="category-note-drawer__title-block">
           <p>{'\u30ce\u30fc\u30c8'}</p>
           <div className="category-note-drawer__title-row">
             <h2>{normalizedCategory}</h2>
             <span>{'\u30da\u30fc\u30b8'} {currentPageIndex + 1} / {pages.length}</span>
-            {saveStatusText ? <span className={`category-note-save-state category-note-save-state--${saveState}`} title={saveError || saveStatusText}>{saveStatusText}</span> : null}
+            {saveStatusText ? (
+              <span
+                className={`category-note-save-state category-note-save-state--${noteLoadState === 'error' || notePaintState === 'error' ? 'error' : noteLoadState === 'loading' || notePaintState === 'loading' ? 'saving' : saveState}`}
+                title={noteLoadError || saveError || saveStatusText}
+              >
+                {saveStatusText}
+              </span>
+            ) : null}
           </div>
         </div>
         <div className="category-note-drawer__header-actions">
-          <button type="button" onClick={() => addPage('before')}>{'前に追加'}</button>
-          <button type="button" onClick={() => addPage('after')}>{'後ろに追加'}</button>
-          <button type="button" className="category-note-drawer__danger-button" disabled={pages.length <= 1} onClick={deletePage}>{'\u524a\u9664'}</button>
+          <button type="button" disabled={noteInteractionDisabled} onClick={() => addPage('before')}>{'前に追加'}</button>
+          <button type="button" disabled={noteInteractionDisabled} onClick={() => addPage('after')}>{'後ろに追加'}</button>
+          <button type="button" className="category-note-drawer__danger-button" disabled={noteInteractionDisabled || pages.length <= 1} onClick={deletePage}>{'\u524a\u9664'}</button>
           {onClose ? (
-            <button type="button" disabled={isClosing} aria-busy={isClosing} onClick={handleClose}>
-              {isClosing ? '\u4fdd\u5b58\u4e2d\u2026' : '\u9589\u3058\u308b'}
+            <button type="button" disabled={isFlushing} aria-busy={isFlushing} onClick={onClose}>
+              {isFlushing ? '\u4fdd\u5b58\u4e2d\u2026' : '\u9589\u3058\u308b'}
             </button>
           ) : null}
         </div>
       </header>
+
+      {noteLoadError || saveError ? (
+        <div className="category-note-save-error" role="alert">
+          <span>{noteLoadError || saveError}</span>
+          {noteLoadState === 'error' || notePaintState === 'error' ? (
+            <button type="button" disabled={isFlushing} onClick={() => void startNoteLoad().pending.catch(() => undefined)}>
+              再読み込み
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="category-note-canvas-area">
         <div className="category-note-page-viewport">
@@ -863,6 +1135,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
                 <canvas
                   ref={canvasRef}
                   className="category-note-canvas"
+                  aria-disabled={noteInteractionDisabled}
                   onPointerDown={beginDraw}
                   onPointerMove={moveDraw}
                   onPointerUp={endDraw}
@@ -889,6 +1162,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
             <button
               key={item}
               type="button"
+              disabled={noteInteractionDisabled}
               className={activeWidth === item ? 'is-active' : ''}
               onClick={() => {
                 if (tool === 'eraser') setEraserSize(item as EraserSize);
@@ -905,6 +1179,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
             <button
               key={key}
               type="button"
+              disabled={noteInteractionDisabled}
               className={`category-note-color category-note-color--${key}${colorKey === key && tool === 'pen' ? ' is-active' : ''}`}
               aria-label={key}
               title={key}
@@ -913,6 +1188,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
           ))}
           <button
             type="button"
+            disabled={noteInteractionDisabled}
             className={`category-note-icon-button${tool === 'eraser' ? ' is-active' : ''}`}
             aria-label="消しゴム"
             title="消しゴム"
@@ -925,7 +1201,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
             className="category-note-icon-button"
             aria-label="戻す"
             title="戻す"
-            disabled={!canUndo}
+            disabled={noteInteractionDisabled || !canUndo}
             onClick={undo}
           >
             <UndoIcon />
@@ -935,6 +1211,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
 
       <ConfirmDialog
         open={deletePageConfirmOpen}
+        busy={isFlushing}
         title={'\u3053\u306e\u30da\u30fc\u30b8\u3092\u524a\u9664\u3057\u307e\u3059\u304b\uff1f'}
         message={'\u3053\u306e\u30da\u30fc\u30b8\u306b\u66f8\u3044\u305f\u30ce\u30fc\u30c8\u306f\u524a\u9664\u3055\u308c\u307e\u3059\u3002\n\u5143\u306b\u623b\u305b\u307e\u305b\u3093\u3002'}
         confirmLabel={'\u524a\u9664'}
@@ -943,7 +1220,7 @@ export function CategoryNotePanel({ problemSetId, category, className = '', onCl
       />
     </section>
   );
-}
+});
 
 function EraserIcon() {
   return (
@@ -1078,23 +1355,43 @@ function setCachedNoteImage(dataUrl: string, image: HTMLImageElement) {
     noteImageCache.delete(oldestKey);
   }
 }
-function drawDataUrlToContext(context: CanvasRenderingContext2D, dataUrl: string, width: number, height: number) {
+async function drawDataUrlToContext(
+  context: CanvasRenderingContext2D,
+  dataUrl: string,
+  width: number,
+  height: number,
+  shouldDraw: () => boolean = () => true,
+): Promise<void> {
+  if (!shouldDraw()) return;
   context.fillStyle = '#ffffff';
   context.fillRect(0, 0, width, height);
   if (!dataUrl) return;
 
   const cached = getCachedNoteImage(dataUrl);
-  if (cached?.complete) {
-    context.drawImage(cached, 0, 0, width, height);
-    return;
-  }
-
   const image = cached ?? new Image();
-  image.onload = () => context.drawImage(image, 0, 0, width, height);
   if (!cached) {
     image.src = dataUrl;
     setCachedNoteImage(dataUrl, image);
   }
+  try {
+    await decodeNoteImage(image);
+  } catch (error) {
+    if (noteImageCache.get(dataUrl) === image) noteImageCache.delete(dataUrl);
+    throw error;
+  }
+  if (shouldDraw()) context.drawImage(image, 0, 0, width, height);
+}
+
+async function decodeNoteImage(image: HTMLImageElement): Promise<void> {
+  if (typeof image.decode === 'function') {
+    await image.decode();
+  } else if (!image.complete) {
+    await new Promise<void>((resolve, reject) => {
+      image.addEventListener('load', () => resolve(), { once: true });
+      image.addEventListener('error', () => reject(new Error('Failed to decode note image.')), { once: true });
+    });
+  }
+  if (image.naturalWidth <= 0 || image.naturalHeight <= 0) throw new Error('Failed to decode note image.');
 }
 
 

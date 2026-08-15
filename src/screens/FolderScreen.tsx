@@ -1,12 +1,12 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { AppData, ProblemSet } from '../types';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { BackButton } from '../components/BackButton';
 import { Layout } from '../components/Layout';
 import { MissingResourceState } from '../components/MissingResourceState';
 import { CheckIcon, ChevronRightIcon, DocumentOutlineIcon, PlusIcon, TrashIcon } from '../components/UiIcons';
+import { buildAppDataView } from '../utils/appDataView';
 import { formatDisplayDate } from '../utils/date';
-import { getProblemSetsByFolder, getQuestionsBySet } from '../utils/quiz';
 import './FolderScreen.css';
 
 interface FolderScreenProps {
@@ -19,8 +19,9 @@ interface FolderScreenProps {
 }
 
 export function FolderScreen({ data, folderId, onBack, onCreateProblemSet, onOpenProblemSet, onDeleteProblemSet }: FolderScreenProps) {
-  const folder = data.folders.find((item) => item.id === folderId);
-  const problemSets = getProblemSetsByFolder(data, folderId);
+  const contentView = useMemo(() => buildAppDataView(data), [data]);
+  const folder = contentView.folderById.get(folderId);
+  const problemSets = contentView.problemSetsByFolderId.get(folderId) ?? [];
   const [editMode, setEditMode] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ProblemSet | null>(null);
 
@@ -68,8 +69,7 @@ export function FolderScreen({ data, folderId, onBack, onCreateProblemSet, onOpe
                 最初の問題セットを作る
               </button>
             </div>
-          ) : problemSets.map((problemSet) => {
-            const summary = getSetSummary(data, problemSet.id);
+          ) : problemSets.map(({ problemSet, ...summary }) => {
             return (
               <SetCard
                 key={problemSet.id}
@@ -165,18 +165,4 @@ function SetCard({
       ) : null}
     </article>
   );
-}
-
-function getSetSummary(data: AppData, setId: string) {
-  const questions = getQuestionsBySet(data, setId);
-  const questionIds = new Set(questions.map((question) => question.id));
-  const progress = data.progress.filter((item) => questionIds.has(item.questionId));
-  const logs = data.answerLogs.filter((log) => log.setId === setId);
-  const correct = logs.filter((log) => log.isCorrect).length;
-
-  return {
-    questionCount: questions.length,
-    reviewCount: progress.filter((item) => item.isReview && !item.isGraduated).length,
-    correctRate: logs.length === 0 ? 0 : Math.round((correct / logs.length) * 100),
-  };
 }

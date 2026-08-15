@@ -1,10 +1,11 @@
-import { type PointerEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { type PointerEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { AppData, Question, QuizResult } from '../types';
 import { BackButton } from '../components/BackButton';
-import { CategoryNoteDrawer } from '../components/CategoryNoteDrawer';
+import { CategoryNoteDrawer, type CategoryNoteDrawerHandle } from '../components/CategoryNoteDrawer';
+import { runAfterSuccessfulNoteFlush } from '../components/noteExitGuard';
 import { Layout } from '../components/Layout';
 import { MissingResourceState } from '../components/MissingResourceState';
 import { getAnswerIndexes, getAnswerText, getChoiceLabel, getChoiceText, getProgress, getVirtualLevel, makeResult } from '../utils/quiz';
@@ -61,8 +62,41 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
   const answerRetryRef = useRef<(() => Promise<boolean>) | null>(null);
   const [noteOpen, setNoteOpen] = useState(false);
   const [isTabletLandscape, setIsTabletLandscape] = useState(false);
-  const noteFeatureEnabled = ENABLE_TABLET_NOTES && !readOnly && isTabletLandscape && Boolean(setId);
+  const [noteDrawerMounted, setNoteDrawerMounted] = useState(false);
+  const [noteTransitionError, setNoteTransitionError] = useState('');
+  const noteDrawerRef = useRef<CategoryNoteDrawerHandle>(null);
+  const noteTransitionRef = useRef(false);
+  const quizRunnerMountedRef = useRef(true);
+  const noteFeatureAvailable = ENABLE_TABLET_NOTES && !readOnly && Boolean(setId);
+  const noteFeatureEnabled = noteFeatureAvailable && isTabletLandscape;
   const noteAreaOpen = noteFeatureEnabled && noteOpen;
+
+  const requestNoteTransition = useCallback(async (proceed: () => void) => {
+    if (noteTransitionRef.current) return false;
+    if (!noteOpen || !noteDrawerRef.current) {
+      setNoteTransitionError('');
+      proceed();
+      return true;
+    }
+    noteTransitionRef.current = true;
+    setNoteTransitionError('');
+    const completed = await runAfterSuccessfulNoteFlush(
+      () => noteDrawerRef.current?.flush() ?? Promise.resolve(),
+      () => {
+        noteTransitionRef.current = false;
+        proceed();
+      },
+    );
+    if (!completed) {
+      noteTransitionRef.current = false;
+      setNoteTransitionError('ノートを保存できませんでした。操作をもう一度お試しください。');
+    }
+    return completed;
+  }, [noteOpen]);
+
+  const handleQuizBack = useCallback(() => {
+    void requestNoteTransition(onBack);
+  }, [onBack, requestNoteTransition]);
 
   useEffect(() => {
     if (!ENABLE_TABLET_NOTES) return;
@@ -81,8 +115,27 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
   }, []);
 
   useEffect(() => {
+    quizRunnerMountedRef.current = true;
+    return () => {
+      quizRunnerMountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (noteFeatureEnabled) setNoteDrawerMounted(true);
+  }, [noteFeatureEnabled]);
+
+  useEffect(() => {
     if (!noteFeatureEnabled && noteOpen) {
-      setNoteOpen(false);
+      const drawer = noteDrawerRef.current;
+      if (drawer) {
+        void drawer.close().then((completed) => {
+          if (quizRunnerMountedRef.current) {
+            setNoteTransitionError(completed ? '' : 'ノートを保存できませんでした。操作をもう一度お試しください。');
+          }
+        });
+      }
+      else setNoteOpen(false);
     }
   }, [noteFeatureEnabled, noteOpen]);
 
@@ -140,12 +193,17 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
     return (
       <Layout>
         <div className="flex h-full flex-col bg-[#E9E5D8] text-[#111111]">
-          <QuizHeader title={title} onBack={onBack} />
+          <QuizHeader title={title} onBack={handleQuizBack} />
+          {noteTransitionError ? (
+            <div role="alert" className="shrink-0 border-b border-red-200 bg-red-50 px-4 py-2 text-center text-sm font-bold text-red-800">
+              {noteTransitionError}
+            </div>
+          ) : null}
           <MissingResourceState
             title={emptyState?.title ?? '出題できる問題がありません'}
             description={emptyState?.description ?? 'この条件で出題できる問題がありません。問題セットへ戻って条件を確認してください。'}
             actionLabel={emptyState?.actionLabel ?? '問題セットへ戻る'}
-            onAction={onBack}
+            onAction={handleQuizBack}
           />
         </div>
       </Layout>
@@ -216,25 +274,27 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
 
   const handleNext = () => {
     if (answerSaveState !== 'saved') return;
-    if (currentIndex + 1 >= questions.length) {
-      onFinish({
-        ...makeResult(mode, title, setId, correctCount, wrongCount, addedReviewCount),
-        retry: {
-          questionIds: questions.slice(initialIndex).map((question) => question.id),
-          subtitle,
-        },
-      });
-      return;
-    }
-    setCurrentIndex((value) => value + 1);
-    setSelectedIndexes([]);
-    setLastCorrect(null);
-    setHasAnswered(false);
-    setAnswerSheetState('default');
-    setSavedLevelLabel('');
-    setAnswerSaveState('idle');
-    answerRetryRef.current = null;
-    setAnswerMessage('');
+    void requestNoteTransition(() => {
+      if (currentIndex + 1 >= questions.length) {
+        onFinish({
+          ...makeResult(mode, title, setId, correctCount, wrongCount, addedReviewCount),
+          retry: {
+            questionIds: questions.slice(initialIndex).map((question) => question.id),
+            subtitle,
+          },
+        });
+        return;
+      }
+      setCurrentIndex((value) => value + 1);
+      setSelectedIndexes([]);
+      setLastCorrect(null);
+      setHasAnswered(false);
+      setAnswerSheetState('default');
+      setSavedLevelLabel('');
+      setAnswerSaveState('idle');
+      answerRetryRef.current = null;
+      setAnswerMessage('');
+    });
   };
 
   const handleRetryAnswerSave = () => {
@@ -259,7 +319,12 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
   return (
     <Layout>
       <div className={`quiz-runner relative flex h-full flex-col overflow-hidden bg-[#E9E5D8] text-[#111111]${noteAreaOpen ? ' quiz-runner--note-open' : ''}`}>
-        <QuizHeader title={title} current={currentIndex + 1} total={questions.length} onBack={onBack} />
+        <QuizHeader title={title} current={currentIndex + 1} total={questions.length} onBack={handleQuizBack} />
+        {noteTransitionError ? (
+          <div role="alert" className="shrink-0 border-b border-red-200 bg-red-50 px-4 py-2 text-center text-sm font-bold text-red-800">
+            {noteTransitionError}
+          </div>
+        ) : null}
 
         <ProgressBand
           label={mode === 'review' ? `\u5fa9\u7fd2 Level ${getVirtualLevel(progress ?? undefined)}` : subtitle ?? '\u767b\u9332\u9806'}
@@ -335,8 +400,9 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
           </section>
         </main>
 
-        {noteFeatureEnabled && setId ? (
+        {noteFeatureAvailable && noteDrawerMounted && setId ? (
           <CategoryNoteDrawer
+            ref={noteDrawerRef}
             problemSetId={setId}
             category={currentQuestion.category}
             open={noteOpen}

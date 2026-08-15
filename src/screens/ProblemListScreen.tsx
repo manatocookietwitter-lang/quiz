@@ -1,17 +1,22 @@
 import { useMemo, useRef, useState } from 'react';
-import type { AppData, ProblemSortMode, Question } from '../types';
+import type { AppData, ProblemSortMode, Question, QuestionProgress } from '../types';
 import { BackButton } from '../components/BackButton';
 import { Layout } from '../components/Layout';
 import { MissingResourceState } from '../components/MissingResourceState';
+import {
+  buildAppDataView,
+  sortQuestionOverviews,
+  type QuestionOverview,
+} from '../utils/appDataView';
 import { formatDisplayDate } from '../utils/date';
-import { getProgress, getProgressLevelLabel, getQuestionsBySet } from '../utils/quiz';
+import { getProgressLevelLabel } from '../utils/quiz';
 import {
   buildProblemCategories,
-  filterQuestionsByCategory,
   normalizeProblemCategory,
-  sortQuestionsForProblemList,
 } from './ProblemSetDetailScreen';
 import './ProblemListScreen.css';
+
+const EMPTY_QUESTION_OVERVIEWS: readonly QuestionOverview[] = [];
 
 interface ProblemListScreenProps {
   data: AppData;
@@ -29,8 +34,10 @@ interface ProblemListScreenProps {
 }
 
 export function ProblemListScreen({ data, setId, initialSortMode = 'ordered', onBack, onStartFromQuestion }: ProblemListScreenProps) {
-  const problemSet = data.problemSets.find((set) => set.id === setId);
-  const allQuestions = useMemo(() => getQuestionsBySet(data, setId), [data, setId]);
+  const contentView = useMemo(() => buildAppDataView(data), [data]);
+  const problemSet = contentView.problemSetById.get(setId);
+  const questionOverviews = contentView.questionsBySetId.get(setId) ?? EMPTY_QUESTION_OVERVIEWS;
+  const allQuestions = useMemo(() => questionOverviews.map((item) => item.question), [questionOverviews]);
   const categories = useMemo(() => buildProblemCategories(allQuestions), [allQuestions]);
   const [sortMode, setSortMode] = useState<ProblemSortMode>(initialSortMode);
   const [activeCategory, setActiveCategory] = useState('all');
@@ -38,16 +45,38 @@ export function ProblemListScreen({ data, setId, initialSortMode = 'ordered', on
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const groupedSections = useMemo(() => {
+    const questionsByCategory = new Map<string, QuestionOverview[]>();
+    for (const item of questionOverviews) {
+      const category = normalizeProblemCategory(item.question.category);
+      const existing = questionsByCategory.get(category);
+      if (existing) existing.push(item);
+      else questionsByCategory.set(category, [item]);
+    }
+
     return categories
       .filter((category) => category !== 'すべて')
       .map((category) => ({
         category,
-        questions: sortQuestionsForProblemList(data, filterQuestionsByCategory(allQuestions, category), sortMode),
+        questions: sortQuestionOverviews(questionsByCategory.get(category) ?? [], sortMode),
       }))
       .filter((section) => section.questions.length > 0);
-  }, [allQuestions, categories, data, sortMode]);
+  }, [categories, questionOverviews, sortMode]);
 
-  const listQuestions = useMemo(() => groupedSections.flatMap((section) => section.questions), [groupedSections]);
+  const listQuestionOverviews = useMemo(
+    () => groupedSections.flatMap((section) => section.questions),
+    [groupedSections],
+  );
+  const listQuestions = useMemo(
+    () => listQuestionOverviews.map((item) => item.question),
+    [listQuestionOverviews],
+  );
+  const listIndexByQuestionId = useMemo(() => {
+    const indexes = new Map<string, number>();
+    listQuestionOverviews.forEach((item, index) => {
+      if (!indexes.has(item.question.id)) indexes.set(item.question.id, index);
+    });
+    return indexes;
+  }, [listQuestionOverviews]);
   const sortLabel = sortMode === 'level' ? 'level順' : '登録順';
   const title = problemSet?.title ?? '問題セット';
 
@@ -61,8 +90,8 @@ export function ProblemListScreen({ data, setId, initialSortMode = 'ordered', on
   };
 
   const startFrom = (questionId: string) => {
-    const initialIndex = listQuestions.findIndex((question) => question.id === questionId);
-    if (initialIndex < 0) return;
+    const initialIndex = listIndexByQuestionId.get(questionId);
+    if (initialIndex === undefined) return;
     onStartFromQuestion({
       questions: listQuestions,
       initialIndex,
@@ -152,12 +181,12 @@ export function ProblemListScreen({ data, setId, initialSortMode = 'ordered', on
               }}
             >
               <h2 className="quiz-list__section-title">{section.category}</h2>
-              {section.questions.map((question) => (
+              {section.questions.map(({ question, number, progress }) => (
                 <QuestionListCard
                   key={question.id}
-                  index={allQuestions.findIndex((item) => item.id === question.id) + 1}
+                  index={number}
                   question={question}
-                  progress={getProgress(data, question.id)}
+                  progress={progress}
                   onClick={() => startFrom(question.id)}
                 />
               ))}
@@ -177,7 +206,7 @@ function QuestionListCard({
 }: {
   index: number;
   question: Question;
-  progress: ReturnType<typeof getProgress>;
+  progress: QuestionProgress;
   onClick: () => void;
 }) {
   const status = progress.answeredCount === 0 ? '未解答' : `${progress.correctCount}/${progress.answeredCount}`;

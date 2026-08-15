@@ -1,12 +1,11 @@
 import { useMemo, useState } from 'react';
-import type { AppData, ProblemSortMode, Question } from '../types';
+import type { AppData, Question } from '../types';
 import { BackButton } from '../components/BackButton';
 import { Layout } from '../components/Layout';
 import { MissingResourceState } from '../components/MissingResourceState';
 import {
   getProgress,
   getQuestionsBySet,
-  getVirtualLevel,
   groupReviewQuestionsByLevel,
   matchesReviewLevel,
   shuffleArray,
@@ -307,11 +306,6 @@ function getStartQuestions({
   return random ? shuffleArray(levelFiltered) : levelFiltered;
 }
 
-export function sortQuestionsForProblemList(data: AppData, questions: Question[], sortMode: ProblemSortMode) {
-  if (sortMode === 'ordered') return questions;
-  return [...questions].sort((a, b) => getLevelSortScore(data, a.id) - getLevelSortScore(data, b.id));
-}
-
 export function buildReviewQuestions(data: AppData, questions: Question[], filter: ReviewLevelFilter = 'all') {
   if (filter !== 'all') {
     const filtered = questions.filter((question) => {
@@ -351,15 +345,4 @@ function getCategoryLabel(category: string) {
 
 function getReviewFilterLabel(filter: ReviewLevelFilter) {
   return REVIEW_FILTERS.find((item) => item.value === filter)?.label ?? '\u5168Level';
-}
-
-function getLevelSortScore(data: AppData, questionId: string) {
-  const progress = getProgress(data, questionId);
-  if (progress.isAmbiguous) return 0;
-  if (progress.isGraduated) return 5;
-  const level = getVirtualLevel(progress);
-  if (level === 0) return 1;
-  if (level === 1) return 2;
-  if (level === 2) return 3;
-  return 4;
 }

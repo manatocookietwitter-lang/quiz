@@ -1,59 +1,73 @@
-# Quiz make
+# QuizMake
 
-ChatGPTで一括作成した4択問題JSONを取り込み、スマホで1問ずつ学習するための個人用Webアプリです。
+問題セットを作成・整理し、4択クイズと復習を行う学習アプリです。Web/PWAに加え、Capacitorを使ったAndroid・iOSビルドに対応しています。
+
+## 主な機能
+
+- フォルダと問題セットの作成・編集・並べ替え
+- JSONまたは貼り付けによる問題の一括取り込み
+- ChatGPT向け問題作成テンプレートのコピー
+- Markdownと表に対応した詳細解説
+- 正解・不正解・曖昧を記録する4択クイズ
+- 問題セット単位の復習と学習状況表示
+- カテゴリ別の手書きノート
+- 端末内JSONバックアップ
+- 任意のSupabase同期（8文字の一時接続コード対応）
+- スマートフォン、タブレット、PCに対応した明るいレスポンシブUI
 
 ## 技術構成
 
-- Vite
-- React
-- TypeScript
-- Tailwind CSS
-- localStorage保存
-- GitHub Pages対応
+- React / TypeScript / Vite
+- IndexedDB・localStorage
+- Supabase（任意のクラウド同期・共同利用機能）
+- Capacitor（Android / iOS）
+- GitHub Pages / PWA
 
 ## セットアップ
 
 ```bash
-npm install
+npm ci
 ```
 
-## ローカル起動
-
-PCのみで確認する場合：
+ローカルで起動します。
 
 ```bash
 npm run dev
 ```
 
-同じWi-Fiのスマホから確認する場合：
+同じWi-Fiのスマートフォンから確認する場合は、次のコマンドで起動し、表示された `Network` のURLを開きます。
 
 ```bash
 npm run dev -- --host 0.0.0.0
 ```
 
-表示された `Network: http://...:5173/` をスマホで開いてください。`https://` ではなく `http://` です。
-
-## ビルド
+## 検証とビルド
 
 ```bash
+npm test
 npm run build
+npm run build:native
 ```
+
+ネイティブプロジェクトへ最新のWeb資産を反映する場合は、次を実行します。
+
+```bash
+npm run mobile:sync
+```
+
+ストア提出手順と確認項目は、[store/release-checklist.md](store/release-checklist.md) と [store/native-build.md](store/native-build.md) にまとめています。
+
+## クラウド同期
+
+Supabase同期を有効にする場合は、ビルド時に次の環境変数を設定します。
+
+```text
+VITE_SUPABASE_URL
+VITE_SUPABASE_ANON_KEY
+```
+
+未設定でも、端末内での問題作成・学習・JSONバックアップは利用できます。データベース変更は `supabase/migrations`、回帰検証用SQLは `supabase/tests` にあります。
 
 ## GitHub Pages
 
-`.github/workflows/deploy.yml` を同梱しています。GitHubの `Settings > Pages > Source` を `GitHub Actions` に設定してください。
-
-## 主な機能
-
-- ダークテーマのスマホ専用UI
-- フォルダ作成・削除
-- 問題セットJSON取り込み
-- 4択クイズ
-- タップ即時判定
-- 解説・参照ページ表示
-- 間違えた問題の復習登録
-- 曖昧登録・解除
-- reviewLevel 1〜3
-- level 3正解で復習卒業
-- JSONエクスポート/インポート
-- ChatGPT用問題作成テンプレートコピー
+`.github/workflows/deploy.yml` が `main` の更新をビルドして公開します。リポジトリの `Settings > Pages > Source` は `GitHub Actions` を選択してください。

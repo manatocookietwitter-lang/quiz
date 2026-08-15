@@ -53,10 +53,16 @@ globalThis.CustomEvent ??= class CustomEvent {
 const storage = await import('../src/storage.ts');
 const notes = await import('../src/utils/noteStorage.ts');
 const syncState = await import('../src/utils/syncState.ts');
+const coordination = await import('../src/utils/dataCoordination.ts');
+
+function resetStorage() {
+  localStorage.clear();
+  coordination.resetDataCoordinationForTests();
+}
 
 test('localStorage fallback saves payload and timestamp atomically', async () => {
   delete globalThis.indexedDB;
-  localStorage.clear();
+  resetStorage();
   const timestamp = '2026-07-29T00:00:00.000Z';
   const data = {
     ...storage.createEmptyAppData(),
@@ -77,7 +83,7 @@ test('localStorage fallback saves payload and timestamp atomically', async () =>
 });
 
 test('changing sync id clears timestamps and hashes from the previous id', () => {
-  localStorage.clear();
+  resetStorage();
   const firstId = '111111111111111111111111111111111111';
   const secondId = '222222222222222222222222222222222222';
   localStorage.setItem(syncState.LAST_SYNC_AT_KEY, '2026-07-29T00:00:00.000Z');
@@ -85,6 +91,7 @@ test('changing sync id clears timestamps and hashes from the previous id', () =>
   localStorage.setItem(syncState.LAST_REMOTE_UPDATED_AT_KEY, '2026-07-29T00:00:01.000Z');
   localStorage.setItem(syncState.LAST_SYNC_STATUS_KEY, 'saved');
   localStorage.setItem(syncState.LAST_SYNC_ERROR_KEY, 'old-error');
+  localStorage.setItem(syncState.LAST_SYNC_RECORD_KEY, JSON.stringify({ owner: firstId, state: {} }));
 
   assert.equal(syncState.clearSyncStateForChangedId(localStorage, firstId, firstId), false);
   assert.equal(localStorage.getItem(syncState.LAST_UPLOAD_HASH_KEY), 'old-hash');
@@ -94,6 +101,7 @@ test('changing sync id clears timestamps and hashes from the previous id', () =>
   assert.equal(localStorage.getItem(syncState.LAST_REMOTE_UPDATED_AT_KEY), null);
   assert.equal(localStorage.getItem(syncState.LAST_SYNC_STATUS_KEY), null);
   assert.equal(localStorage.getItem(syncState.LAST_SYNC_ERROR_KEY), null);
+  assert.equal(localStorage.getItem(syncState.LAST_SYNC_RECORD_KEY), null);
 });
 
 test('sync ids must use the generated 144-bit hexadecimal format', () => {
@@ -116,9 +124,99 @@ test('problem-set note matching requires an exact id boundary', () => {
   assert.equal(notes.isCategoryNoteKeyForProblemSetIds('quizMake:other:set-1:vocabulary', ['set-1']), false);
 });
 
+test('note loading keeps a valid legacy fallback but never treats an IndexedDB failure as empty', async () => {
+  const key = 'quizMake:notes:set-1:vocabulary';
+  const raw = JSON.stringify({
+    problemSetId: 'set-1',
+    category: 'vocabulary',
+    pages: [{ id: 'page-1', dataUrl: 'data:image/png;base64,old-note', updatedAt: '2026-08-15T00:00:00.000Z' }],
+    currentPageIndex: 0,
+    updatedAt: '2026-08-15T00:00:00.000Z',
+  });
+  const originalWarn = console.warn;
+  console.warn = () => {};
+  globalThis.indexedDB = {
+    open() {
+      const error = new Error('note database is temporarily unavailable');
+      const request = { result: null, error, onupgradeneeded: null, onsuccess: null, onerror: null, onblocked: null };
+      queueMicrotask(() => request.onerror?.());
+      return request;
+    },
+  };
+
+  try {
+    resetStorage();
+    localStorage.setItem(key, raw);
+    assert.equal(await notes.loadCategoryNoteRaw(key), raw, 'the durable fallback remains readable');
+    assert.equal(localStorage.getItem(key), raw, 'a failed primary read must not consume the fallback');
+
+    resetStorage();
+    await assert.rejects(
+      notes.loadCategoryNoteRaw(key),
+      /Failed to read category note data/,
+      'an unreadable current store is not an empty note',
+    );
+  } finally {
+    console.warn = originalWarn;
+    delete globalThis.indexedDB;
+    resetStorage();
+  }
+});
+
+test('bulk exports fail closed when IndexedDB cannot be read', async () => {
+  resetStorage();
+  const originalWarn = console.warn;
+  console.warn = () => {};
+  globalThis.indexedDB = {
+    open() {
+      const error = new Error('database read is temporarily unavailable');
+      const request = { result: null, error, onupgradeneeded: null, onsuccess: null, onerror: null, onblocked: null };
+      queueMicrotask(() => request.onerror?.());
+      return request;
+    },
+  };
+
+  try {
+    await assert.rejects(
+      storage.exportAppDataRaw(),
+      /空のバックアップで上書きしない/,
+    );
+    await assert.rejects(
+      notes.exportCategoryNotesRaw(),
+      /空のバックアップで上書きしない/,
+    );
+  } finally {
+    console.warn = originalWarn;
+    delete globalThis.indexedDB;
+    resetStorage();
+  }
+});
+
+test('invalid stored note data is surfaced instead of becoming an editable blank note', async () => {
+  const key = 'quizMake:notes:set-1:vocabulary';
+  delete globalThis.indexedDB;
+  resetStorage();
+  localStorage.setItem(key, '{broken');
+
+  try {
+    await assert.rejects(notes.loadCategoryNoteRaw(key), /Stored category note data is invalid/);
+  } finally {
+    resetStorage();
+  }
+});
+
+test('a timed-out note storage operation releases the caller for a later retry', async () => {
+  const neverSettles = new Promise(() => {});
+  await assert.rejects(
+    notes.waitForCategoryNoteStorage(neverSettles, 5),
+    (error) => error instanceof notes.CategoryNoteStorageTimeoutError,
+  );
+  assert.equal(await notes.waitForCategoryNoteStorage(Promise.resolve('saved'), 5), 'saved');
+});
+
 test('problem-set note deletion removes only matching local fallback notes', async () => {
   delete globalThis.indexedDB;
-  localStorage.clear();
+  resetStorage();
   localStorage.setItem('quizMake:notes:set-1:vocabulary', 'first');
   localStorage.setItem('quizMake:notes:set-1:grammar', 'second');
   localStorage.setItem('quizMake:notes:set-10:vocabulary', 'keep-prefix-neighbor');
@@ -135,7 +233,7 @@ test('problem-set note deletion removes only matching local fallback notes', asy
 
 test('all-note deletion preserves non-note local storage entries', async () => {
   delete globalThis.indexedDB;
-  localStorage.clear();
+  resetStorage();
   localStorage.setItem('quizMake:notes:set-1:vocabulary', 'first');
   localStorage.setItem('quizMake:notes:set-2:grammar', 'second');
   localStorage.setItem('quizMake:settings', 'keep-unrelated');
@@ -147,7 +245,7 @@ test('all-note deletion preserves non-note local storage entries', async () => {
 });
 
 test('replacing IndexedDB notes clears current and backup stores atomically', async () => {
-  localStorage.clear();
+  resetStorage();
   const calls = [];
   const fakeDb = {
     objectStoreNames: { contains: () => true },
@@ -199,6 +297,7 @@ test('failed local note deletion restores entries removed earlier in the operati
     }
   }();
   globalThis.localStorage = failingStorage;
+  coordination.resetDataCoordinationForTests();
   failingStorage.setItem('quizMake:notes:set-1:first', 'first');
   failingStorage.setItem('quizMake:notes:set-1:second', 'second');
 
@@ -211,6 +310,7 @@ test('failed local note deletion restores entries removed earlier in the operati
     assert.equal(failingStorage.getItem('quizMake:notes:set-1:second'), 'second');
   } finally {
     globalThis.localStorage = new MemoryStorage();
+    coordination.resetDataCoordinationForTests();
   }
 });
 
@@ -351,7 +451,7 @@ test('ambiguous content corruption is rejected instead of silently reconnecting 
 
 test('corrupted stored payload throws and is not replaced with empty data', async () => {
   delete globalThis.indexedDB;
-  localStorage.clear();
+  resetStorage();
   const corruptedRaw = '{"version":1,"folders":[';
   localStorage.setItem(storage.APP_DATA_STORAGE_KEY, corruptedRaw);
 

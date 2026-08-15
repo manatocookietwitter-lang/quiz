@@ -92,6 +92,18 @@
   overflow: hidden;
 }
 
+.quiz-notes__transition-error {
+  flex: 0 0 auto;
+  border-bottom: 1px solid #fecaca;
+  background: #fff1f2;
+  padding: 8px 16px;
+  color: #a61b1b;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.45;
+  text-align: center;
+}
+
 .quiz-notes__categories,
 .quiz-notes__panel-wrap {
   min-height: 0;

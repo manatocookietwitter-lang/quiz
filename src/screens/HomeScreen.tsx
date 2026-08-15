@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { AppData, Folder } from '../types';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -10,8 +10,8 @@ import {
   PlusIcon,
   TrashIcon,
 } from '../components/UiIcons';
+import { buildAppDataView } from '../utils/appDataView';
 import { formatDisplayDate } from '../utils/date';
-import { isReviewTarget } from '../utils/reviewTargets';
 import './HomeScreen.css';
 
 interface HomeScreenProps {
@@ -33,6 +33,7 @@ export function HomeScreen({
   const [editMode, setEditMode] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Folder | null>(null);
+  const folders = useMemo(() => buildAppDataView(data).folders, [data]);
 
   const handleCreateFolder = () => {
     const name = folderName.trim();
@@ -55,7 +56,7 @@ export function HomeScreen({
         </section>
 
         <section className="quiz-home__folder-list" aria-label="フォルダ一覧">
-          {data.folders.length === 0 ? (
+          {folders.length === 0 ? (
             <div className="quiz-home__empty">
               <div className="quiz-home__empty-icon" aria-hidden="true"><PlusIcon size={24} /></div>
               <h2>学習フォルダを作りましょう</h2>
@@ -65,8 +66,7 @@ export function HomeScreen({
                 <button type="button" className="quiz-home__empty-secondary" onClick={() => setCreateOpen(true)}>自分のフォルダを作る</button>
               </div>
             </div>
-          ) : data.folders.map((folder) => {
-            const summary = getFolderSummary(data, folder.id);
+          ) : folders.map(({ folder, ...summary }) => {
             return (
               <QuizHomeFolderItem
                 key={folder.id}
@@ -271,21 +271,4 @@ function useModalFocus<T extends HTMLElement>(onClose: () => void) {
   }, []);
 
   return dialogRef;
-}
-
-function getFolderSummary(data: AppData, folderId: string) {
-  const sets = data.problemSets.filter((set) => set.folderId === folderId);
-  const setIds = new Set(sets.map((set) => set.id));
-  const questions = data.questions.filter((question) => setIds.has(question.setId));
-  const questionIds = new Set(questions.map((question) => question.id));
-  const progress = data.progress.filter((item) => questionIds.has(item.questionId));
-  const logs = data.answerLogs.filter((log) => log.folderId === folderId);
-  const correct = logs.filter((log) => log.isCorrect).length;
-
-  return {
-    setCount: sets.length,
-    questionCount: questions.length,
-    reviewCount: progress.filter(isReviewTarget).length,
-    correctRate: logs.length === 0 ? 0 : Math.round((correct / logs.length) * 100),
-  };
 }

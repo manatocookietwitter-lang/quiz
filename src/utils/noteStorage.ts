@@ -1,9 +1,21 @@
 import { advanceLocalDataRevision } from './localDataRevision';
+import { loadLatestCoordinatedData, withCoordinatedDataMutation } from './dataCoordination';
+import { hasPersistedSyncHistory } from './syncState';
 
 const NOTE_DB_NAME = 'quiz-make-notes-v1';
 const NOTE_STORE_NAME = 'categoryNotes';
 const NOTE_BACKUP_STORE_NAME = 'categoryNoteBackups';
+const NOTE_STORAGE_OPERATION_TIMEOUT_MS = 4_500;
 export const CATEGORY_NOTE_KEY_PREFIX = 'quizMake:notes:';
+export const CATEGORY_NOTES_MANIFEST_KEY = 'quiz-make-note-storage-v1:manifest';
+export const CATEGORY_NOTES_RECOVERY_REQUIRED_KEY = 'quiz-make-note-storage-v1:recovery-required';
+
+export class CategoryNoteStorageTimeoutError extends Error {
+  constructor() {
+    super('Category note storage operation timed out.');
+    this.name = 'CategoryNoteStorageTimeoutError';
+  }
+}
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 let persistenceRequested = false;
@@ -28,29 +40,70 @@ export function isIndexedDbAvailable(): boolean {
 
 export async function loadCategoryNoteRaw(key: string): Promise<string | null> {
   if (!isCategoryNoteKey(key)) return null;
+  await waitForPendingCategoryNoteSaves();
+  return loadLatestCoordinatedData(['notes'], () => loadCategoryNoteRawUnlocked(key));
+}
 
+async function loadCategoryNoteRawUnlocked(key: string): Promise<string | null> {
   let indexedCurrent: string | null = null;
   let indexedBackup: string | null = null;
+  let indexedCurrentError: unknown = null;
+  let indexedBackupError: unknown = null;
   if (isIndexedDbAvailable()) {
-    try {
-      indexedCurrent = await getRawFromIndexedDb(key);
-      indexedBackup = await getBackupRawFromIndexedDb(key);
-    } catch (error) {
-      console.warn('Failed to read category note from IndexedDB.', error);
+    const [currentRead, backupRead] = await Promise.allSettled([
+      waitForCategoryNoteStorage(getRawFromIndexedDb(key)),
+      waitForCategoryNoteStorage(getBackupRawFromIndexedDb(key)),
+    ]);
+    if (currentRead.status === 'fulfilled') indexedCurrent = currentRead.value;
+    else {
+      indexedCurrentError = currentRead.reason;
+      console.warn('Failed to read the current category note from IndexedDB.', currentRead.reason);
+    }
+    if (backupRead.status === 'fulfilled') indexedBackup = backupRead.value;
+    else {
+      indexedBackupError = backupRead.reason;
+      console.warn('Failed to read the category note backup from IndexedDB.', backupRead.reason);
+    }
+    if (indexedCurrentError instanceof CategoryNoteStorageTimeoutError
+      || indexedBackupError instanceof CategoryNoteStorageTimeoutError) {
+      abandonNoteDbConnection();
     }
   }
 
-  const legacy = safeLocalStorageGet(key);
-  const preferred = pickNewestNoteRaw([indexedCurrent, indexedBackup, legacy]);
-  if (preferred === null) return indexedCurrent ?? indexedBackup ?? legacy;
+  const legacyRead = readLocalStorageValue(key);
+  const legacy = legacyRead.value;
+  const authoritativePreferred = pickNewestNoteRaw([indexedCurrent, legacy]);
+  const preferred = authoritativePreferred ?? pickNewestNoteRaw([indexedBackup]);
+  const hasValidCurrent = indexedCurrent !== null && isUsableNoteRaw(indexedCurrent);
+  const hasValidLegacy = legacy !== null && isUsableNoteRaw(legacy);
 
-  if (isIndexedDbAvailable()) {
-    try {
-      if (preferred !== indexedCurrent) await setRawToIndexedDb(key, preferred);
-      safeLocalStorageRemove(key);
-    } catch (error) {
-      console.warn('Failed to reconcile category note storage.', error);
+  // A legacy value is the durable fallback written when IndexedDB could not be
+  // updated. It remains safe to load even while IndexedDB is temporarily down.
+  // Without that fallback, a failed current-store read must never be mistaken
+  // for a genuinely empty note: editing an empty canvas could overwrite data
+  // that still exists in the unreadable store.
+  if (indexedCurrentError && !hasValidLegacy) {
+    throw createCategoryNoteReadError(indexedCurrentError);
+  }
+  if (legacyRead.error && !hasValidCurrent) {
+    throw createCategoryNoteReadError(legacyRead.error);
+  }
+  if (indexedBackupError && preferred === null) {
+    throw createCategoryNoteReadError(indexedBackupError);
+  }
+  if (preferred === null) {
+    if (indexedCurrent !== null || indexedBackup !== null || legacy !== null) {
+      throw createCategoryNoteReadError(new Error('Stored category note data is invalid.'));
     }
+    const manifest = readCategoryNotesManifest();
+    if (manifest.kind === 'valid' && manifest.keys.includes(key)) {
+      markCategoryNotesRecoveryRequiredBestEffort('missing-current');
+    }
+    return null;
+  }
+
+  if (!hasValidCurrent && !hasValidLegacy && indexedBackup !== null) {
+    markCategoryNotesRecoveryRequiredBestEffort('backup-only');
   }
 
   return preferred;
@@ -76,23 +129,41 @@ export async function waitForPendingCategoryNoteSaves(): Promise<void> {
 export async function deleteCategoryNotesForProblemSetIds(problemSetIds: Iterable<string>): Promise<number> {
   const ids = new Set(Array.from(problemSetIds).filter((id) => typeof id === 'string' && id.length > 0));
   if (ids.size === 0) return 0;
-  return enqueueCategoryNoteOperation(() => deleteCategoryNotesWhere((key) => (
-    isCategoryNoteKeyForProblemSetIds(key, ids)
-  )));
+  return enqueueCategoryNoteOperation(async () => {
+    const predicate = (key: string) => isCategoryNoteKeyForProblemSetIds(key, ids);
+    const deleted = await deleteCategoryNotesWhere(predicate);
+    await recordCategoryNoteDeletionBestEffort(predicate);
+    return deleted;
+  });
 }
 
 export async function deleteAllCategoryNotes(): Promise<number> {
-  return enqueueCategoryNoteOperation(() => deleteCategoryNotesWhere(isCategoryNoteKey));
+  return enqueueCategoryNoteOperation(async () => {
+    const deleted = await deleteCategoryNotesWhere(isCategoryNoteKey);
+    if (writeCategoryNotesManifestBestEffort([])) {
+      safeLocalStorageRemove(CATEGORY_NOTES_RECOVERY_REQUIRED_KEY);
+    }
+    return deleted;
+  });
 }
 
-function enqueueCategoryNoteOperation<T>(operation: () => Promise<T>): Promise<T> {
-  const queuedOperation = noteSaveQueue
-    .catch(() => undefined)
-    .then(async () => {
-      const result = await operation();
+function enqueueCategoryNoteOperation<T>(
+  operation: () => Promise<T>,
+  options: { coordinationLockHeld?: boolean } = {},
+): Promise<T> {
+  if (options.coordinationLockHeld) {
+    return operation().then((result) => {
       advanceLocalDataRevision();
       return result;
     });
+  }
+  const queuedOperation = noteSaveQueue
+    .catch(() => undefined)
+    .then(() => withCoordinatedDataMutation(['notes'], async () => {
+        const result = await operation();
+        advanceLocalDataRevision();
+        return result;
+      }));
   noteSaveQueue = queuedOperation;
   return queuedOperation;
 }
@@ -126,12 +197,15 @@ async function saveCategoryNoteRawNow(key: string, raw: string): Promise<void> {
   void requestPersistentStorage();
   if (isIndexedDbAvailable()) {
     try {
-      await setRawToIndexedDb(key, raw);
+      await waitForCategoryNoteStorage(setRawToIndexedDb(key, raw));
       safeLocalStorageRemove(key);
+      await ensureCategoryNoteManifestIncludesBestEffort(key);
       return;
     } catch (indexedDbError) {
+      if (indexedDbError instanceof CategoryNoteStorageTimeoutError) abandonNoteDbConnection();
       try {
         localStorage.setItem(key, raw);
+        await ensureCategoryNoteManifestIncludesBestEffort(key);
         return;
       } catch (fallbackError) {
         throw isQuotaExceededError(fallbackError)
@@ -143,6 +217,7 @@ async function saveCategoryNoteRawNow(key: string, raw: string): Promise<void> {
 
   try {
     localStorage.setItem(key, raw);
+    await ensureCategoryNoteManifestIncludesBestEffort(key);
   } catch (error) {
     throw new Error(isQuotaExceededError(error)
       ? 'ノート保存容量が足りません。端末の空き容量を増やすか、不要なノートを減らしてください。'
@@ -151,42 +226,99 @@ async function saveCategoryNoteRawNow(key: string, raw: string): Promise<void> {
         : 'ノートの保存に失敗しました。');
   }
 }
-export async function exportCategoryNotesRaw(): Promise<Record<string, string>> {
-  await waitForPendingCategoryNoteSaves();
+export async function exportCategoryNotesRaw(
+  options: { coordinationLockHeld?: boolean; mode?: 'authoritative' | 'recovery' } = {},
+): Promise<Record<string, string>> {
+  if (!options.coordinationLockHeld) await waitForPendingCategoryNoteSaves();
   let indexedNotes: Record<string, string> = {};
   let indexedBackups: Record<string, string> = {};
 
   if (isIndexedDbAvailable()) {
     try {
-      indexedNotes = await exportIndexedDbNotes();
+      indexedNotes = await exportIndexedDbNotes(options.mode === 'recovery');
     } catch (error) {
       console.warn('Failed to export category notes from IndexedDB.', error);
+      markCategoryNotesRecoveryRequiredBestEffort('read-failure');
+      if (options.mode !== 'recovery') {
+        throw new Error('端末のノートを読み取れないため、空のバックアップで上書きしないよう作成を中止しました。');
+      }
     }
   }
 
   if (isIndexedDbAvailable()) {
     try {
-      indexedBackups = await exportIndexedDbNoteBackups();
+      indexedBackups = await exportIndexedDbNoteBackups(options.mode === 'recovery');
     } catch (error) {
       console.warn('Failed to export category note backups from IndexedDB.', error);
+      markCategoryNotesRecoveryRequiredBestEffort('read-failure');
+      if (options.mode !== 'recovery') {
+        throw new Error('端末のノートバックアップを読み取れないため、欠けた内容で上書きしないよう作成を中止しました。');
+      }
     }
   }
 
-  const localFallbacks = Object.fromEntries(collectLegacyLocalStorageNotes());
-  const keys = new Set([
+  const localFallbackEntries = collectLegacyLocalStorageNotesOrThrow(isCategoryNoteKey);
+  const invalidLocalFallback = localFallbackEntries.find(([, raw]) => !isUsableNoteRaw(raw));
+  if (invalidLocalFallback) {
+    markCategoryNotesRecoveryRequiredBestEffort('invalid-note');
+    if (options.mode !== 'recovery') {
+      throw new Error(`端末のノートデータが破損しているため、バックアップを中止しました: ${invalidLocalFallback[0]}`);
+    }
+  }
+  const localFallbacks = Object.fromEntries(localFallbackEntries.filter(([, raw]) => isUsableNoteRaw(raw)));
+  const backupOnlyKey = Object.keys(indexedBackups).find((key) => (
+    indexedNotes[key] === undefined && localFallbacks[key] === undefined
+  ));
+  const authoritativeKeys = new Set([
     ...Object.keys(indexedNotes),
-    ...Object.keys(indexedBackups),
     ...Object.keys(localFallbacks),
+    ...(options.mode === 'recovery' ? Object.keys(indexedBackups) : []),
   ]);
   const notes: Record<string, string> = {};
-  keys.forEach((key) => {
-    const newest = pickNewestNoteRaw([
+  authoritativeKeys.forEach((key) => {
+    const authoritative = pickNewestNoteRaw([
       indexedNotes[key] ?? null,
-      indexedBackups[key] ?? null,
       localFallbacks[key] ?? null,
     ]);
+    const newest = authoritative
+      ?? (options.mode === 'recovery' ? pickNewestNoteRaw([indexedBackups[key] ?? null]) : null);
     if (newest !== null) notes[key] = newest;
   });
+
+  if (backupOnlyKey) {
+    markCategoryNotesRecoveryRequiredBestEffort('backup-only');
+    if (options.mode !== 'recovery') {
+      throw new Error('端末のノートが復旧用バックアップにしか残っていないため、古い内容や欠けた内容でクラウドを上書きしないよう保存を中止しました。');
+    }
+  }
+
+  if (isCategoryNotesRecoveryRequired() && options.mode !== 'recovery') {
+    throw new Error('端末のノートは復旧確認が必要な状態です。欠けた内容でクラウドを上書きしないよう保存を中止しました。先にクラウドから読み込むか、バックアップを確認してください。');
+  }
+
+  const manifest = readCategoryNotesManifest();
+  if (manifest.kind === 'invalid') {
+    markCategoryNotesRecoveryRequiredBestEffort('invalid-manifest');
+    if (options.mode !== 'recovery') {
+      throw new Error('ノートの保存状態を確認できないため、クラウド保存を中止しました。');
+    }
+  }
+  if (manifest.kind === 'valid') {
+    const missingExpectedKey = manifest.keys.find((key) => notes[key] === undefined);
+    if (missingExpectedKey) {
+      markCategoryNotesRecoveryRequiredBestEffort('missing-current');
+      if (options.mode !== 'recovery') {
+        throw new Error('以前保存したノートの一部が端末から消えているため、欠けた内容でクラウドを上書きしないよう保存を中止しました。');
+      }
+    }
+  } else if (manifest.kind === 'missing' && hasPersistedSyncHistory()) {
+    markCategoryNotesRecoveryRequiredBestEffort('missing-manifest');
+    if (options.mode !== 'recovery') {
+      throw new Error('同期済みのノート保存状態をこの端末で確認できないため、欠けた内容でクラウドを上書きしないよう保存を中止しました。一度クラウドから読み込んでください。');
+    }
+  }
+
+  if (options.mode !== 'recovery') writeCategoryNotesManifest(Object.keys(notes));
 
   return sortRecord(notes);
 }
@@ -223,7 +355,10 @@ function getNoteUpdatedAt(raw: string): string | null {
     return null;
   }
 }
-export function replaceCategoryNotesRaw(notes: Record<string, string>): Promise<number> {
+export function replaceCategoryNotesRaw(
+  notes: Record<string, string>,
+  options: { coordinationLockHeld?: boolean; establishAuthority?: boolean } = {},
+): Promise<number> {
   const validNotes = sortRecord(Object.keys(notes).reduce<Record<string, string>>((result, key) => {
     if (isCategoryNoteKey(key) && typeof notes[key] === 'string' && isUsableNoteRaw(notes[key])) result[key] = notes[key];
     return result;
@@ -233,13 +368,145 @@ export function replaceCategoryNotesRaw(notes: Record<string, string>): Promise<
     if (isIndexedDbAvailable()) {
       await replaceIndexedDbNotes(validNotes);
       removeAllLegacyLocalStorageNotes();
+      if (writeCategoryNotesManifestBestEffort(Object.keys(validNotes)) && options.establishAuthority) {
+        safeLocalStorageRemove(CATEGORY_NOTES_RECOVERY_REQUIRED_KEY);
+      }
       return Object.keys(validNotes).length;
     }
 
     removeAllLegacyLocalStorageNotes();
     Object.entries(validNotes).forEach(([key, value]) => localStorage.setItem(key, value));
+    if (writeCategoryNotesManifestBestEffort(Object.keys(validNotes)) && options.establishAuthority) {
+      safeLocalStorageRemove(CATEGORY_NOTES_RECOVERY_REQUIRED_KEY);
+    }
     return Object.keys(validNotes).length;
-  });
+  }, options);
+}
+
+type CategoryNotesManifestRead =
+  | { kind: 'missing' }
+  | { kind: 'invalid' }
+  | { kind: 'valid'; keys: string[] };
+
+function readCategoryNotesManifest(): CategoryNotesManifestRead {
+  let raw: string | null;
+  try {
+    raw = localStorage.getItem(CATEGORY_NOTES_MANIFEST_KEY);
+  } catch {
+    return { kind: 'invalid' };
+  }
+  if (raw === null) return { kind: 'missing' };
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (
+      typeof parsed !== 'object'
+      || parsed === null
+      || (parsed as { version?: unknown }).version !== 1
+      || !Array.isArray((parsed as { keys?: unknown }).keys)
+    ) return { kind: 'invalid' };
+    const keys = (parsed as { keys: unknown[] }).keys;
+    if (keys.length > 10_000 || keys.some((key) => typeof key !== 'string' || !isCategoryNoteKey(key))) {
+      return { kind: 'invalid' };
+    }
+    return { kind: 'valid', keys: Array.from(new Set(keys as string[])).sort() };
+  } catch {
+    return { kind: 'invalid' };
+  }
+}
+
+function writeCategoryNotesManifest(keys: Iterable<string>): void {
+  const normalizedKeys = Array.from(new Set(Array.from(keys).filter(isCategoryNoteKey))).sort();
+  localStorage.setItem(CATEGORY_NOTES_MANIFEST_KEY, JSON.stringify({ version: 1, keys: normalizedKeys }));
+}
+
+async function ensureCategoryNoteManifestIncludes(key: string): Promise<void> {
+  const manifest = readCategoryNotesManifest();
+  if (manifest.kind === 'invalid') throw new Error('Failed to update the category note manifest.');
+  if (manifest.kind === 'missing') {
+    if (hasPersistedSyncHistory()) {
+      markCategoryNotesRecoveryRequiredBestEffort('missing-manifest');
+      throw new Error('Cannot bootstrap a missing note manifest after cloud sync.');
+    }
+    await refreshCategoryNotesManifest();
+    return;
+  }
+  writeCategoryNotesManifest([...manifest.keys, key]);
+}
+
+async function ensureCategoryNoteManifestIncludesBestEffort(key: string): Promise<void> {
+  try {
+    await ensureCategoryNoteManifestIncludes(key);
+  } catch {
+    // The note itself is already durable. A missing/stale manifest makes the
+    // next authoritative cloud export fail closed until it can be rebuilt.
+  }
+}
+
+async function refreshCategoryNotesManifest(): Promise<void> {
+  const existingManifest = readCategoryNotesManifest();
+  if (existingManifest.kind === 'invalid') throw new Error('Invalid category note manifest.');
+  if (existingManifest.kind === 'missing' && hasPersistedSyncHistory()) {
+    markCategoryNotesRecoveryRequiredBestEffort('missing-manifest');
+    throw new Error('Cannot rebuild a missing note manifest after cloud sync.');
+  }
+  const currentNotes = isIndexedDbAvailable() ? await exportIndexedDbNotes() : {};
+  const localEntries = collectLegacyLocalStorageNotesOrThrow(isCategoryNoteKey);
+  const invalidLocalEntry = localEntries.find(([, raw]) => !isUsableNoteRaw(raw));
+  if (invalidLocalEntry) throw new Error(`Invalid local category note: ${invalidLocalEntry[0]}`);
+  writeCategoryNotesManifest([
+    ...Object.keys(currentNotes),
+    ...localEntries.map(([key]) => key),
+  ]);
+}
+
+async function recordCategoryNoteDeletionBestEffort(predicate: (key: string) => boolean): Promise<void> {
+  try {
+    const manifest = readCategoryNotesManifest();
+    if (manifest.kind === 'valid') {
+      writeCategoryNotesManifest(manifest.keys.filter((key) => !predicate(key)));
+      return;
+    }
+    if (manifest.kind === 'invalid') {
+      markCategoryNotesRecoveryRequiredBestEffort('invalid-manifest');
+      return;
+    }
+    if (hasPersistedSyncHistory()) {
+      markCategoryNotesRecoveryRequiredBestEffort('missing-manifest');
+      return;
+    }
+    await refreshCategoryNotesManifest();
+  } catch {
+    // The durable scoped deletion succeeded. Keeping the old/missing manifest
+    // makes a later authoritative export fail closed without legitimizing
+    // unrelated notes that may also have disappeared.
+  }
+}
+
+function writeCategoryNotesManifestBestEffort(keys: Iterable<string>): boolean {
+  try {
+    writeCategoryNotesManifest(keys);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isCategoryNotesRecoveryRequired(): boolean {
+  try {
+    return localStorage.getItem(CATEGORY_NOTES_RECOVERY_REQUIRED_KEY) !== null;
+  } catch {
+    return true;
+  }
+}
+
+function markCategoryNotesRecoveryRequiredBestEffort(
+  reason: 'backup-only' | 'missing-current' | 'missing-manifest' | 'invalid-manifest' | 'invalid-note' | 'read-failure',
+): void {
+  try {
+    localStorage.setItem(CATEGORY_NOTES_RECOVERY_REQUIRED_KEY, JSON.stringify({ version: 1, reason }));
+  } catch {
+    // The manifest/history checks still keep authoritative exports closed.
+  }
 }
 
 function openNoteDb(): Promise<IDBDatabase> {
@@ -260,11 +527,36 @@ function openNoteDb(): Promise<IDBDatabase> {
     request.onblocked = () => reject(new Error('Note database is blocked by another tab.'));
   });
 
-  dbPromise.catch(() => {
-    dbPromise = null;
+  const opening = dbPromise;
+  opening.catch(() => {
+    if (dbPromise === opening) dbPromise = null;
   });
 
-  return dbPromise;
+  return opening;
+}
+
+function abandonNoteDbConnection(): void {
+  const abandoned = dbPromise;
+  dbPromise = null;
+  void abandoned?.then(
+    (db) => db.close(),
+    () => undefined,
+  );
+}
+
+export async function waitForCategoryNoteStorage<T>(
+  pending: Promise<T>,
+  timeoutMs = NOTE_STORAGE_OPERATION_TIMEOUT_MS,
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new CategoryNoteStorageTimeoutError()), timeoutMs);
+  });
+  try {
+    return await Promise.race([pending, timeout]);
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  }
 }
 
 async function getRawFromIndexedDb(key: string): Promise<string | null> {
@@ -305,7 +597,7 @@ async function setRawToIndexedDb(key: string, raw: string): Promise<void> {
     transaction.onabort = () => reject(transaction.error ?? new Error('Failed to save note.'));
   });
 }
-async function exportIndexedDbNotes(): Promise<Record<string, string>> {
+async function exportIndexedDbNotes(allowInvalid = false): Promise<Record<string, string>> {
   const db = await openNoteDb();
   return new Promise((resolve, reject) => {
     const result: Record<string, string> = {};
@@ -319,7 +611,18 @@ async function exportIndexedDbNotes(): Promise<Record<string, string>> {
         return;
       }
       const key = String(cursor.key);
-      if (isCategoryNoteKey(key) && typeof cursor.value === 'string' && isUsableNoteRaw(cursor.value)) result[key] = cursor.value;
+      if (isCategoryNoteKey(key)) {
+        if (typeof cursor.value !== 'string' || !isUsableNoteRaw(cursor.value)) {
+          if (!allowInvalid) {
+            reject(new Error(`Invalid category note in IndexedDB: ${key}`));
+            return;
+          }
+          markCategoryNotesRecoveryRequiredBestEffort('invalid-note');
+          cursor.continue();
+          return;
+        }
+        result[key] = cursor.value;
+      }
       cursor.continue();
     };
     request.onerror = () => reject(request.error ?? new Error('Failed to export notes.'));
@@ -327,7 +630,7 @@ async function exportIndexedDbNotes(): Promise<Record<string, string>> {
   });
 }
 
-async function exportIndexedDbNoteBackups(): Promise<Record<string, string>> {
+async function exportIndexedDbNoteBackups(allowInvalid = false): Promise<Record<string, string>> {
   const db = await openNoteDb();
   return new Promise((resolve, reject) => {
     const result: Record<string, string> = {};
@@ -341,7 +644,18 @@ async function exportIndexedDbNoteBackups(): Promise<Record<string, string>> {
         return;
       }
       const key = String(cursor.key);
-      if (isCategoryNoteKey(key) && typeof cursor.value === 'string' && isUsableNoteRaw(cursor.value)) result[key] = cursor.value;
+      if (isCategoryNoteKey(key)) {
+        if (typeof cursor.value !== 'string' || !isUsableNoteRaw(cursor.value)) {
+          if (!allowInvalid) {
+            reject(new Error(`Invalid category note backup in IndexedDB: ${key}`));
+            return;
+          }
+          markCategoryNotesRecoveryRequiredBestEffort('invalid-note');
+          cursor.continue();
+          return;
+        }
+        result[key] = cursor.value;
+      }
       cursor.continue();
     };
     request.onerror = () => reject(request.error ?? new Error('Failed to export note backups.'));
@@ -451,12 +765,16 @@ function removeAllLegacyLocalStorageNotes(): void {
   collectLegacyLocalStorageNotes().forEach(([key]) => safeLocalStorageRemove(key));
 }
 
-function safeLocalStorageGet(key: string): string | null {
+function readLocalStorageValue(key: string): { value: string | null; error: unknown | null } {
   try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
+    return { value: localStorage.getItem(key), error: null };
+  } catch (error) {
+    return { value: null, error };
   }
+}
+
+function createCategoryNoteReadError(cause: unknown): Error {
+  return new Error(`Failed to read category note data. ${getErrorMessage(cause)}`);
 }
 
 function safeLocalStorageRemove(key: string): void {

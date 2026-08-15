@@ -9,6 +9,7 @@ const headerSource = readSource('../src/components/Header.tsx');
 const detailSource = readSource('../src/screens/ProblemSetDetailScreen.tsx');
 const appSource = readSource('../src/App.tsx');
 const globalCss = readSource('../src/index.css');
+const syncCss = readSource('../src/screens/SyncScreen.css');
 
 test('shared layout and loading state use the light application palette', () => {
   assert.doesNotMatch(layoutSource, /bg-\[#050505\]|text-white/);
@@ -36,4 +37,10 @@ test('quiz exit confirmation uses the light surface palette', () => {
   assert.doesNotMatch(exitDialogCss, /background:\s*#202020|background:\s*#2b2b2b/);
   assert.match(exitDialogCss, /background:\s*#ffffff/);
   assert.match(exitDialogCss, /color:\s*#173042/);
+});
+
+test('sync settings uses the same restrained light palette as other settings screens', () => {
+  assert.match(syncCss, /\.sync-screen \{[\s\S]*?background:\s*#f1f5f9/);
+  assert.match(syncCss, /\.sync-screen__header \{[\s\S]*?background:\s*rgba\(255, 255, 255/);
+  assert.doesNotMatch(syncCss, /background:\s*#000000|background:\s*#202020|color:\s*#ffffff;\s*overflow/);
 });

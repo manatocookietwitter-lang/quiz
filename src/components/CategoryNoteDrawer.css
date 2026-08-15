@@ -161,6 +161,40 @@
     color: #b42318 !important;
     background: #fee2e2;
   }
+
+  .category-note-save-error {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin: 0;
+    padding: 7px 12px;
+    border-bottom: 1px solid #fecaca;
+    background: #fff1f2;
+    color: #a61b1b;
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1.4;
+  }
+
+  .category-note-save-error span {
+    flex: 1 1 auto;
+  }
+
+  .category-note-save-error button {
+    flex: 0 0 auto;
+    min-height: 32px;
+    padding: 0 10px;
+    border: 1px solid #fecaca;
+    border-radius: 9px;
+    background: #ffffff;
+    color: #a61b1b;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 900;
+  }
+
   .category-note-drawer__header button {
     appearance: none;
     min-width: 66px;

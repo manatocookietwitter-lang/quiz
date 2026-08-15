@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import type { AppData, AppScreen, Folder, ProblemSet, Question, QuizResult, QuizSession } from './types';
 import {
   createEmptyAppData,
+  establishCurrentAppDataAuthority,
   loadAppDataAsync,
   parseBackupJson,
   saveAppData,
@@ -36,7 +37,7 @@ import {
 } from './utils/quiz';
 import { validateImportJson } from './utils/importValidator';
 import { getDraftAnswerIndexes } from './utils/bulkQuestionParser';
-import { exportQuizMakeData, importQuizMakeData, summarizeSyncPayload, validateSyncPayload, type SyncPayload, type SyncPayloadSummary } from './utils/syncService';
+import { exportQuizMakeRecoveryData, importQuizMakeData, summarizeSyncPayload, validateSyncPayload, type SyncPayload, type SyncPayloadSummary } from './utils/syncService';
 import { deleteAllCategoryNotes, deleteCategoryNotesForProblemSetIds, waitForPendingCategoryNoteSaves } from './utils/noteStorage';
 import { saveJsonBackup } from './utils/nativePlatform';
 import { createSampleAppData } from './utils/sampleData';
@@ -847,13 +848,16 @@ export default function App() {
         : 'ノートの削除と学習データの復元に失敗しました。バックアップを書き出してから再読み込みしてください。');
       return false;
     }
+    if (!establishCurrentAppDataAuthority()) {
+      setStorageError('データは削除しましたが、端末の復旧状態を更新できませんでした。再読み込みしてからもう一度お試しください。');
+    }
     replaceScreen({ name: 'home' });
     return true;
   };
 
   const handleExport = async () => {
     try {
-      const payload = await exportQuizMakeData();
+      const payload = await exportQuizMakeRecoveryData();
       await saveJsonBackup(`quiz-make-backup-${formatBackupDate()}.json`, JSON.stringify(payload, null, 2));
     } catch (error) {
       setBackupImportError(error instanceof Error ? `バックアップの作成に失敗しました: ${error.message}` : 'バックアップの作成に失敗しました。');
@@ -935,6 +939,11 @@ export default function App() {
       const saved = await persistThenCommitData(target.data);
       if (!saved) {
         setBackupImportError('バックアップを端末へ保存できませんでした。現在の画面を閉じず、空き容量や保存設定を確認してください。');
+        setBackupImportBusy(false);
+        return;
+      }
+      if (!establishCurrentAppDataAuthority()) {
+        setBackupImportError('問題データは読み込みましたが、端末の復旧状態を更新できませんでした。再読み込みしてから同じバックアップをもう一度読み込んでください。');
         setBackupImportBusy(false);
         return;
       }

@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AppData } from '../types';
 import { BackButton } from '../components/BackButton';
-import { CategoryNotePanel } from '../components/CategoryNoteDrawer';
+import { CategoryNotePanel, type CategoryNotePanelHandle } from '../components/CategoryNoteDrawer';
+import { runAfterSuccessfulNoteFlush } from '../components/noteExitGuard';
 import { Layout } from '../components/Layout';
 import { MissingResourceState } from '../components/MissingResourceState';
 import { buildProblemCategories, normalizeProblemCategory } from './ProblemSetDetailScreen';
@@ -24,20 +25,82 @@ export function NoteListScreen({ data, setId, onBack }: NoteListScreenProps) {
   }, [questions]);
   const [selectedCategory, setSelectedCategory] = useState(() => noteCategories[0] ?? '未分類');
   const [isTabletLandscape, setIsTabletLandscape] = useState(() => getIsTabletLandscape());
+  const [isLeavingNote, setIsLeavingNote] = useState(false);
+  const [transitionError, setTransitionError] = useState('');
+  const notePanelRef = useRef<CategoryNotePanelHandle>(null);
+  const noteTransitionQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+  const pendingNoteTransitionsRef = useRef(0);
+  const mountedRef = useRef(true);
+  const tabletLandscapeRef = useRef(isTabletLandscape);
+  const desiredTabletLandscapeRef = useRef(isTabletLandscape);
+
+  const requestNoteTransition = useCallback((proceed: () => void): Promise<boolean> => {
+    pendingNoteTransitionsRef.current += 1;
+    setIsLeavingNote(true);
+    setTransitionError('');
+
+    const finishTransition = () => {
+      pendingNoteTransitionsRef.current = Math.max(0, pendingNoteTransitionsRef.current - 1);
+      if (mountedRef.current && pendingNoteTransitionsRef.current === 0) setIsLeavingNote(false);
+    };
+    const execute = async () => {
+      if (!mountedRef.current) {
+        finishTransition();
+        return false;
+      }
+      const completed = await runAfterSuccessfulNoteFlush(
+        () => notePanelRef.current?.flush() ?? Promise.resolve(),
+        () => {
+          finishTransition();
+          if (mountedRef.current) setTransitionError('');
+          proceed();
+        },
+      );
+      if (!completed) {
+        finishTransition();
+        if (mountedRef.current) setTransitionError('ノートを保存できませんでした。操作をもう一度お試しください。');
+      }
+      return completed;
+    };
+    const queued = noteTransitionQueueRef.current.then(execute, execute);
+    noteTransitionQueueRef.current = queued.then(() => undefined, () => undefined);
+    return queued;
+  }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!noteCategories.includes(selectedCategory)) {
-      setSelectedCategory(noteCategories[0] ?? '未分類');
+      void requestNoteTransition(() => setSelectedCategory(noteCategories[0] ?? '未分類'));
     }
-  }, [noteCategories, selectedCategory]);
+  }, [noteCategories, requestNoteTransition, selectedCategory]);
 
   useEffect(() => {
     const query = window.matchMedia('(min-width: 768px) and (orientation: landscape)');
-    const update = () => setIsTabletLandscape(query.matches);
+    const update = () => {
+      const nextLandscape = query.matches;
+      desiredTabletLandscapeRef.current = nextLandscape;
+      if (nextLandscape === tabletLandscapeRef.current) return;
+      if (nextLandscape) {
+        tabletLandscapeRef.current = true;
+        setIsTabletLandscape(true);
+        return;
+      }
+      void requestNoteTransition(() => {
+        if (desiredTabletLandscapeRef.current) return;
+        tabletLandscapeRef.current = false;
+        setIsTabletLandscape(false);
+      });
+    };
     update();
     query.addEventListener?.('change', update);
     return () => query.removeEventListener?.('change', update);
-  }, []);
+  }, [requestNoteTransition]);
 
   if (!problemSet) {
     return (
@@ -65,12 +128,18 @@ export function NoteListScreen({ data, setId, onBack }: NoteListScreenProps) {
       <div className="quiz-notes">
         <header className="quiz-notes__header">
           <div className="quiz-notes__header-slope" />
-          <BackButton onClick={onBack} className="quiz-notes__back-button" />
+          <BackButton
+            onClick={() => void requestNoteTransition(onBack)}
+            className="quiz-notes__back-button"
+            disabled={isLeavingNote}
+          />
           <div className="quiz-notes__title-wrap">
             <h1>ノート一覧</h1>
             <p>{title}</p>
           </div>
         </header>
+
+        {transitionError ? <div className="quiz-notes__transition-error" role="alert">{transitionError}</div> : null}
 
         <main className="quiz-notes__body">
           {isTabletLandscape ? (
@@ -86,7 +155,12 @@ export function NoteListScreen({ data, setId, onBack }: NoteListScreenProps) {
                       key={category}
                       type="button"
                       className={`quiz-notes__category${selectedCategory === category ? ' quiz-notes__category--active' : ''}`}
-                      onClick={() => setSelectedCategory(category)}
+                      disabled={isLeavingNote}
+                      onClick={() => {
+                        if (selectedCategory !== category) {
+                          void requestNoteTransition(() => setSelectedCategory(category));
+                        }
+                      }}
                     >
                       <span>{category}</span>
                       <b aria-hidden="true">›</b>
@@ -96,7 +170,14 @@ export function NoteListScreen({ data, setId, onBack }: NoteListScreenProps) {
               </aside>
 
               <section className="quiz-notes__panel-wrap">
-                <CategoryNotePanel key={selectedCategory} problemSetId={setId} category={selectedCategory} className="quiz-notes__panel" onClose={onBack} />
+                <CategoryNotePanel
+                  key={selectedCategory}
+                  ref={notePanelRef}
+                  problemSetId={setId}
+                  category={selectedCategory}
+                  className="quiz-notes__panel"
+                  onClose={() => void requestNoteTransition(onBack)}
+                />
               </section>
             </>
           ) : (

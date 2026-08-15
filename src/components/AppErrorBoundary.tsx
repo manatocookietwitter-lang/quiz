@@ -1,5 +1,5 @@
 import React, { type ErrorInfo, type ReactNode } from 'react';
-import { exportQuizMakeData } from '../utils/syncService';
+import { exportQuizMakeRecoveryData } from '../utils/syncService';
 import { formatBackupDate } from '../utils/date';
 import { saveJsonBackup } from '../utils/nativePlatform';
 import './AppErrorBoundary.css';
@@ -37,7 +37,7 @@ export class AppErrorBoundary extends React.Component<AppErrorBoundaryProps, App
     if (this.state.recoveryState === 'exporting') return;
     this.setState({ recoveryState: 'exporting' });
     try {
-      const payload = await exportQuizMakeData();
+      const payload = await exportQuizMakeRecoveryData();
       await saveJsonBackup(
         `quiz-make-backup-${formatBackupDate()}.json`,
         JSON.stringify(payload, null, 2),

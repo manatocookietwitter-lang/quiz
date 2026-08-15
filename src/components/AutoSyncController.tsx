@@ -9,6 +9,7 @@ import {
   getRemoteSyncMeta,
   importQuizMakeData,
   setLastSyncState,
+  setLastSyncStateForConnection,
   uploadSyncData,
 } from '../utils/syncService';
 import type { ProtectedWorkReason } from '../utils/protectedWork';
@@ -59,6 +60,13 @@ export function AutoSyncController({ protectedWorkReason }: AutoSyncControllerPr
     setLastSyncState({ status: 'クラウドから読み込み中...', error: '' });
 
     const download = await downloadSyncData(target.syncId);
+    const settingsAfterDownload = getAutoSyncSettings();
+    if (!settingsAfterDownload.enabled || settingsAfterDownload.syncId !== target.syncId) {
+      setPendingRemoteImport(null);
+      promptedRemoteUpdatedAtRef.current = '';
+      setRemoteImportBusy(false);
+      return;
+    }
     if (!download.ok) {
       console.warn('Auto sync download failed.', download.error);
       setLastSyncState({ status: 'クラウド読み込み失敗', error: download.error });
@@ -89,7 +97,10 @@ export function AutoSyncController({ protectedWorkReason }: AutoSyncControllerPr
       return;
     }
 
-    const imported = await importQuizMakeData(download.value.payload);
+    const imported = await importQuizMakeData(download.value.payload, {
+      expectedSyncId: target.syncId,
+      authoritativeUpdatedAt: download.value.updatedAt,
+    });
     if (!imported.ok) {
       setLastSyncState({ status: 'クラウド読み込み失敗', error: imported.error });
       promptedRemoteUpdatedAtRef.current = '';
@@ -97,13 +108,25 @@ export function AutoSyncController({ protectedWorkReason }: AutoSyncControllerPr
       setRemoteImportBusy(false);
       return;
     }
-
-    setLastSyncState({
+    const settingsAfterImport = getAutoSyncSettings();
+    if (!settingsAfterImport.enabled || settingsAfterImport.syncId !== target.syncId) {
+      setPendingRemoteImport(null);
+      promptedRemoteUpdatedAtRef.current = '';
+      setRemoteImportBusy(false);
+      return;
+    }
+    if (!setLastSyncStateForConnection(target.syncId, {
       lastSyncAt: download.value.updatedAt,
       lastRemoteUpdatedAt: download.value.updatedAt,
+      lastUploadHash: computePayloadHash(download.value.payload),
       status: 'クラウドから読み込みました',
       error: '',
-    });
+    })) {
+      setPendingRemoteImport(null);
+      promptedRemoteUpdatedAtRef.current = '';
+      setRemoteImportBusy(false);
+      return;
+    }
     window.setTimeout(() => window.location.reload(), 700);
   };
 
@@ -150,6 +173,8 @@ export function AutoSyncController({ protectedWorkReason }: AutoSyncControllerPr
           expectedRemoteUpdatedAt: lastState.lastSyncAt || null,
           force: false,
         });
+        const latestSettings = getAutoSyncSettings();
+        if (!latestSettings.enabled || latestSettings.syncId !== settings.syncId) return;
         if (!result.ok) {
           if (result.code === 'local_changed') {
             shouldRetryLocalChanges = true;
@@ -204,6 +229,8 @@ export function AutoSyncController({ protectedWorkReason }: AutoSyncControllerPr
 
       try {
         const meta = await getRemoteSyncMeta(settings.syncId);
+        const latestSettings = getAutoSyncSettings();
+        if (!latestSettings.enabled || latestSettings.syncId !== settings.syncId) return;
         if (!meta.ok) {
           console.warn('Auto sync remote check failed.', meta.error);
           setLastSyncState({ status: 'クラウド確認失敗', error: meta.error });

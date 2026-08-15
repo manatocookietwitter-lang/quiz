@@ -5,6 +5,7 @@ import { createServer } from 'vite';
 class MemoryStorage {
   #values = new Map();
   failWrites = false;
+  onSetItem = null;
 
   get length() {
     return this.#values.size;
@@ -29,6 +30,7 @@ class MemoryStorage {
   setItem(key, value) {
     if (this.failWrites) throw new Error('storage write failed');
     this.#values.set(String(key), String(value));
+    this.onSetItem?.(String(key), String(value));
   }
 }
 
@@ -59,6 +61,7 @@ const vite = await createServer({
   server: { middlewareMode: true },
 });
 const revision = await vite.ssrLoadModule('/src/utils/localDataRevision.ts');
+const coordination = await vite.ssrLoadModule('/src/utils/dataCoordination.ts');
 const storage = await vite.ssrLoadModule('/src/storage.ts');
 const notes = await vite.ssrLoadModule('/src/utils/noteStorage.ts');
 const sync = await vite.ssrLoadModule('/src/utils/syncService.ts');
@@ -74,7 +77,13 @@ after(async () => {
 });
 
 const syncId = '111111111111111111111111111111111111';
+const replacementSyncId = '222222222222222222222222222222222222';
 const timestamp = '2026-08-15T00:00:00.000Z';
+
+function resetStorage() {
+  localStorage.clear();
+  coordination.resetDataCoordinationForTests();
+}
 
 function appDataWithFolder(name) {
   return {
@@ -90,7 +99,7 @@ function appDataWithFolder(name) {
 
 test('successful app and note persistence advances one shared monotonic revision', async () => {
   delete globalThis.indexedDB;
-  localStorage.clear();
+  resetStorage();
   const initialRevision = revision.getLocalDataRevision();
 
   assert.equal(await storage.saveAppData(appDataWithFolder('first')), true);
@@ -108,7 +117,7 @@ test('successful app and note persistence advances one shared monotonic revision
     assert.equal(await storage.saveAppData(appDataWithFolder('not-saved')), false);
     await assert.rejects(
       notes.saveCategoryNoteRaw('quizMake:notes:set-1:vocabulary', noteRaw),
-      /storage write failed/,
+      /(storage write failed|保存状態)/,
     );
   } finally {
     console.error = originalConsoleError;
@@ -120,7 +129,7 @@ test('successful app and note persistence advances one shared monotonic revision
 
 test('an exported payload keeps an internal revision snapshot without changing its JSON format', async () => {
   delete globalThis.indexedDB;
-  localStorage.clear();
+  resetStorage();
   assert.equal(await storage.saveAppData(appDataWithFolder('snapshot')), true);
 
   const payload = await sync.exportQuizMakeData(timestamp);
@@ -132,7 +141,8 @@ test('an exported payload keeps an internal revision snapshot without changing i
 
 test('upload waits for the save queue and refuses an exported payload made stale before network I/O', async () => {
   delete globalThis.indexedDB;
-  localStorage.clear();
+  resetStorage();
+  sync.setStoredSyncId(syncId);
   assert.equal(await storage.saveAppData(appDataWithFolder('before-export')), true);
   const payload = await sync.exportQuizMakeData(timestamp);
 
@@ -151,9 +161,171 @@ test('upload waits for the save queue and refuses an exported payload made stale
   assert.equal(fetchCalls, 0);
 });
 
+test('upload rejects a snapshot changed by another tab before network I/O', async () => {
+  delete globalThis.indexedDB;
+  resetStorage();
+  sync.setStoredSyncId(syncId);
+  assert.equal(await storage.saveAppData(appDataWithFolder('before-other-tab-change')), true);
+  const payload = await sync.exportQuizMakeData(timestamp);
+  localStorage.setItem('quizMake:coord:appEpoch', 'changed-by-another-tab');
+  let fetchCalls = 0;
+  globalThis.fetch = async () => {
+    fetchCalls += 1;
+    throw new Error('a cross-tab stale snapshot must not reach the network');
+  };
+
+  const result = await sync.uploadSyncData(syncId, payload);
+
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.code, 'local_changed');
+  assert.equal(fetchCalls, 0);
+});
+
+test('stale callers cannot use an old ID or roll the stored connection back before network I/O', async () => {
+  delete globalThis.indexedDB;
+  resetStorage();
+  sync.setStoredSyncId(replacementSyncId);
+  assert.equal(await storage.saveAppData(appDataWithFolder('stale-connection')), true);
+  const payload = await sync.exportQuizMakeData(timestamp);
+  let fetchCalls = 0;
+  globalThis.fetch = async () => {
+    fetchCalls += 1;
+    throw new Error('a stale connection must not reach the network');
+  };
+
+  const upload = await sync.uploadSyncData(syncId, payload);
+  const download = await sync.downloadSyncData(syncId);
+
+  assert.equal(upload.ok, false);
+  if (!upload.ok) assert.equal(upload.code, 'connection_changed');
+  assert.equal(download.ok, false);
+  if (!download.ok) assert.equal(download.code, 'connection_changed');
+  assert.equal(fetchCalls, 0);
+  assert.equal(sync.getStoredSyncId(), replacementSyncId);
+});
+
+test('sync status records never inherit authoritative state from another connection', () => {
+  resetStorage();
+  sync.setStoredSyncId(replacementSyncId);
+  localStorage.setItem('quizMake:sync:lastStateRecord', JSON.stringify({
+    owner: syncId,
+    state: {
+      lastSyncAt: timestamp,
+      lastUploadHash: 'stale-a-hash',
+      lastRemoteUpdatedAt: timestamp,
+      status: 'A saved',
+      error: '',
+    },
+  }));
+
+  sync.setLastSyncState({ status: 'B waiting', error: '' });
+
+  assert.deepEqual(sync.getLastSyncState(), {
+    lastSyncAt: '',
+    lastUploadHash: '',
+    lastRemoteUpdatedAt: '',
+    status: 'B waiting',
+    error: '',
+  });
+  const record = JSON.parse(localStorage.getItem('quizMake:sync:lastStateRecord'));
+  assert.equal(record.owner, replacementSyncId);
+});
+
+test('cloud import rolls back if another tab changes the connection during local replacement', async () => {
+  delete globalThis.indexedDB;
+  resetStorage();
+  sync.setStoredSyncId(syncId);
+  const originalData = appDataWithFolder('before-import');
+  const importedData = appDataWithFolder('from-cloud');
+  const noteKey = 'quizMake:notes:set-1:vocabulary';
+  const originalNote = JSON.stringify({ dataUrl: 'data:image/png;base64,before', updatedAt: timestamp });
+  const importedNote = JSON.stringify({ dataUrl: 'data:image/png;base64,cloud', updatedAt: '2026-08-15T00:00:01.000Z' });
+  assert.equal(await storage.saveAppData(originalData), true);
+  await notes.saveCategoryNoteRaw(noteKey, originalNote);
+
+  const storageMock = localStorage;
+  storageMock.onSetItem = (key, value) => {
+    if (!key.endsWith(':fallback-record') || !value.includes('from-cloud')) return;
+    storageMock.onSetItem = null;
+    sync.setStoredSyncId(replacementSyncId);
+  };
+
+  const result = await sync.importQuizMakeData({
+    version: 1,
+    updatedAt: timestamp,
+    localStorage: {
+      [storage.APP_DATA_STORAGE_KEY]: JSON.stringify(importedData),
+    },
+    indexedDbNotes: { [noteKey]: importedNote },
+  }, {
+    expectedSyncId: syncId,
+    authoritativeUpdatedAt: timestamp,
+  });
+
+  storageMock.onSetItem = null;
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.code, 'connection_changed');
+  assert.equal(sync.getStoredSyncId(), replacementSyncId);
+  assert.deepEqual(await storage.loadAppDataAsync(), originalData);
+  assert.equal(await notes.loadCategoryNoteRaw(noteKey), originalNote);
+});
+
+test('v2 upload rejects malformed success rows instead of inventing a successful fallback', async () => {
+  delete globalThis.indexedDB;
+  resetStorage();
+  sync.setStoredSyncId(syncId);
+  assert.equal(await storage.saveAppData(appDataWithFolder('strict-v2')), true);
+  const payload = await sync.exportQuizMakeData(timestamp);
+  const malformedResponses = [
+    [{ sync_id: syncId, data: payload, updated_at: timestamp }],
+    [{ result_code: 'ok', sync_id: syncId, updated_at: timestamp }],
+    [{ result_code: 'ok', sync_id: replacementSyncId, data: payload, updated_at: timestamp }],
+    [{ result_code: 'ok', sync_id: syncId, data: payload, updated_at: 'not-a-date' }],
+    [{}],
+    [],
+  ];
+
+  for (const responseBody of malformedResponses) {
+    globalThis.fetch = async () => new Response(JSON.stringify(responseBody), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const result = await sync.uploadSyncData(syncId, payload);
+    assert.equal(result.ok, false);
+  }
+});
+
+test('upload conflicts retain the exact remote revision required for confirmed CAS overwrite', async () => {
+  delete globalThis.indexedDB;
+  resetStorage();
+  sync.setStoredSyncId(syncId);
+  assert.equal(await storage.saveAppData(appDataWithFolder('conflict-revision')), true);
+  const payload = await sync.exportQuizMakeData(timestamp);
+  const remoteRevision = '2026-08-15T00:00:09.000Z';
+  globalThis.fetch = async () => new Response(JSON.stringify([{
+    result_code: 'conflict',
+    sync_id: syncId,
+    data: null,
+    updated_at: remoteRevision,
+  }]), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
+
+  const result = await sync.uploadSyncData(syncId, payload, {
+    expectedRemoteUpdatedAt: '2026-08-14T00:00:00.000Z',
+  });
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.code, 'conflict');
+    assert.equal(result.remoteUpdatedAt, remoteRevision);
+  }
+});
+
 test('a save finishing during upload keeps the authoritative remote timestamp but not a synced hash', async () => {
   delete globalThis.indexedDB;
-  localStorage.clear();
+  resetStorage();
   sync.setStoredSyncId(syncId);
   sync.setLastSyncState({
     lastSyncAt: '2026-08-14T00:00:00.000Z',
@@ -162,6 +334,7 @@ test('a save finishing during upload keeps the authoritative remote timestamp bu
     status: '',
     error: '',
   });
+  localStorage.setItem(notes.CATEGORY_NOTES_MANIFEST_KEY, JSON.stringify({ version: 1, keys: [] }));
   assert.equal(await storage.saveAppData(appDataWithFolder('uploaded-snapshot')), true);
   const payload = await sync.exportQuizMakeData(timestamp);
 
@@ -177,7 +350,9 @@ test('a save finishing during upload keeps the authoritative remote timestamp bu
       releaseFetch = resolve;
     });
     return new Response(JSON.stringify([{
+      result_code: 'ok',
       sync_id: syncId,
+      data: payload,
       updated_at: remoteUpdatedAt,
     }]), {
       status: 200,
@@ -219,6 +394,52 @@ test('a save finishing during upload keeps the authoritative remote timestamp bu
     lastUploadHash: '',
     lastRemoteUpdatedAt: remoteUpdatedAt,
     status: 'クラウド保存中に端末データが更新されました。最新の内容を再同期します',
+    error: '',
+  });
+});
+
+test('an in-flight upload cannot restore a sync connection that was changed meanwhile', async () => {
+  delete globalThis.indexedDB;
+  resetStorage();
+  sync.setStoredSyncId(syncId);
+  assert.equal(await storage.saveAppData(appDataWithFolder('connection-race')), true);
+  const payload = await sync.exportQuizMakeData(timestamp);
+
+  let releaseFetch;
+  let markFetchStarted;
+  const fetchStarted = new Promise((resolve) => {
+    markFetchStarted = resolve;
+  });
+  globalThis.fetch = async () => {
+    markFetchStarted();
+    await new Promise((resolve) => {
+      releaseFetch = resolve;
+    });
+    return new Response(JSON.stringify([{
+      result_code: 'ok',
+      sync_id: syncId,
+      data: payload,
+      updated_at: timestamp,
+    }]), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  };
+
+  const upload = sync.uploadSyncData(syncId, payload);
+  await fetchStarted;
+  sync.setStoredSyncId(replacementSyncId);
+  releaseFetch();
+
+  const result = await upload;
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.code, 'connection_changed');
+  assert.equal(sync.getStoredSyncId(), replacementSyncId);
+  assert.deepEqual(sync.getLastSyncState(), {
+    lastSyncAt: '',
+    lastUploadHash: '',
+    lastRemoteUpdatedAt: '',
+    status: '',
     error: '',
   });
 });

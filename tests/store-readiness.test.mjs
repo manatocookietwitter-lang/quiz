@@ -87,6 +87,6 @@ test('root render failures show recovery actions instead of a blank screen', () 
   assert.match(boundary, /getDerivedStateFromError/);
   assert.match(boundary, /再読み込み/);
   assert.match(boundary, /端末データを書き出す/);
-  assert.match(boundary, /exportQuizMakeData/);
+  assert.match(boundary, /exportQuizMakeRecoveryData/);
   assert.match(boundary, /support\.html/);
 });

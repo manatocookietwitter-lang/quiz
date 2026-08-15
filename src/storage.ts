@@ -1,9 +1,13 @@
 import type { AppData } from './types';
 import { normalizeAppData } from './utils/appDataValidation';
+import { loadLatestCoordinatedData, withCoordinatedDataMutation } from './utils/dataCoordination';
 import { advanceLocalDataRevision } from './utils/localDataRevision';
+import { hasPersistedSyncHistory } from './utils/syncState';
 
 export const APP_DATA_STORAGE_KEY = 'quiz-make-app-data-v1';
 export const APP_DATA_FALLBACK_META_KEY = 'quiz-make-app-data-v1:fallback-saved-at';
+export const APP_DATA_EXPECTED_KEY = 'quiz-make-app-data-v1:expected';
+export const APP_DATA_RECOVERY_REQUIRED_KEY = 'quiz-make-app-data-v1:recovery-required';
 const APP_DATA_FALLBACK_RECORD_KEY = 'quiz-make-app-data-v1:fallback-record';
 
 const APP_DB_NAME = 'quiz-make-app-data-v1';
@@ -12,6 +16,12 @@ const APP_BACKUP_STORE_NAME = 'appDataBackups';
 const APP_DATA_IDB_SAVED_AT_KEY = `${APP_DATA_STORAGE_KEY}:saved-at`;
 let appDbPromise: Promise<IDBDatabase> | null = null;
 let appSaveQueue: Promise<boolean> = Promise.resolve(true);
+
+type IndexedAppDataRecord = {
+  raw: string | null;
+  savedAt: string | null;
+  source: 'current' | 'backup' | 'invalid' | 'empty';
+};
 
 export function createEmptyAppData(): AppData {
   return {
@@ -40,11 +50,15 @@ export function loadAppData(): AppData {
 
 export async function loadAppDataAsync(): Promise<AppData> {
   await waitForPendingAppDataSaves();
+  return loadLatestCoordinatedData(['app'], loadAppDataUnlocked);
+}
+
+async function loadAppDataUnlocked(): Promise<AppData> {
   let indexedDbReadError: unknown = null;
-  const indexedRecord = await getAppDataRecordFromIndexedDb().catch((error) => {
+  const indexedRecord = await getAppDataRecordFromIndexedDb().catch((error): IndexedAppDataRecord => {
     console.warn('Failed to load Quiz make data from IndexedDB.', error);
     indexedDbReadError = error;
-    return { raw: null, savedAt: null };
+    return { raw: null, savedAt: null, source: 'empty' };
   });
   const fallbackRecord = getLocalFallbackRecord();
   const fallbackRaw = fallbackRecord.raw;
@@ -58,21 +72,31 @@ export async function loadAppDataAsync(): Promise<AppData> {
   if (!preferredData) {
     const unreadableStoredDataExists = indexedRecord.raw !== null || fallbackRaw !== null;
     if (indexedDbReadError || unreadableStoredDataExists) {
+      if (isAppDataExpected() || hasPersistedSyncHistory()) {
+        markAppDataRecoveryRequiredBestEffort('missing-primary');
+        return createEmptyAppData();
+      }
       throw new Error(
         unreadableStoredDataExists
           ? '保存データを読み取れませんでした。空のデータで上書きせず、読み込みを停止しました。'
           : '端末の保存領域へ接続できませんでした。空のデータで上書きせず、読み込みを停止しました。',
       );
     }
+    if (isAppDataExpected() || hasPersistedSyncHistory()) {
+      markAppDataRecoveryRequiredBestEffort('missing-primary');
+    }
     return createEmptyAppData();
   }
 
-  if (preferredRaw === fallbackRaw) {
-    // Reconcile a newer localStorage fallback back into IndexedDB when it becomes
-    // available again. saveAppDataAsync only removes the fallback after the IDB
-    // transaction has completed successfully.
-    await saveAppDataAsync(preferredData);
-  } else {
+  const usesDurableFallback = preferredRaw === fallbackRaw && tryParseAppDataRaw(fallbackRaw) !== null;
+  if (!usesDurableFallback && indexedRecord.source === 'backup') {
+    markAppDataRecoveryRequiredBestEffort('backup-only');
+  }
+  if (usesDurableFallback || indexedRecord.source === 'current') {
+    markAppDataExpectedBestEffort(indexedRecord.savedAt ?? fallbackRecord.savedAt ?? new Date().toISOString());
+  }
+
+  if (preferredRaw !== fallbackRaw) {
     safeLocalStorageRemove(APP_DATA_STORAGE_KEY);
     safeLocalStorageRemove(APP_DATA_FALLBACK_META_KEY);
     safeLocalStorageRemove(APP_DATA_FALLBACK_RECORD_KEY);
@@ -84,10 +108,32 @@ export function saveAppData(data: AppData): Promise<boolean> {
   return saveAppDataAsync(data);
 }
 
-export async function saveAppDataAsync(data: AppData): Promise<boolean> {
+export function establishCurrentAppDataAuthority(): boolean {
+  try {
+    markAppDataExpected(new Date().toISOString());
+    localStorage.removeItem(APP_DATA_RECOVERY_REQUIRED_KEY);
+    return localStorage.getItem(APP_DATA_EXPECTED_KEY) !== null
+      && localStorage.getItem(APP_DATA_RECOVERY_REQUIRED_KEY) === null;
+  } catch {
+    return false;
+  }
+}
+
+export async function saveAppDataAsync(
+  data: AppData,
+  options: { coordinationLockHeld?: boolean } = {},
+): Promise<boolean> {
+  if (options.coordinationLockHeld) return saveAppDataNow(data);
   const queuedSave = appSaveQueue
     .catch(() => true)
-    .then(() => saveAppDataNow(data));
+    .then(async () => {
+      try {
+        return await withCoordinatedDataMutation(['app'], () => saveAppDataNow(data));
+      } catch (error) {
+        console.error('Refused to overwrite app data changed in another tab.', error);
+        return false;
+      }
+    });
   appSaveQueue = queuedSave;
   return queuedSave;
 }
@@ -118,6 +164,7 @@ async function saveAppDataNow(data: AppData): Promise<boolean> {
   if (isIndexedDbAvailable()) {
     try {
       await setAppDataRawToIndexedDb(raw, savedAt);
+      markAppDataExpectedBestEffort(savedAt);
       safeLocalStorageRemove(APP_DATA_STORAGE_KEY);
       safeLocalStorageRemove(APP_DATA_FALLBACK_META_KEY);
       safeLocalStorageRemove(APP_DATA_FALLBACK_RECORD_KEY);
@@ -132,6 +179,7 @@ async function saveAppDataNow(data: AppData): Promise<boolean> {
     // Keep payload and timestamp in one localStorage value so a quota failure
     // cannot leave a new payload paired with a missing or stale timestamp.
     localStorage.setItem(APP_DATA_FALLBACK_RECORD_KEY, JSON.stringify({ raw, savedAt }));
+    markAppDataExpectedBestEffort(savedAt);
     safeLocalStorageRemove(APP_DATA_STORAGE_KEY);
     safeLocalStorageRemove(APP_DATA_FALLBACK_META_KEY);
     advanceLocalDataRevision();
@@ -142,32 +190,73 @@ async function saveAppDataNow(data: AppData): Promise<boolean> {
   }
 }
 
-export async function exportAppDataRaw(): Promise<string> {
-  if (!await waitForPendingAppDataSaves()) {
+export async function exportAppDataRaw(
+  options: { coordinationLockHeld?: boolean; mode?: 'authoritative' | 'recovery' } = {},
+): Promise<string> {
+  if (!options.coordinationLockHeld && !await waitForPendingAppDataSaves()) {
     throw new Error('最新の問題データを端末へ保存できていないため、バックアップを作成できません。');
   }
-  const indexedRecord = await getAppDataRecordFromIndexedDb().catch(() => ({ raw: null, savedAt: null }));
+  let indexedDbReadError: unknown = null;
+  const indexedRecord = await getAppDataRecordFromIndexedDb().catch((error): IndexedAppDataRecord => {
+    indexedDbReadError = error;
+    return { raw: null, savedAt: null, source: 'empty' };
+  });
   const fallbackRecord = getLocalFallbackRecord();
   const fallbackRaw = fallbackRecord.raw;
+  if (indexedDbReadError && !tryParseAppDataRaw(fallbackRaw)) {
+    markAppDataRecoveryRequiredBestEffort('missing-primary');
+    if (options.mode !== 'recovery') {
+      throw new Error('端末の問題データを読み取れないため、空のバックアップで上書きしないよう作成を中止しました。');
+    }
+  }
   const preferredRaw = pickPreferredAppDataRaw(
     indexedRecord.raw,
     indexedRecord.savedAt,
     fallbackRaw,
     fallbackRecord.savedAt,
   );
-  if (tryParseAppDataRaw(preferredRaw)) return preferredRaw as string;
+  if (tryParseAppDataRaw(preferredRaw)) {
+    const usesDurableFallback = preferredRaw === fallbackRaw && tryParseAppDataRaw(fallbackRaw) !== null;
+    if (!usesDurableFallback && indexedRecord.source !== 'current') {
+      markAppDataRecoveryRequiredBestEffort('backup-only');
+      if (options.mode !== 'recovery') {
+        throw new Error('端末の問題データが復旧用バックアップから読み込まれたため、古い内容でクラウドを上書きしないよう保存を中止しました。内容を確認し、必要ならクラウドから読み込んでください。');
+      }
+    }
+    if (isAppDataRecoveryRequired() && options.mode !== 'recovery') {
+      throw new Error('端末の問題データは復旧確認が必要な状態です。古い内容でクラウドを上書きしないよう保存を中止しました。先にクラウドから読み込むか、バックアップを確認してください。');
+    }
+    if (options.mode !== 'recovery') {
+      markAppDataExpected(indexedRecord.savedAt ?? fallbackRecord.savedAt ?? new Date().toISOString());
+    }
+    return preferredRaw as string;
+  }
 
-  if (indexedRecord.raw !== null || fallbackRaw !== null) {
-    throw new Error('保存データが破損しているため、空のバックアップには置き換えませんでした。');
+  if (
+    indexedRecord.raw !== null
+    || fallbackRaw !== null
+    || isAppDataExpected()
+    || isAppDataRecoveryRequired()
+    || hasPersistedSyncHistory()
+  ) {
+    markAppDataRecoveryRequiredBestEffort('missing-primary');
+    if (options.mode !== 'recovery') {
+      throw new Error('保存データを確認できないため、空のバックアップには置き換えませんでした。');
+    }
   }
 
   return JSON.stringify(createEmptyAppData());
 }
 
-export async function importAppDataRaw(raw: string): Promise<boolean> {
+export async function importAppDataRaw(
+  raw: string,
+  options: { coordinationLockHeld?: boolean; establishAuthority?: boolean } = {},
+): Promise<boolean> {
   const data = tryParseAppDataRaw(raw);
   if (!data) return false;
-  return saveAppDataAsync(data);
+  const saved = await saveAppDataAsync(data, options);
+  if (saved && options.establishAuthority) safeLocalStorageRemove(APP_DATA_RECOVERY_REQUIRED_KEY);
+  return saved;
 }
 
 export function isAppData(value: unknown): value is AppData {
@@ -269,8 +358,8 @@ function openAppDb(): Promise<IDBDatabase> {
   return appDbPromise;
 }
 
-async function getAppDataRecordFromIndexedDb(): Promise<{ raw: string | null; savedAt: string | null }> {
-  if (!isIndexedDbAvailable()) return { raw: null, savedAt: null };
+async function getAppDataRecordFromIndexedDb(): Promise<IndexedAppDataRecord> {
+  if (!isIndexedDbAvailable()) return { raw: null, savedAt: null, source: 'empty' };
   const db = await openAppDb();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction([APP_STORE_NAME, APP_BACKUP_STORE_NAME], 'readonly');
@@ -283,17 +372,26 @@ async function getAppDataRecordFromIndexedDb(): Promise<{ raw: string | null; sa
         savedAtRequest.onsuccess = () => resolve({
           raw: request.result,
           savedAt: typeof savedAtRequest.result === 'string' ? savedAtRequest.result : null,
+          source: 'current',
         });
         savedAtRequest.onerror = () => reject(savedAtRequest.error ?? new Error('Failed to read app data timestamp.'));
         return;
       }
       const backupRequest = backupStore.get(APP_DATA_STORAGE_KEY);
-      backupRequest.onsuccess = () => resolve({
-        raw: typeof backupRequest.result === 'string'
-          ? backupRequest.result
-          : (typeof request.result === 'string' ? request.result : null),
-        savedAt: null,
-      });
+      backupRequest.onsuccess = () => {
+        const currentRaw = typeof request.result === 'string' ? request.result : null;
+        const backupRaw = typeof backupRequest.result === 'string' ? backupRequest.result : null;
+        if (backupRaw && tryParseAppDataRaw(backupRaw)) {
+          resolve({ raw: backupRaw, savedAt: null, source: 'backup' });
+          return;
+        }
+        const invalidRaw = currentRaw ?? backupRaw;
+        resolve({
+          raw: invalidRaw,
+          savedAt: null,
+          source: invalidRaw === null ? 'empty' : 'invalid',
+        });
+      };
       backupRequest.onerror = () => reject(backupRequest.error ?? new Error('Failed to read app data backup.'));
     };
     request.onerror = () => reject(request.error ?? new Error('Failed to read app data.'));
@@ -324,6 +422,34 @@ function safeLocalStorageGet(key: string): string | null {
     return localStorage.getItem(key);
   } catch {
     return null;
+  }
+}
+
+function isAppDataExpected(): boolean {
+  return safeLocalStorageGet(APP_DATA_EXPECTED_KEY) !== null;
+}
+
+function markAppDataExpected(savedAt: string): void {
+  localStorage.setItem(APP_DATA_EXPECTED_KEY, savedAt);
+}
+
+function markAppDataExpectedBestEffort(savedAt: string): void {
+  try {
+    markAppDataExpected(savedAt);
+  } catch {
+    // A later successful save will retry the durable marker.
+  }
+}
+
+function isAppDataRecoveryRequired(): boolean {
+  return safeLocalStorageGet(APP_DATA_RECOVERY_REQUIRED_KEY) !== null;
+}
+
+function markAppDataRecoveryRequiredBestEffort(reason: 'missing-primary' | 'backup-only'): void {
+  try {
+    localStorage.setItem(APP_DATA_RECOVERY_REQUIRED_KEY, JSON.stringify({ version: 1, reason }));
+  } catch {
+    // Existing sync history/expected markers still keep strict exports closed.
   }
 }
 

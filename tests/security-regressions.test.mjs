@@ -186,9 +186,13 @@ test('cloud publishing reconciliation supports RPC unpublish and cloud-only orph
 test('sync network access is timeout-bound and never falls back to direct table access', () => {
   for (const [constant, rpcName] of [
     ['SUPABASE_READ_RPC', 'quiz_sync_read'],
-    ['SUPABASE_UPSERT_RPC', 'quiz_sync_upsert'],
+    ['SUPABASE_META_RPC', 'quiz_sync_meta'],
+    ['SUPABASE_UPSERT_RPC', 'quiz_sync_upsert_v2'],
     ['SUPABASE_PROBE_RPC', 'quiz_sync_probe'],
-    ['SUPABASE_DELETE_RPC', 'quiz_sync_delete'],
+    ['SUPABASE_DELETE_RPC', 'quiz_sync_delete_v2'],
+    ['SUPABASE_CREATE_PAIRING_RPC', 'quiz_sync_create_pairing_code'],
+    ['SUPABASE_REDEEM_PAIRING_RPC', 'quiz_sync_redeem_pairing_code'],
+    ['SUPABASE_UPGRADE_LEGACY_RPC', 'quiz_sync_upgrade_legacy_id'],
   ]) {
     assert.match(syncServiceSource, new RegExp(`const\\s+${constant}\\s*=\\s*'${rpcName}'`));
   }

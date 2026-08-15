@@ -81,12 +81,19 @@ test('review starts only from its problem set and the global review route is gon
   assert.match(detailSource, /mode: 'review'/);
 });
 
-test('sync screen shows two primary steps and keeps maintenance options collapsed', () => {
-  assert.match(syncSource, /同期IDを準備/);
-  assert.match(syncSource, /データを同期/);
+test('sync screen uses an eight-character pairing flow and keeps recovery details collapsed', () => {
+  assert.match(syncSource, /この端末で同期を始める/);
+  assert.match(syncSource, /別の端末とつなぐ/);
+  assert.match(syncSource, /8文字の接続コードを発行/);
   assert.match(syncSource, /この端末をクラウドへ保存/);
   assert.match(syncSource, /クラウドからこの端末へ読込/);
   assert.match(syncSource, /<details className="sync-advanced">/);
+  assert.match(syncSource, /復旧用の同期ID/);
+  assert.match(syncSource, /setStoredSyncId\(''\)/);
+  assert.match(syncSource, /同期接続を解除しました/);
+  assert.match(syncSource, /getPendingLegacySyncUpgrade\(\)/);
+  assert.match(syncSource, /resumePendingLegacySyncUpgrade\(\)/);
+  assert.match(syncSource, /現在の同期先は変更せず、移行先への切り替えを確認します/);
   assert.doesNotMatch(syncSource, /Supabase設定済み|VITE_SUPABASE_URL/);
 });
 
@@ -96,9 +103,17 @@ test('sync id edits stay as a draft until the user explicitly connects', () => {
   assert.match(draftHandler[1], /setSyncId\(value\)/);
   assert.doesNotMatch(draftHandler[1], /setStoredSyncId/);
   assert.match(syncSource, /const applyConnectedSyncId[\s\S]*?setStoredSyncId\(normalizedNextId\)/);
-  assert.match(syncSource, /['"]このIDに接続['"]/);
+  assert.match(syncSource, /['"]このIDへ接続['"]/);
   assert.match(syncSource, /if \(!autoEnabled && \(!configured \|\| !syncIdConnected\)\)/);
   assert.match(syncSource, /disabled=\{!autoEnabled && \(!configured \|\| !syncIdConnected\)\}/);
+});
+
+test('legacy upgrade reconciliation never overwrites a connection changed by another tab', () => {
+  const legacyHandler = syncSource.match(/const handleUpgradeLegacySyncId = async \(\) => \{([\s\S]*?)\n  \};/);
+  assert.ok(legacyHandler, 'legacy upgrade handler should exist');
+  assert.match(legacyHandler[1], /getStoredSyncId\(\)\.trim\(\) !== result\.value\.syncId/);
+  assert.match(legacyHandler[1], /setLastSyncStateForConnection\(result\.value\.syncId/);
+  assert.doesNotMatch(legacyHandler[1], /setStoredSyncId\(result\.value\.syncId\)/);
 });
 
 test('result actions do not overlay landscape stats and labels render as Japanese', () => {

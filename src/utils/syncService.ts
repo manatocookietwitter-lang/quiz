@@ -1,5 +1,7 @@
 import {
   APP_DATA_FALLBACK_META_KEY,
+  APP_DATA_EXPECTED_KEY,
+  APP_DATA_RECOVERY_REQUIRED_KEY,
   APP_DATA_STORAGE_KEY,
   exportAppDataRaw,
   importAppDataRaw,
@@ -8,6 +10,8 @@ import {
 } from '../storage';
 import {
   exportCategoryNotesRaw,
+  CATEGORY_NOTES_MANIFEST_KEY,
+  CATEGORY_NOTES_RECOVERY_REQUIRED_KEY,
   isCategoryNoteKey,
   isValidCategoryNoteRaw,
   replaceCategoryNotesRaw,
@@ -19,6 +23,8 @@ import {
   LAST_REMOTE_UPDATED_AT_KEY,
   LAST_SYNC_AT_KEY,
   LAST_SYNC_ERROR_KEY,
+  LAST_SYNC_OWNER_KEY,
+  LAST_SYNC_RECORD_KEY,
   LAST_SYNC_STATUS_KEY,
   LAST_UPLOAD_HASH_KEY,
 } from './syncState';
@@ -27,6 +33,12 @@ import {
   getAssociatedLocalDataRevision,
   getLocalDataRevision,
 } from './localDataRevision';
+import {
+  assertDataEpochSnapshotCurrent,
+  associateDataEpochSnapshot,
+  withCoordinatedDataMutation,
+  withCoordinatedDataRead,
+} from './dataCoordination';
 export type SyncPayload = {
   version: 1;
   updatedAt: string;
@@ -34,7 +46,23 @@ export type SyncPayload = {
   indexedDbNotes?: Record<string, string>;
 };
 
-export type SyncResult<T> = { ok: true; value: T } | { ok: false; error: string; code?: 'conflict' | 'local_changed' };
+export type SyncErrorCode =
+  | 'connection_changed'
+  | 'conflict'
+  | 'deleted'
+  | 'invalid'
+  | 'local_changed'
+  | 'not_found'
+  | 'payload_too_large'
+  | 'quota'
+  | 'rate_limited';
+
+export type SyncResult<T> = { ok: true; value: T } | {
+  ok: false;
+  error: string;
+  code?: SyncErrorCode;
+  remoteUpdatedAt?: string;
+};
 
 export type RemoteSyncRecord = {
   syncId: string;
@@ -46,6 +74,17 @@ export type RemoteSyncRecord = {
 export type RemoteSyncMeta = {
   syncId: string;
   updatedAt: string;
+};
+
+export type SyncPairingCode = {
+  code: string;
+  expiresAt: string;
+};
+
+export type LegacySyncUpgrade = {
+  syncId: string;
+  updatedAt: string;
+  requiresConnectionConfirmation?: boolean;
 };
 
 export type UploadSyncOptions = {
@@ -99,15 +138,36 @@ export type SyncEnvironmentStatus = {
   urlHost: string;
 };
 
-const SYNC_ID_STORAGE_KEY = 'quizMake:sync:id';
+export const SYNC_ID_STORAGE_KEY = 'quizMake:sync:id';
 const AUTO_SYNC_ENABLED_KEY = 'quizMake:sync:autoEnabled';
 export const SYNC_BACKUP_PREFIX = 'quizMake:sync:backup:';
+export const MAX_SYNC_PAYLOAD_BYTES = 8 * 1024 * 1024;
+export const MAX_SYNC_STORAGE_KEYS = 10_000;
 const SUPABASE_READ_RPC = 'quiz_sync_read';
-const SUPABASE_UPSERT_RPC = 'quiz_sync_upsert';
+const SUPABASE_META_RPC = 'quiz_sync_meta';
+const SUPABASE_UPSERT_RPC = 'quiz_sync_upsert_v2';
 const SUPABASE_PROBE_RPC = 'quiz_sync_probe';
-const SUPABASE_DELETE_RPC = 'quiz_sync_delete';
+const SUPABASE_DELETE_RPC = 'quiz_sync_delete_v2';
+const SUPABASE_CREATE_PAIRING_RPC = 'quiz_sync_create_pairing_code';
+const SUPABASE_REDEEM_PAIRING_RPC = 'quiz_sync_redeem_pairing_code';
+const SUPABASE_UPGRADE_LEGACY_RPC = 'quiz_sync_upgrade_legacy_id';
+const LEGACY_UPGRADE_PENDING_KEY = 'quizMake:sync:legacyUpgradePending';
+const LEGACY_UPGRADE_COMPLETED_KEY = 'quizMake:sync:legacyUpgradeCompleted';
+const DATA_IMPORT_IN_PROGRESS_KEY = 'quizMake:sync:dataImportInProgress';
 const REMOTE_REQUEST_TIMEOUT_MS = 15_000;
 let syncDataOperationQueue: Promise<void> = Promise.resolve();
+const recoveryOnlyPayloads = new WeakSet<object>();
+
+export type PendingLegacySyncUpgrade = {
+  legacySyncId: string;
+  expectedUpdatedAt: string;
+  candidateSyncId: string;
+};
+
+type CompletedLegacySyncUpgrade = {
+  syncId: string;
+  updatedAt: string;
+};
 
 export function isSyncConfigured(): boolean {
   return Boolean(getRemoteSyncConfig());
@@ -204,6 +264,14 @@ export function setAutoSyncEnabled(enabled: boolean): SyncResult<boolean> {
 }
 
 export function getLastSyncState(): LastSyncState {
+  const atomicRecord = readLastSyncStateRecord();
+  if (atomicRecord) {
+    return atomicRecord.owner === getStoredSyncId().trim()
+      ? atomicRecord.state
+      : emptyLastSyncState();
+  }
+  const owner = safeGetItem(LAST_SYNC_OWNER_KEY).trim();
+  if (owner && owner !== getStoredSyncId().trim()) return emptyLastSyncState();
   return {
     lastSyncAt: safeGetItem(LAST_SYNC_AT_KEY),
     lastUploadHash: safeGetItem(LAST_UPLOAD_HASH_KEY),
@@ -215,14 +283,10 @@ export function getLastSyncState(): LastSyncState {
 
 export function setLastSyncState(state: Partial<LastSyncState>): void {
   try {
-    if (state.lastSyncAt !== undefined) localStorage.setItem(LAST_SYNC_AT_KEY, state.lastSyncAt);
-    if (state.lastUploadHash !== undefined) localStorage.setItem(LAST_UPLOAD_HASH_KEY, state.lastUploadHash);
-    if (state.lastRemoteUpdatedAt !== undefined) localStorage.setItem(LAST_REMOTE_UPDATED_AT_KEY, state.lastRemoteUpdatedAt);
-    if (state.status !== undefined) localStorage.setItem(LAST_SYNC_STATUS_KEY, state.status);
-    if (state.error !== undefined) {
-      if (state.error) localStorage.setItem(LAST_SYNC_ERROR_KEY, state.error);
-      else localStorage.removeItem(LAST_SYNC_ERROR_KEY);
-    }
+    const owner = getStoredSyncId().trim();
+    const nextState = { ...getLastSyncState(), ...state };
+    writeLastSyncStateRecord(owner, nextState);
+    writeLegacyLastSyncStateBestEffort(owner, nextState);
     window.dispatchEvent(new CustomEvent('quiz-make-sync-state-change'));
   } catch {
     // Status is informational only.
@@ -237,6 +301,14 @@ export function generateSyncId(): string {
   const bytes = new Uint8Array(18);
   cryptoApi.getRandomValues(bytes);
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+export function normalizePairingCode(value: string): string {
+  return value.toUpperCase().replace(/[\s-]+/gu, '');
+}
+
+export function isValidPairingCode(value: string): boolean {
+  return /^[0-9A-HJKMNP-TV-Z]{8}$/u.test(normalizePairingCode(value));
 }
 
 async function waitForLocalPersistence(): Promise<SyncResult<number>> {
@@ -259,39 +331,90 @@ async function waitForLocalPersistence(): Promise<SyncResult<number>> {
   }
 }
 
-export function exportQuizMakeData(updatedAt = new Date().toISOString()): Promise<SyncPayload> {
+export function setLastSyncStateForConnection(
+  syncId: string,
+  state: Partial<LastSyncState>,
+): boolean {
+  const expectedSyncId = syncId.trim();
+  if (!expectedSyncId || !isCurrentSyncConnection(expectedSyncId)) return false;
+  try {
+    const nextState = { ...getLastSyncState(), ...state };
+    writeLastSyncStateRecord(expectedSyncId, nextState);
+    writeLegacyLastSyncStateBestEffort(expectedSyncId, nextState);
+    if (!isCurrentSyncConnection(expectedSyncId)) {
+      clearLastSyncStateOwnedBy(expectedSyncId);
+      return false;
+    }
+    window.dispatchEvent(new CustomEvent('quiz-make-sync-state-change'));
+    return true;
+  } catch {
+    clearLastSyncStateOwnedBy(expectedSyncId);
+    return false;
+  }
+}
+
+export function exportQuizMakeData(
+  updatedAt = new Date().toISOString(),
+  options: { mode?: 'authoritative' | 'recovery' } = {},
+): Promise<SyncPayload> {
   return runSyncDataOperation(async () => {
+    if (options.mode !== 'recovery' && safeGetItem(DATA_IMPORT_IN_PROGRESS_KEY).trim()) {
+      throw new Error('前回のデータ読込が完了したことを確認できないため、クラウドへの保存を中止しました。先にクラウドまたはJSONバックアップから読み込み直してください。');
+    }
     const beforeSnapshot = await waitForLocalPersistence();
     if (!beforeSnapshot.ok) throw new Error(beforeSnapshot.error);
-    const localStorageData: Record<string, string> = {};
-    const keys: string[] = [];
+    return withCoordinatedDataRead(['app', 'notes'], async () => {
+      if (options.mode !== 'recovery' && safeGetItem(DATA_IMPORT_IN_PROGRESS_KEY).trim()) {
+        throw new Error('前回のデータ読込が完了したことを確認できないため、クラウドへの保存を中止しました。先にクラウドまたはJSONバックアップから読み込み直してください。');
+      }
+      const localStorageData: Record<string, string> = {};
+      const keys: string[] = [];
 
-    for (let index = 0; index < localStorage.length; index += 1) {
-      const key = localStorage.key(index);
-      if (key && isQuizMakeStorageKey(key) && key !== APP_DATA_STORAGE_KEY && !isCategoryNoteKey(key)) keys.push(key);
-    }
+      for (let index = 0; index < localStorage.length; index += 1) {
+        const key = localStorage.key(index);
+        if (key && isQuizMakeStorageKey(key) && key !== APP_DATA_STORAGE_KEY && !isCategoryNoteKey(key)) keys.push(key);
+      }
 
-    keys.sort().forEach((key) => {
-      const value = localStorage.getItem(key);
-      if (value !== null) localStorageData[key] = value;
-    });
+      keys.sort().forEach((key) => {
+        const value = localStorage.getItem(key);
+        if (value !== null) localStorageData[key] = value;
+      });
 
-    localStorageData[APP_DATA_STORAGE_KEY] = await exportAppDataRaw();
+      localStorageData[APP_DATA_STORAGE_KEY] = await exportAppDataRaw({
+        coordinationLockHeld: true,
+        mode: options.mode,
+      });
 
-    const payload: SyncPayload = {
-      version: 1,
-      updatedAt,
-      localStorage: localStorageData,
-      indexedDbNotes: await exportCategoryNotesRaw(),
-    };
-    const afterSnapshot = await waitForLocalPersistence();
-    if (!afterSnapshot.ok) throw new Error(afterSnapshot.error);
-    return associateLocalDataRevision(payload, beforeSnapshot.value);
+      const payload: SyncPayload = {
+        version: 1,
+        updatedAt,
+        localStorage: localStorageData,
+        indexedDbNotes: await exportCategoryNotesRaw({
+          coordinationLockHeld: true,
+          mode: options.mode,
+        }),
+      };
+      const result = associateLocalDataRevision(
+        associateDataEpochSnapshot(payload, ['app', 'notes']),
+        beforeSnapshot.value,
+      );
+      if (options.mode === 'recovery') recoveryOnlyPayloads.add(result);
+      return result;
+    }, { requireCrossContext: true });
   });
 }
 
-export function importQuizMakeData(payload: SyncPayload): Promise<SyncResult<number>> {
+export function exportQuizMakeRecoveryData(updatedAt = new Date().toISOString()): Promise<SyncPayload> {
+  return exportQuizMakeData(updatedAt, { mode: 'recovery' });
+}
+
+export function importQuizMakeData(
+  payload: SyncPayload,
+  options: { expectedSyncId?: string; authoritativeUpdatedAt?: string } = {},
+): Promise<SyncResult<number>> {
   return runSyncDataOperation(async () => {
+    const expectedSyncId = options.expectedSyncId?.trim();
+    if (expectedSyncId && !isCurrentSyncConnection(expectedSyncId)) return syncConnectionChangedResult();
     try {
       const [appDataSaved] = await Promise.all([
         waitForPendingAppDataSaves(),
@@ -308,21 +431,42 @@ export function importQuizMakeData(payload: SyncPayload): Promise<SyncResult<num
           : 'ノートを保存できないため、クラウドからの読み込みを中止しました。',
       };
     }
-    return importQuizMakeDataUnlocked(payload);
+    try {
+      return await withCoordinatedDataMutation(
+        ['app', 'notes'],
+        () => importQuizMakeDataUnlocked(payload, expectedSyncId, options.authoritativeUpdatedAt),
+        { requireCrossContext: true },
+      );
+    } catch (error) {
+      return {
+        ok: false,
+        code: error instanceof Error && error.name === 'ExternalDataChangeError' ? 'local_changed' : undefined,
+        error: error instanceof Error
+          ? error.message
+          : '別のタブとの保存調整に失敗したため、クラウドからの読み込みを中止しました。',
+      };
+    }
   });
 }
 
-async function importQuizMakeDataUnlocked(payload: SyncPayload): Promise<SyncResult<number>> {
+async function importQuizMakeDataUnlocked(
+  payload: SyncPayload,
+  expectedSyncId?: string,
+  authoritativeUpdatedAt?: string,
+): Promise<SyncResult<number>> {
   const validation = validateSyncPayload(payload);
   if (!validation.ok) return validation;
 
   let previousAppDataRaw: string;
   let previousNotes: Record<string, string>;
   let previousLocalStorage: Record<string, string>;
+  let previousIntegrity: DataIntegritySnapshot;
   try {
-    previousAppDataRaw = await exportAppDataRaw();
-    previousNotes = await exportCategoryNotesRaw();
+    previousAppDataRaw = await exportAppDataRaw({ coordinationLockHeld: true, mode: 'recovery' });
+    previousNotes = await exportCategoryNotesRaw({ coordinationLockHeld: true, mode: 'recovery' });
+    previousIntegrity = captureDataIntegritySnapshot();
     previousLocalStorage = collectCurrentQuizMakeLocalStorage();
+    localStorage.setItem(DATA_IMPORT_IN_PROGRESS_KEY, JSON.stringify({ version: 1, startedAt: new Date().toISOString() }));
   } catch (error) {
     return {
       ok: false,
@@ -333,6 +477,7 @@ async function importQuizMakeDataUnlocked(payload: SyncPayload): Promise<SyncRes
   }
 
   try {
+    assertExpectedSyncConnection(expectedSyncId);
     const noteEntries: Record<string, string> = { ...(validation.value.indexedDbNotes ?? {}) };
     const nextLocalStorage: Record<string, string> = {};
     Object.entries(validation.value.localStorage).forEach(([key, value]) => {
@@ -345,31 +490,56 @@ async function importQuizMakeDataUnlocked(payload: SyncPayload): Promise<SyncRes
     });
 
     const appDataRaw = validation.value.localStorage[APP_DATA_STORAGE_KEY] as string;
-    const importedAppData = await importAppDataRaw(appDataRaw);
+    const importedAppData = await importAppDataRaw(appDataRaw, {
+      coordinationLockHeld: true,
+      establishAuthority: true,
+    });
     if (!importedAppData) {
       throw new Error('同期データの問題データを保存できませんでした。');
     }
+    assertExpectedSyncConnection(expectedSyncId);
 
-    const noteCount = await replaceCategoryNotesRaw(noteEntries);
-    replaceQuizMakeLocalStorage(nextLocalStorage);
-
-    setLastSyncState({
-      lastSyncAt: validation.value.updatedAt,
-      lastRemoteUpdatedAt: validation.value.updatedAt,
-      lastUploadHash: computePayloadHash(validation.value),
-      status: 'クラウドから読み込みました',
-      error: '',
+    const noteCount = await replaceCategoryNotesRaw(noteEntries, {
+      coordinationLockHeld: true,
+      establishAuthority: true,
     });
+    assertExpectedSyncConnection(expectedSyncId);
+    replaceQuizMakeLocalStorage(nextLocalStorage);
+    assertExpectedSyncConnection(expectedSyncId);
+
+    if (expectedSyncId) {
+      if (!authoritativeUpdatedAt || !Number.isFinite(Date.parse(authoritativeUpdatedAt))) {
+        throw new Error('クラウド側の更新時刻を確認できないため、読み込みを中止しました。');
+      }
+    } else {
+      setLastSyncState({
+        lastSyncAt: '',
+        lastRemoteUpdatedAt: '',
+        lastUploadHash: '',
+        status: 'バックアップを読み込みました。クラウド同期は再確認が必要です',
+        error: '',
+      });
+    }
+
+    localStorage.removeItem(DATA_IMPORT_IN_PROGRESS_KEY);
 
     const localStorageCount = Object.keys(validation.value.localStorage).filter((key) => !isCategoryNoteKey(key)).length;
     return { ok: true, value: localStorageCount + noteCount };
   } catch (error) {
-    const rollback = await restoreImportedData(previousAppDataRaw, previousNotes, previousLocalStorage);
+    const rollback = await restoreImportedData(
+      previousAppDataRaw,
+      previousNotes,
+      previousLocalStorage,
+      previousIntegrity,
+      true,
+    );
+    const connectionChanged = error instanceof SyncConnectionChangedDuringImportError;
     const rollbackSuffix = rollback.ok
       ? '既存データへ戻しました。'
       : `既存データの復元にも失敗しました: ${rollback.error}`;
     return {
       ok: false,
+      code: connectionChanged ? 'connection_changed' : undefined,
       error: isQuotaExceededError(error)
         ? `端末内の保存容量がいっぱいです。同期バックアップを整理するか、不要なノートデータを減らしてください。${rollbackSuffix}`
         : error instanceof Error
@@ -383,39 +553,103 @@ export async function uploadSyncData(
   payload: SyncPayload,
   options: UploadSyncOptions = {},
 ): Promise<SyncResult<RemoteSyncRecord>> {
-  return runSyncDataOperation(() => uploadSyncDataUnlocked(syncId, payload, options));
+  if (recoveryOnlyPayloads.has(payload)) {
+    return {
+      ok: false,
+      code: 'invalid',
+      error: '復旧用に書き出した未確認データは、そのままクラウドへ保存できません。内容を確認して読み込み直してから同期してください。',
+    };
+  }
+  return runSyncDataOperation(async () => {
+    const normalizedSyncId = syncId.trim();
+    if (!normalizedSyncId) return { ok: false, error: '同期IDを入力してください。' };
+    if (!isStrongSyncId(normalizedSyncId)) {
+      return { ok: false, error: '同期IDは「同期IDを生成」で作成した36文字のIDを使用してください。' };
+    }
+    if (!isCurrentSyncConnection(normalizedSyncId)) return syncConnectionChangedResult();
+
+    const config = getRemoteSyncConfig();
+    if (!config) {
+      return { ok: false, error: 'Supabaseの環境変数が未設定です。VITE_SUPABASE_URL と VITE_SUPABASE_ANON_KEY を設定してください。' };
+    }
+
+    const validation = validateSyncPayload(payload);
+    if (!validation.ok) return validation;
+
+    const exportedRevision = getAssociatedLocalDataRevision(payload);
+    if (exportedRevision === undefined) {
+      return {
+        ok: false,
+        code: 'local_changed',
+        error: '送信元の端末データを安全に確認できないため、クラウド保存を中止しました。最新の内容を読み直してからもう一度お試しください。',
+      };
+    }
+
+    const beforeUpload = await waitForLocalPersistence();
+    if (!beforeUpload.ok) return beforeUpload;
+    if (!isCurrentSyncConnection(normalizedSyncId)) return syncConnectionChangedResult();
+    if (exportedRevision !== beforeUpload.value) return localDataChangedBeforeUploadResult();
+
+    try {
+      const uploaded = await withCoordinatedDataRead(['app', 'notes'], async () => {
+        if (!isCurrentSyncConnection(normalizedSyncId)) return syncConnectionChangedResult();
+        assertDataEpochSnapshotCurrent(payload, ['app', 'notes']);
+        if (getLocalDataRevision() !== beforeUpload.value) return localDataChangedBeforeUploadResult();
+        return uploadSyncDataUnlocked(
+          normalizedSyncId,
+          validation.value,
+          options,
+          config,
+          beforeUpload.value,
+        );
+      }, { requireCrossContext: true });
+      if (!uploaded.ok) return uploaded;
+
+      const afterUpload = await waitForLocalPersistence();
+      let localChangesPending = !afterUpload.ok || afterUpload.value !== beforeUpload.value;
+      try {
+        assertDataEpochSnapshotCurrent(payload, ['app', 'notes']);
+      } catch {
+        localChangesPending = true;
+      }
+      if (!isCurrentSyncConnection(normalizedSyncId)) return syncConnectionChangedResult();
+      const uploadPayload = { ...validation.value, updatedAt: uploaded.value.payload.updatedAt };
+      if (!setLastSyncStateForConnection(normalizedSyncId, {
+        lastSyncAt: uploaded.value.updatedAt,
+        lastUploadHash: localChangesPending ? '' : computePayloadHash(uploadPayload),
+        lastRemoteUpdatedAt: uploaded.value.updatedAt,
+        status: localChangesPending
+          ? 'クラウド保存中に端末データが更新されました。最新の内容を再同期します'
+          : 'クラウドへ保存しました',
+        error: afterUpload.ok ? '' : afterUpload.error,
+      })) return syncConnectionChangedResult();
+      return localChangesPending
+        ? { ok: true, value: { ...uploaded.value, localChangesPending: true } }
+        : uploaded;
+    } catch (error) {
+      if (error instanceof Error && error.name === 'ExternalDataChangeError') {
+        return localDataChangedBeforeUploadResult();
+      }
+      return {
+        ok: false,
+        error: error instanceof Error
+          ? `別のタブとの保存調整に失敗したため、クラウド保存を中止しました: ${error.message}`
+          : '別のタブとの保存調整に失敗したため、クラウド保存を中止しました。',
+      };
+    }
+  });
 }
 
 async function uploadSyncDataUnlocked(
-  syncId: string,
+  normalizedSyncId: string,
   payload: SyncPayload,
   options: UploadSyncOptions,
+  config: { url: string; anonKey: string },
+  uploadStartRevision: number,
 ): Promise<SyncResult<RemoteSyncRecord>> {
-  const normalizedSyncId = syncId.trim();
-  if (!normalizedSyncId) return { ok: false, error: '同期IDを入力してください。' };
-  if (!isStrongSyncId(normalizedSyncId)) return { ok: false, error: '同期IDは「同期IDを生成」で作成した36文字のIDを使用してください。' };
-
-  const config = getRemoteSyncConfig();
-  if (!config) return { ok: false, error: 'Supabaseの環境変数が未設定です。VITE_SUPABASE_URL と VITE_SUPABASE_ANON_KEY を設定してください。' };
-
-  const validation = validateSyncPayload(payload);
-  if (!validation.ok) return validation;
-
-  const exportedRevision = getAssociatedLocalDataRevision(payload);
-  const beforeUpload = await waitForLocalPersistence();
-  if (!beforeUpload.ok) return beforeUpload;
-  if (exportedRevision !== undefined && exportedRevision !== beforeUpload.value) {
-    return {
-      ok: false,
-      code: 'local_changed',
-      error: 'クラウドへの保存準備後に端末データが更新されたため、古い内容の送信を中止しました。最新の内容でもう一度保存します。',
-    };
-  }
-  const uploadStartRevision = beforeUpload.value;
-
   try {
     const updatedAt = new Date().toISOString();
-    const uploadPayload = { ...validation.value, updatedAt };
+    const uploadPayload = { ...payload, updatedAt };
     const response = await fetchWithTimeout(`${config.url}/rest/v1/rpc/${SUPABASE_UPSERT_RPC}`, {
       method: 'POST',
       headers: createSupabaseHeaders(config.anonKey),
@@ -427,6 +661,7 @@ async function uploadSyncDataUnlocked(
         p_force: options.force ?? false,
       }),
     });
+    if (!isCurrentSyncConnection(normalizedSyncId)) return syncConnectionChangedResult();
 
     if (!response.ok && await isMissingSyncRpc(response)) {
       return { ok: false, error: '安全な同期RPCが見つかりません。Supabaseへ最新の同期マイグレーションを適用してください。' };
@@ -435,6 +670,12 @@ async function uploadSyncDataUnlocked(
     if (!response.ok) {
       const details = await readSupabaseError(response);
       const isConflict = details.code === '40001' || details.message.includes('quiz_sync_conflict');
+      if (response.status === 429) {
+        return { ok: false, code: 'rate_limited', error: '操作回数が多すぎます。1分ほど待ってからもう一度お試しください。' };
+      }
+      if (response.status === 413) {
+        return { ok: false, code: 'payload_too_large', error: '同期データが大きすぎます（上限8 MB）。大きなノート画像を整理してから再試行してください。' };
+      }
       return {
         ok: false,
         code: isConflict ? 'conflict' : undefined,
@@ -446,25 +687,18 @@ async function uploadSyncDataUnlocked(
 
     const rows = (await response.json()) as unknown;
     const first = Array.isArray(rows) ? rows[0] : null;
-    const record = parseRemoteRecord(first, normalizedSyncId, uploadPayload, updatedAt);
+    if (!isCurrentSyncConnection(normalizedSyncId)) return syncConnectionChangedResult();
+    const rpcFailure = syncRpcFailureFromRow(first, 'upload');
+    if (rpcFailure) return rpcFailure;
+    const record = parseRemoteRecord(first, normalizedSyncId, true);
     if (!record.ok) return record;
-
-    const afterUpload = await waitForLocalPersistence();
-    const localChangesPending = !afterUpload.ok || afterUpload.value !== uploadStartRevision;
-
-    setStoredSyncId(normalizedSyncId);
-    setLastSyncState({
-      lastSyncAt: record.value.updatedAt,
-      lastUploadHash: localChangesPending ? '' : computePayloadHash(uploadPayload),
-      lastRemoteUpdatedAt: record.value.updatedAt,
-      status: localChangesPending
-        ? 'クラウド保存中に端末データが更新されました。最新の内容を再同期します'
-        : 'クラウドへ保存しました',
-      error: afterUpload.ok ? '' : afterUpload.error,
-    });
-    return localChangesPending
-      ? { ok: true, value: { ...record.value, localChangesPending: true } }
-      : record;
+    if (computePayloadHash(record.value.payload) !== computePayloadHash(uploadPayload)) {
+      return { ok: false, error: 'クラウド保存結果の内容が送信したデータと一致しません。保存状態を確認してから再試行してください。' };
+    }
+    if (getLocalDataRevision() !== uploadStartRevision) {
+      return { ok: true, value: { ...record.value, localChangesPending: true } };
+    }
+    return record;
   } catch (error) {
     return {
       ok: false,
@@ -477,6 +711,7 @@ export async function downloadSyncData(syncId: string): Promise<SyncResult<Remot
   const normalizedSyncId = syncId.trim();
   if (!normalizedSyncId) return { ok: false, error: '同期IDを入力してください。' };
   if (!isStrongSyncId(normalizedSyncId)) return { ok: false, error: '同期IDは「同期IDを生成」で作成した36文字のIDを使用してください。' };
+  if (!isCurrentSyncConnection(normalizedSyncId)) return syncConnectionChangedResult();
 
   const config = getRemoteSyncConfig();
   if (!config) return { ok: false, error: 'Supabaseの環境変数が未設定です。VITE_SUPABASE_URL と VITE_SUPABASE_ANON_KEY を設定してください。' };
@@ -487,18 +722,22 @@ export async function downloadSyncData(syncId: string): Promise<SyncResult<Remot
       headers: createSupabaseHeaders(config.anonKey),
       body: JSON.stringify({ p_sync_id: normalizedSyncId }),
     });
+    if (!isCurrentSyncConnection(normalizedSyncId)) return syncConnectionChangedResult();
 
     if (!response.ok && await isMissingSyncRpc(response)) return { ok: false, error: '安全な同期RPCが見つかりません。Supabaseへ最新の同期マイグレーションを適用してください。' };
 
     if (!response.ok) return { ok: false, error: await responseError(response, 'クラウドからの読み込みに失敗しました。') };
 
     const rows = (await response.json()) as unknown;
+    if (!isCurrentSyncConnection(normalizedSyncId)) return syncConnectionChangedResult();
     if (!Array.isArray(rows) || rows.length === 0) return { ok: true, value: null };
 
     const record = parseRemoteRecord(rows[0], normalizedSyncId);
     if (!record.ok) return record;
-    setStoredSyncId(normalizedSyncId);
-    setLastSyncState({ lastRemoteUpdatedAt: record.value.updatedAt });
+    if (!isCurrentSyncConnection(normalizedSyncId)) return syncConnectionChangedResult();
+    if (!setLastSyncStateForConnection(normalizedSyncId, { lastRemoteUpdatedAt: record.value.updatedAt })) {
+      return syncConnectionChangedResult();
+    }
     return record;
   } catch (error) {
     return {
@@ -517,7 +756,7 @@ export async function getRemoteSyncMeta(syncId: string): Promise<SyncResult<Remo
   if (!config) return { ok: false, error: 'Supabaseの環境変数が未設定です。' };
 
   try {
-    const response = await fetchWithTimeout(`${config.url}/rest/v1/rpc/${SUPABASE_READ_RPC}`, {
+    const response = await fetchWithTimeout(`${config.url}/rest/v1/rpc/${SUPABASE_META_RPC}`, {
       method: 'POST',
       headers: createSupabaseHeaders(config.anonKey),
       body: JSON.stringify({ p_sync_id: normalizedSyncId }),
@@ -529,8 +768,15 @@ export async function getRemoteSyncMeta(syncId: string): Promise<SyncResult<Remo
     const rows = (await response.json()) as unknown;
     if (!Array.isArray(rows) || rows.length === 0) return { ok: true, value: null };
     const row = rows[0];
-    if (!isRecord(row) || typeof row.updated_at !== 'string') return { ok: false, error: 'クラウドの更新情報の形式が正しくありません。' };
-    return { ok: true, value: { syncId: typeof row.sync_id === 'string' ? row.sync_id : normalizedSyncId, updatedAt: row.updated_at } };
+    if (
+      !isRecord(row)
+      || row.sync_id !== normalizedSyncId
+      || typeof row.updated_at !== 'string'
+      || !Number.isFinite(Date.parse(row.updated_at))
+    ) {
+      return { ok: false, error: 'クラウドの更新情報の形式が正しくありません。' };
+    }
+    return { ok: true, value: { syncId: normalizedSyncId, updatedAt: row.updated_at } };
   } catch (error) {
     return {
       ok: false,
@@ -672,6 +918,15 @@ export function summarizeSyncPayload(payload: SyncPayload): SyncPayloadSummary {
 
 export function validateSyncPayload(value: unknown): SyncResult<SyncPayload> {
   if (!isRecord(value)) return { ok: false, error: '同期データの形式が正しくありません。' };
+  const byteSize = measureJsonBytes(value);
+  if (byteSize === null) return { ok: false, code: 'invalid', error: '同期データをJSONとして読み込めません。' };
+  if (byteSize > MAX_SYNC_PAYLOAD_BYTES) {
+    return {
+      ok: false,
+      code: 'payload_too_large',
+      error: '同期データが大きすぎます（上限8 MB）。大きなノート画像を整理してから再試行してください。',
+    };
+  }
   if (value.version !== 1) return { ok: false, error: '同期データのversionに対応していません。' };
   if (typeof value.updatedAt !== 'string' || !Number.isFinite(Date.parse(value.updatedAt))) {
     return { ok: false, error: '同期データのupdatedAtが正しくありません。' };
@@ -686,6 +941,14 @@ export function validateSyncPayload(value: unknown): SyncResult<SyncPayload> {
     return { ok: false, error: '同期データのindexedDbNotes形式が正しくありません。' };
   }
   const indexedDbNotes = indexedDbNotesValue ?? {};
+  const storageKeyCount = Object.keys(value.localStorage).length + Object.keys(indexedDbNotes).length;
+  if (storageKeyCount > MAX_SYNC_STORAGE_KEYS) {
+    return {
+      ok: false,
+      code: 'invalid',
+      error: `同期データの項目数が多すぎます（上限 ${MAX_SYNC_STORAGE_KEYS.toLocaleString('ja-JP')}件）。`,
+    };
+  }
   const invalidNoteKey = Object.keys(indexedDbNotes).find((key) => !isCategoryNoteKey(key));
   if (invalidNoteKey) return { ok: false, error: 'ノート以外のキーが含まれています: ' + invalidNoteKey };
   const invalidIndexedNote = Object.entries(indexedDbNotes).find(([, raw]) => !isValidCategoryNoteRaw(raw));
@@ -719,10 +982,22 @@ export function validateSyncPayload(value: unknown): SyncResult<SyncPayload> {
   };
 }
 
-export async function deleteRemoteSyncData(syncId: string): Promise<SyncResult<boolean>> {
+export async function deleteRemoteSyncData(
+  syncId: string,
+  expectedUpdatedAt: string,
+  force = false,
+): Promise<SyncResult<boolean>> {
   const normalizedSyncId = syncId.trim();
   if (!normalizedSyncId) return { ok: false, error: '同期IDを入力してください。' };
   if (!isStrongSyncId(normalizedSyncId)) return { ok: false, error: '同期IDは「同期IDを生成」で作成した36文字のIDを使用してください。' };
+  if (!isCurrentSyncConnection(normalizedSyncId)) return syncConnectionChangedResult();
+  if (!expectedUpdatedAt || !Number.isFinite(Date.parse(expectedUpdatedAt))) {
+    return {
+      ok: false,
+      code: 'conflict',
+      error: '削除前にクラウドの最新状態を確認してください。先に「クラウドから読込」を実行できます。',
+    };
+  }
 
   const config = getRemoteSyncConfig();
   if (!config) return { ok: false, error: 'クラウド同期が設定されていません。' };
@@ -731,19 +1006,444 @@ export async function deleteRemoteSyncData(syncId: string): Promise<SyncResult<b
     const response = await fetchWithTimeout(`${config.url}/rest/v1/rpc/${SUPABASE_DELETE_RPC}`, {
       method: 'POST',
       headers: createSupabaseHeaders(config.anonKey),
-      body: JSON.stringify({ p_sync_id: normalizedSyncId }),
+      body: JSON.stringify({
+        p_sync_id: normalizedSyncId,
+        p_expected_updated_at: expectedUpdatedAt || null,
+        p_force: force,
+      }),
     });
+    if (!isCurrentSyncConnection(normalizedSyncId)) return syncConnectionChangedResult();
     if (!response.ok) return { ok: false, error: await responseError(response, 'クラウドデータの削除に失敗しました。') };
-    const deleted = await response.json() as unknown;
+    const rows = await response.json() as unknown;
+    const first = Array.isArray(rows) ? rows[0] : null;
+    if (!isCurrentSyncConnection(normalizedSyncId)) return syncConnectionChangedResult();
+    if (isRecord(first) && first.result_code === 'not_found') return { ok: true, value: false };
+    const rpcFailure = syncRpcFailureFromRow(first, 'delete');
+    if (rpcFailure) return rpcFailure;
+    if (
+      !isRecord(first)
+      || first.result_code !== 'ok'
+      || first.sync_id !== normalizedSyncId
+      || typeof first.updated_at !== 'string'
+      || !Number.isFinite(Date.parse(first.updated_at))
+    ) {
+      return { ok: false, error: 'クラウド削除結果の形式が正しくありません。' };
+    }
+    if (!setLastSyncStateForConnection(normalizedSyncId, {
+      lastRemoteUpdatedAt: '',
+      lastUploadHash: '',
+      status: 'クラウドデータ削除済み',
+      error: '',
+    })) return syncConnectionChangedResult();
+    if (!isCurrentSyncConnection(normalizedSyncId)) return syncConnectionChangedResult();
     setAutoSyncEnabled(false);
-    setLastSyncState({ lastRemoteUpdatedAt: '', lastUploadHash: '', status: 'クラウドデータ削除済み', error: '' });
-    return { ok: true, value: deleted === true };
+    return { ok: true, value: true };
   } catch (error) {
     return {
       ok: false,
       error: error instanceof Error ? `クラウドデータの削除に失敗しました: ${error.message}` : 'クラウドデータの削除に失敗しました。',
     };
   }
+}
+
+function localDataChangedBeforeUploadResult(): SyncResult<never> {
+  return {
+    ok: false,
+    code: 'local_changed',
+    error: 'クラウドへの保存準備後に端末データが更新されたため、古い内容の送信を中止しました。最新の内容でもう一度保存します。',
+  };
+}
+
+export async function createSyncPairingCode(syncId: string): Promise<SyncResult<SyncPairingCode>> {
+  const normalizedSyncId = syncId.trim();
+  if (!isStrongSyncId(normalizedSyncId)) {
+    return { ok: false, code: 'invalid', error: '安全な同期接続がまだありません。先にこの端末をクラウドへ保存してください。' };
+  }
+  if (!isCurrentSyncConnection(normalizedSyncId)) return syncConnectionChangedResult();
+  const config = getRemoteSyncConfig();
+  if (!config) return { ok: false, error: 'クラウド同期が設定されていません。' };
+
+  try {
+    const response = await fetchWithTimeout(`${config.url}/rest/v1/rpc/${SUPABASE_CREATE_PAIRING_RPC}`, {
+      method: 'POST',
+      headers: createSupabaseHeaders(config.anonKey),
+      body: JSON.stringify({ p_sync_id: normalizedSyncId }),
+    });
+    if (!isCurrentSyncConnection(normalizedSyncId)) return syncConnectionChangedResult();
+    if (!response.ok) return { ok: false, error: await syncRpcHttpError(response, '接続コードを発行できませんでした。') };
+    const rows = await response.json() as unknown;
+    const first = Array.isArray(rows) ? rows[0] : null;
+    if (!isCurrentSyncConnection(normalizedSyncId)) return syncConnectionChangedResult();
+    const rpcFailure = syncRpcFailureFromRow(first, 'pair_create');
+    if (rpcFailure) return rpcFailure;
+    if (!isCurrentSyncConnection(normalizedSyncId)) return syncConnectionChangedResult();
+    if (
+      !isRecord(first)
+      || first.result_code !== 'ok'
+      || typeof first.pairing_code !== 'string'
+      || typeof first.expires_at !== 'string'
+      || !isValidPairingCode(first.pairing_code)
+      || !Number.isFinite(Date.parse(first.expires_at))
+    ) {
+      return { ok: false, error: '接続コードの形式が正しくありません。' };
+    }
+    return { ok: true, value: { code: normalizePairingCode(first.pairing_code), expiresAt: first.expires_at } };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? `接続コードを発行できませんでした: ${error.message}` : '接続コードを発行できませんでした。',
+    };
+  }
+}
+
+export async function redeemSyncPairingCode(pairingCode: string): Promise<SyncResult<string>> {
+  const normalizedCode = normalizePairingCode(pairingCode);
+  if (!isValidPairingCode(normalizedCode)) {
+    return { ok: false, code: 'invalid', error: '接続コードは8文字で入力してください。' };
+  }
+  const config = getRemoteSyncConfig();
+  if (!config) return { ok: false, error: 'クラウド同期が設定されていません。' };
+
+  try {
+    const response = await fetchWithTimeout(`${config.url}/rest/v1/rpc/${SUPABASE_REDEEM_PAIRING_RPC}`, {
+      method: 'POST',
+      headers: createSupabaseHeaders(config.anonKey),
+      body: JSON.stringify({ p_pairing_code: normalizedCode }),
+    });
+    if (!response.ok) return { ok: false, error: await syncRpcHttpError(response, '接続コードを確認できませんでした。') };
+    const rows = await response.json() as unknown;
+    const first = Array.isArray(rows) ? rows[0] : null;
+    const rpcFailure = syncRpcFailureFromRow(first, 'pair_redeem');
+    if (rpcFailure) return rpcFailure;
+    if (!isRecord(first) || first.result_code !== 'ok' || typeof first.sync_id !== 'string' || !isStrongSyncId(first.sync_id)) {
+      return { ok: false, error: '接続先の形式が正しくありません。' };
+    }
+    return { ok: true, value: first.sync_id };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? `接続コードを確認できませんでした: ${error.message}` : '接続コードを確認できませんでした。',
+    };
+  }
+}
+
+export async function upgradeLegacySyncId(
+  legacySyncId: string,
+  expectedUpdatedAt: string,
+): Promise<SyncResult<LegacySyncUpgrade>> {
+  const normalizedLegacyId = legacySyncId.trim();
+  if (!normalizedLegacyId || isStrongSyncId(normalizedLegacyId) || normalizedLegacyId.length > 128) {
+    return { ok: false, code: 'invalid', error: '旧同期IDの形式が正しくありません。' };
+  }
+  if (!expectedUpdatedAt || !Number.isFinite(Date.parse(expectedUpdatedAt))) {
+    return { ok: false, code: 'conflict', error: '旧同期IDの更新情報が端末に残っていないため、自動移行できません。' };
+  }
+  if (!isCurrentSyncConnection(normalizedLegacyId)) return syncConnectionChangedResult();
+
+  try {
+    const pending = getOrCreatePendingLegacySyncUpgrade(normalizedLegacyId, expectedUpdatedAt);
+    return await completePendingLegacySyncUpgrade(pending);
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? `旧同期IDを移行できませんでした: ${error.message}` : '旧同期IDを移行できませんでした。',
+    };
+  }
+}
+
+export function getPendingLegacySyncUpgrade(): PendingLegacySyncUpgrade | null {
+  return readPendingLegacySyncUpgrade();
+}
+
+export async function resumePendingLegacySyncUpgrade(): Promise<SyncResult<LegacySyncUpgrade | null>> {
+  const pending = readPendingLegacySyncUpgrade();
+  if (!pending) return { ok: true, value: null };
+  return completePendingLegacySyncUpgrade(pending);
+}
+
+export function getPendingLegacySyncCompletion(): CompletedLegacySyncUpgrade | null {
+  try {
+    const raw = localStorage.getItem(LEGACY_UPGRADE_COMPLETED_KEY);
+    if (!raw) return null;
+    const value = JSON.parse(raw) as unknown;
+    if (
+      !isRecord(value)
+      || typeof value.syncId !== 'string'
+      || !isStrongSyncId(value.syncId)
+      || typeof value.updatedAt !== 'string'
+      || !Number.isFinite(Date.parse(value.updatedAt))
+    ) {
+      return null;
+    }
+    return {
+      syncId: value.syncId,
+      updatedAt: value.updatedAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function clearPendingLegacySyncCompletion(syncId: string): void {
+  try {
+    const completed = getPendingLegacySyncCompletion();
+    if (completed?.syncId === syncId) localStorage.removeItem(LEGACY_UPGRADE_COMPLETED_KEY);
+  } catch {
+    // A stale completion marker is harmless and can be retried after reload.
+  }
+}
+
+function persistPendingLegacySyncCompletion(completed: CompletedLegacySyncUpgrade): void {
+  localStorage.setItem(LEGACY_UPGRADE_COMPLETED_KEY, JSON.stringify(completed));
+  if (getPendingLegacySyncCompletion()?.syncId !== completed.syncId) {
+    throw new Error('移行済みの接続先を端末へ保存できませんでした。');
+  }
+}
+
+function getOrCreatePendingLegacySyncUpgrade(
+  legacySyncId: string,
+  expectedUpdatedAt: string,
+): PendingLegacySyncUpgrade {
+  const existing = readPendingLegacySyncUpgrade();
+  if (
+    existing
+    && existing.legacySyncId === legacySyncId
+    && existing.expectedUpdatedAt === expectedUpdatedAt
+  ) {
+    return existing;
+  }
+
+  const pending: PendingLegacySyncUpgrade = {
+    legacySyncId,
+    expectedUpdatedAt,
+    candidateSyncId: generateSyncId(),
+  };
+  localStorage.setItem(LEGACY_UPGRADE_PENDING_KEY, JSON.stringify(pending));
+  const persisted = readPendingLegacySyncUpgrade();
+  if (!persisted || persisted.candidateSyncId !== pending.candidateSyncId) {
+    throw new Error('安全な移行先を端末に保存できませんでした。');
+  }
+  return persisted;
+}
+
+function readPendingLegacySyncUpgrade(): PendingLegacySyncUpgrade | null {
+  try {
+    const raw = localStorage.getItem(LEGACY_UPGRADE_PENDING_KEY);
+    if (!raw) return null;
+    const value = JSON.parse(raw) as unknown;
+    if (
+      !isRecord(value)
+      || typeof value.legacySyncId !== 'string'
+      || typeof value.expectedUpdatedAt !== 'string'
+      || typeof value.candidateSyncId !== 'string'
+      || !isStrongSyncId(value.candidateSyncId)
+    ) {
+      return null;
+    }
+    return {
+      legacySyncId: value.legacySyncId,
+      expectedUpdatedAt: value.expectedUpdatedAt,
+      candidateSyncId: value.candidateSyncId,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function clearPendingLegacySyncUpgrade(completed: PendingLegacySyncUpgrade): void {
+  try {
+    const current = readPendingLegacySyncUpgrade();
+    if (current?.candidateSyncId === completed.candidateSyncId) {
+      localStorage.removeItem(LEGACY_UPGRADE_PENDING_KEY);
+    }
+  } catch {
+    // The active sync ID is already durable; a stale retry marker is harmless.
+  }
+}
+
+async function completePendingLegacySyncUpgrade(
+  pending: PendingLegacySyncUpgrade,
+): Promise<SyncResult<LegacySyncUpgrade>> {
+  const config = getRemoteSyncConfig();
+  if (!config) return { ok: false, error: 'クラウド同期が設定されていません。' };
+
+  try {
+    const response = await fetchWithTimeout(`${config.url}/rest/v1/rpc/${SUPABASE_UPGRADE_LEGACY_RPC}`, {
+      method: 'POST',
+      headers: createSupabaseHeaders(config.anonKey),
+      body: JSON.stringify({
+        p_legacy_sync_id: pending.legacySyncId,
+        p_expected_updated_at: pending.expectedUpdatedAt,
+        p_candidate_sync_id: pending.candidateSyncId,
+      }),
+    });
+    if (!response.ok) return { ok: false, error: await syncRpcHttpError(response, '旧同期IDを移行できませんでした。') };
+    const rows = await response.json() as unknown;
+    const first = Array.isArray(rows) ? rows[0] : null;
+    const rpcFailure = syncRpcFailureFromRow(first, 'legacy_upgrade');
+    if (rpcFailure) return rpcFailure;
+    if (
+      !isRecord(first)
+      || first.result_code !== 'ok'
+      || typeof first.sync_id !== 'string'
+      || !isStrongSyncId(first.sync_id)
+      || typeof first.updated_at !== 'string'
+      || !Number.isFinite(Date.parse(first.updated_at))
+    ) {
+      return { ok: false, error: '旧同期IDの移行結果が正しくありません。' };
+    }
+
+    const completed: CompletedLegacySyncUpgrade = {
+      syncId: first.sync_id,
+      updatedAt: first.updated_at,
+    };
+    persistPendingLegacySyncCompletion(completed);
+    // Once the server winner is durable locally, the legacy bearer secret and
+    // candidate are no longer needed. Network/HTTP failures return above and
+    // deliberately keep the pending record for a later reload retry.
+    clearPendingLegacySyncUpgrade(pending);
+    return finalizeCompletedLegacySyncUpgrade(completed, pending.legacySyncId);
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? `旧同期IDを移行できませんでした: ${error.message}` : '旧同期IDを移行できませんでした。',
+    };
+  }
+}
+
+function finalizeCompletedLegacySyncUpgrade(
+  completed: CompletedLegacySyncUpgrade,
+  legacySyncId?: string,
+): SyncResult<LegacySyncUpgrade> {
+  const currentSyncId = getStoredSyncId().trim();
+  if (currentSyncId !== legacySyncId && currentSyncId !== completed.syncId) {
+    return {
+      ok: true,
+      value: {
+        syncId: completed.syncId,
+        updatedAt: completed.updatedAt,
+        requiresConnectionConfirmation: true,
+      },
+    };
+  }
+
+  if (legacySyncId && currentSyncId === legacySyncId) {
+    setStoredSyncId(completed.syncId);
+    if (getStoredSyncId() !== completed.syncId) {
+      return { ok: false, error: '移行先を端末に保存できませんでした。端末の空き容量を確認して、もう一度お試しください。' };
+    }
+  }
+
+  // Keep the winner marker until the screen reconciles its own state. If a
+  // different tab switches connections immediately after this function returns,
+  // the next mount can still offer the winner instead of losing it.
+  return { ok: true, value: { syncId: completed.syncId, updatedAt: completed.updatedAt } };
+}
+
+type SyncRpcOperation = 'upload' | 'delete' | 'pair_create' | 'pair_redeem' | 'legacy_upgrade';
+
+function syncRpcFailureFromRow(value: unknown, operation: SyncRpcOperation): SyncResult<never> | null {
+  if (!isRecord(value) || typeof value.result_code !== 'string' || value.result_code === 'ok') return null;
+
+  const code = value.result_code;
+  if (code === 'conflict' || code === 'revision_required') {
+    const remoteUpdatedAt = operation === 'upload'
+      && typeof value.updated_at === 'string'
+      && Number.isFinite(Date.parse(value.updated_at))
+      ? value.updated_at
+      : undefined;
+    return {
+      ok: false,
+      code: 'conflict',
+      remoteUpdatedAt,
+      error: operation === 'delete'
+        ? '確認後にクラウドデータが更新されたため、削除を中止しました。最新の内容を確認してからやり直してください。'
+        : operation === 'legacy_upgrade'
+          ? '旧同期データが別の端末で更新されています。現在の端末情報だけでは安全に移行できません。'
+          : 'クラウド側に、この端末が最後に確認したものより新しいデータがあります。先にクラウドから読み込んでください。',
+    };
+  }
+  if (code === 'deleted') {
+    return {
+      ok: false,
+      code: 'deleted',
+      error: 'この同期先は削除済みです。古い端末から復元せず、新しい同期接続を作成してください。',
+    };
+  }
+  if (code === 'not_found' || code === 'not_found_or_expired') {
+    return {
+      ok: false,
+      code: 'not_found',
+      error: operation === 'pair_create'
+        ? 'クラウドデータがまだありません。先にこの端末をクラウドへ保存してください。'
+        : operation === 'pair_redeem'
+          ? '接続コードが違うか、有効期限切れ、または使用済みです。元の端末で新しいコードを発行してください。'
+          : operation === 'legacy_upgrade'
+            ? 'この旧同期IDのクラウドデータが見つかりません。'
+            : '対象のクラウドデータが見つかりません。',
+    };
+  }
+  if (code === 'sync_payload_too_large') {
+    return {
+      ok: false,
+      code: 'payload_too_large',
+      error: '同期データが大きすぎます（上限8 MB）。大きなノート画像を整理してから再試行してください。',
+    };
+  }
+  if (code === 'quota_exceeded') {
+    return {
+      ok: false,
+      code: 'quota',
+      error: 'クラウド同期の保存上限に達しました。不要な同期データや大きなノート画像を整理してください。',
+    };
+  }
+  if (code === 'migration_expired') {
+    return {
+      ok: false,
+      code: 'invalid',
+      error: '旧同期IDの自動移行期間が終了しています。端末内データから新しい同期接続を作成してください。',
+    };
+  }
+  if (code === 'unavailable') {
+    return {
+      ok: false,
+      error: operation === 'pair_create'
+        ? '接続コードを発行できませんでした。少し待ってからもう一度お試しください。'
+        : '安全な同期IDを作成できませんでした。少し待ってからもう一度お試しください。',
+    };
+  }
+  if (
+    code === 'invalid_sync_id'
+    || code === 'invalid_sync_payload'
+    || code === 'invalid_sync_local_storage'
+    || code === 'invalid_sync_notes'
+    || code === 'invalid_updated_at'
+    || code === 'invalid_pairing_code'
+    || code === 'invalid_legacy_sync_id'
+  ) {
+    return {
+      ok: false,
+      code: 'invalid',
+      error: operation === 'pair_redeem'
+        ? '接続コードは8文字で入力してください。'
+        : operation === 'legacy_upgrade'
+          ? '旧同期IDまたは更新情報の形式が正しくありません。'
+          : '同期データまたは同期IDの形式が正しくありません。',
+    };
+  }
+
+  return { ok: false, error: `同期処理を完了できませんでした（${code}）。` };
+}
+
+async function syncRpcHttpError(response: Response, fallback: string): Promise<string> {
+  const details = await readSupabaseError(response);
+  if (response.status === 429 || details.code === 'rate_limited') {
+    return '操作回数が多すぎます。1分ほど待ってからもう一度お試しください。';
+  }
+  if (response.status === 413) {
+    return '同期データが大きすぎます（上限8 MB）。大きなノート画像を整理してから再試行してください。';
+  }
+  return details.message ? `${fallback} ${details.message}` : fallback;
 }
 
 async function responseToDiagnosticStep(response: Response, name: string, successMessage: string): Promise<SyncDiagnosticStep> {
@@ -839,7 +1539,13 @@ async function fetchWithTimeout(input: string, init: RequestInit): Promise<Respo
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), REMOTE_REQUEST_TIMEOUT_MS);
   try {
-    return await fetch(input, { ...init, signal: controller.signal });
+    const response = await fetch(input, { ...init, signal: controller.signal });
+    const body = await response.arrayBuffer();
+    return new Response(body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    });
   } catch (error) {
     if (controller.signal.aborted) throw new Error('接続がタイムアウトしました。通信状態を確認してもう一度お試しください。');
     throw error;
@@ -849,32 +1555,30 @@ async function fetchWithTimeout(input: string, init: RequestInit): Promise<Respo
 }
 
 async function responseError(response: Response, fallback: string) {
-  try {
-    const text = await response.text();
-    return text ? `${fallback} ${text}` : fallback;
-  } catch {
-    return fallback;
-  }
+  return syncRpcHttpError(response, fallback);
 }
 
-function parseRemoteRecord(value: unknown, fallbackSyncId: string, fallbackPayload?: SyncPayload, fallbackUpdatedAt?: string): SyncResult<RemoteSyncRecord> {
-  if (!isRecord(value)) {
-    if (fallbackPayload && fallbackUpdatedAt) {
-      return { ok: true, value: { syncId: fallbackSyncId, payload: fallbackPayload, updatedAt: fallbackUpdatedAt } };
-    }
+function parseRemoteRecord(value: unknown, expectedSyncId: string, requireSuccessCode = false): SyncResult<RemoteSyncRecord> {
+  if (
+    !isRecord(value)
+    || (requireSuccessCode && value.result_code !== 'ok')
+    || value.sync_id !== expectedSyncId
+    || typeof value.updated_at !== 'string'
+    || !Number.isFinite(Date.parse(value.updated_at))
+    || value.data === undefined
+  ) {
     return { ok: false, error: 'クラウドデータの形式が正しくありません。' };
   }
 
-  const payload = value.data ?? fallbackPayload;
-  const validation = validateSyncPayload(payload);
+  const validation = validateSyncPayload(value.data);
   if (!validation.ok) return validation;
 
   return {
     ok: true,
     value: {
-      syncId: typeof value.sync_id === 'string' ? value.sync_id : fallbackSyncId,
+      syncId: expectedSyncId,
       payload: validation.value,
-      updatedAt: typeof value.updated_at === 'string' ? value.updated_at : fallbackUpdatedAt ?? validation.value.updatedAt,
+      updatedAt: value.updated_at,
     },
   };
 }
@@ -898,15 +1602,17 @@ async function restoreImportedData(
   appDataRaw: string,
   notes: Record<string, string>,
   localStorageSnapshot: Record<string, string>,
+  integritySnapshot: DataIntegritySnapshot,
+  coordinationLockHeld = false,
 ): Promise<SyncResult<true>> {
   const failures: string[] = [];
   try {
-    if (!await importAppDataRaw(appDataRaw)) failures.push('問題データ');
+    if (!await importAppDataRaw(appDataRaw, { coordinationLockHeld })) failures.push('問題データ');
   } catch {
     failures.push('問題データ');
   }
   try {
-    await replaceCategoryNotesRaw(notes);
+    await replaceCategoryNotesRaw(notes, { coordinationLockHeld });
   } catch {
     failures.push('ノート');
   }
@@ -915,9 +1621,45 @@ async function restoreImportedData(
   } catch {
     failures.push('設定');
   }
+  try {
+    restoreDataIntegritySnapshot(integritySnapshot);
+  } catch {
+    failures.push('保存状態');
+  }
   return failures.length === 0
     ? { ok: true, value: true }
     : { ok: false, error: `${failures.join('・')}を元に戻せませんでした。` };
+}
+
+type DataIntegritySnapshot = {
+  appExpected: string | null;
+  appRecoveryRequired: string | null;
+  noteManifest: string | null;
+  noteRecoveryRequired: string | null;
+  importInProgress: string | null;
+};
+
+function captureDataIntegritySnapshot(): DataIntegritySnapshot {
+  return {
+    appExpected: localStorage.getItem(APP_DATA_EXPECTED_KEY),
+    appRecoveryRequired: localStorage.getItem(APP_DATA_RECOVERY_REQUIRED_KEY),
+    noteManifest: localStorage.getItem(CATEGORY_NOTES_MANIFEST_KEY),
+    noteRecoveryRequired: localStorage.getItem(CATEGORY_NOTES_RECOVERY_REQUIRED_KEY),
+    importInProgress: localStorage.getItem(DATA_IMPORT_IN_PROGRESS_KEY),
+  };
+}
+
+function restoreDataIntegritySnapshot(snapshot: DataIntegritySnapshot): void {
+  setOrRemoveLocalStorage(APP_DATA_EXPECTED_KEY, snapshot.appExpected);
+  setOrRemoveLocalStorage(APP_DATA_RECOVERY_REQUIRED_KEY, snapshot.appRecoveryRequired);
+  setOrRemoveLocalStorage(CATEGORY_NOTES_MANIFEST_KEY, snapshot.noteManifest);
+  setOrRemoveLocalStorage(CATEGORY_NOTES_RECOVERY_REQUIRED_KEY, snapshot.noteRecoveryRequired);
+  setOrRemoveLocalStorage(DATA_IMPORT_IN_PROGRESS_KEY, snapshot.importInProgress);
+}
+
+function setOrRemoveLocalStorage(key: string, value: string | null): void {
+  if (value === null) localStorage.removeItem(key);
+  else localStorage.setItem(key, value);
 }
 
 function replaceQuizMakeLocalStorage(next: Record<string, string>): void {
@@ -938,8 +1680,13 @@ function replaceQuizMakeLocalStorage(next: Record<string, string>): void {
 }
 function isQuizMakeStorageKey(key: string): boolean {
   if (key === APP_DATA_FALLBACK_META_KEY) return false;
+  if (key === APP_DATA_EXPECTED_KEY) return false;
+  if (key === APP_DATA_RECOVERY_REQUIRED_KEY) return false;
+  if (key === CATEGORY_NOTES_MANIFEST_KEY) return false;
+  if (key === CATEGORY_NOTES_RECOVERY_REQUIRED_KEY) return false;
   if (key.startsWith('quizMake:sync:')) return false;
   if (key.startsWith('quizMake:cloud:')) return false;
+  if (key.startsWith('quizMake:coord:')) return false;
   if (key.startsWith(SYNC_BACKUP_PREFIX)) return false;
   return key === APP_DATA_STORAGE_KEY || key.startsWith('quizMake:') || key.startsWith('quiz-make:');
 }
@@ -986,4 +1733,133 @@ function isStringRecord(value: unknown): value is Record<string, string> {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+function writeLastSyncState(state: Partial<LastSyncState>): void {
+  if (state.lastSyncAt !== undefined) localStorage.setItem(LAST_SYNC_AT_KEY, state.lastSyncAt);
+  if (state.lastUploadHash !== undefined) localStorage.setItem(LAST_UPLOAD_HASH_KEY, state.lastUploadHash);
+  if (state.lastRemoteUpdatedAt !== undefined) localStorage.setItem(LAST_REMOTE_UPDATED_AT_KEY, state.lastRemoteUpdatedAt);
+  if (state.status !== undefined) localStorage.setItem(LAST_SYNC_STATUS_KEY, state.status);
+  if (state.error !== undefined) {
+    if (state.error) localStorage.setItem(LAST_SYNC_ERROR_KEY, state.error);
+    else localStorage.removeItem(LAST_SYNC_ERROR_KEY);
+  }
+}
+
+function writeLegacyLastSyncStateBestEffort(owner: string, state: LastSyncState): void {
+  try {
+    writeLastSyncState(state);
+    if (owner) localStorage.setItem(LAST_SYNC_OWNER_KEY, owner);
+    else localStorage.removeItem(LAST_SYNC_OWNER_KEY);
+  } catch {
+    // The atomic record above is authoritative for current clients.
+  }
+}
+
+function writeLastSyncStateRecord(owner: string, state: LastSyncState): void {
+  localStorage.setItem(LAST_SYNC_RECORD_KEY, JSON.stringify({ owner, state }));
+  const persisted = readLastSyncStateRecord();
+  if (!persisted || persisted.owner !== owner || !lastSyncStatesEqual(persisted.state, state)) {
+    throw new Error('同期状態を端末に保存できませんでした。');
+  }
+}
+
+function readLastSyncStateRecord(): { owner: string; state: LastSyncState } | null {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(LAST_SYNC_RECORD_KEY) ?? 'null') as unknown;
+    if (!isRecord(parsed) || typeof parsed.owner !== 'string' || !isRecord(parsed.state)) return null;
+    const state = parsed.state;
+    if (
+      typeof state.lastSyncAt !== 'string'
+      || typeof state.lastUploadHash !== 'string'
+      || typeof state.lastRemoteUpdatedAt !== 'string'
+      || typeof state.status !== 'string'
+      || typeof state.error !== 'string'
+    ) return null;
+    return {
+      owner: parsed.owner,
+      state: {
+        lastSyncAt: state.lastSyncAt,
+        lastUploadHash: state.lastUploadHash,
+        lastRemoteUpdatedAt: state.lastRemoteUpdatedAt,
+        status: state.status,
+        error: state.error,
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
+function lastSyncStatesEqual(left: LastSyncState, right: LastSyncState): boolean {
+  return left.lastSyncAt === right.lastSyncAt
+    && left.lastUploadHash === right.lastUploadHash
+    && left.lastRemoteUpdatedAt === right.lastRemoteUpdatedAt
+    && left.status === right.status
+    && left.error === right.error;
+}
+
+function clearLastSyncStateOwnedBy(syncId: string): void {
+  try {
+    const atomicRecord = readLastSyncStateRecord();
+    if (atomicRecord) {
+      if (atomicRecord.owner !== syncId) return;
+    } else if (safeGetItem(LAST_SYNC_OWNER_KEY).trim() !== syncId) return;
+    [
+      LAST_SYNC_AT_KEY,
+      LAST_UPLOAD_HASH_KEY,
+      LAST_REMOTE_UPDATED_AT_KEY,
+      LAST_SYNC_STATUS_KEY,
+      LAST_SYNC_ERROR_KEY,
+      LAST_SYNC_OWNER_KEY,
+      LAST_SYNC_RECORD_KEY,
+    ].forEach((key) => localStorage.removeItem(key));
+  } catch {
+    // The owner check prevents clearing state that already belongs to a newer connection.
+  }
+}
+
+function emptyLastSyncState(): LastSyncState {
+  return {
+    lastSyncAt: '',
+    lastUploadHash: '',
+    lastRemoteUpdatedAt: '',
+    status: '',
+    error: '',
+  };
+}
+
+function isCurrentSyncConnection(syncId: string): boolean {
+  return getStoredSyncId().trim() === syncId;
+}
+
+class SyncConnectionChangedDuringImportError extends Error {
+  constructor() {
+    super('読み込み中に別のタブで同期接続が変更されたため、読み込む前のデータへ戻しました。');
+    this.name = 'SyncConnectionChangedDuringImportError';
+  }
+}
+
+function assertExpectedSyncConnection(expectedSyncId?: string): void {
+  if (expectedSyncId && !isCurrentSyncConnection(expectedSyncId)) {
+    throw new SyncConnectionChangedDuringImportError();
+  }
+}
+
+function syncConnectionChangedResult(): SyncResult<never> {
+  return {
+    ok: false,
+    code: 'connection_changed',
+    error: '別の画面またはタブで同期接続が変更されたため、この操作を中止しました。現在の接続を確認してからやり直してください。',
+  };
+}
+
+function measureJsonBytes(value: unknown): number | null {
+  try {
+    const text = JSON.stringify(value);
+    if (typeof text !== 'string') return null;
+    return typeof TextEncoder !== 'undefined' ? new TextEncoder().encode(text).length : text.length;
+  } catch {
+    return null;
+  }
 }
