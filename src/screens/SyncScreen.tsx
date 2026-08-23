@@ -41,6 +41,7 @@ import {
 } from '../utils/syncService';
 import { isStrongSyncId } from '../utils/syncState';
 import { saveJsonBackup, writeClipboardText } from '../utils/nativePlatform';
+import { getCloudSession, onCloudAuthStateChange, sendMagicLink } from '../utils/cloudService';
 import './SyncScreen.css';
 
 interface SyncScreenProps {
@@ -60,6 +61,10 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
   const [storageUsage, setStorageUsage] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [authReady, setAuthReady] = useState(false);
+  const [cloudAccount, setCloudAccount] = useState<{ id: string; label: string } | null>(null);
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginBusy, setLoginBusy] = useState(false);
   const [clearBackupsConfirmOpen, setClearBackupsConfirmOpen] = useState(false);
   const [pendingCloudDelete, setPendingCloudDelete] = useState<{
     syncId: string;
@@ -89,8 +94,35 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
   const hasStrongConnection = isStrongSyncId(activeSyncId);
   const hasLegacyConnection = Boolean(activeSyncId) && !hasStrongConnection;
   const pairingCodeValid = isValidPairingCode(pairingCodeInput);
-  const canRun = configured && syncIdConnected && !busy;
-  const autoCanRun = autoEnabled && configured && syncIdConnected;
+  const authenticated = cloudAccount !== null;
+  const canRun = configured && authenticated && syncIdConnected && !busy;
+  const autoCanRun = autoEnabled && configured && authenticated && syncIdConnected;
+
+  useEffect(() => {
+    let cancelled = false;
+    const applySession = (session: Awaited<ReturnType<typeof getCloudSession>>) => {
+      if (cancelled) return;
+      const user = session?.user;
+      setCloudAccount(user && !user.is_anonymous
+        ? { id: user.id, label: user.email ?? user.phone ?? 'ログイン中' }
+        : null);
+      setAuthReady(true);
+    };
+
+    void getCloudSession()
+      .then(applySession)
+      .catch(() => {
+        if (!cancelled) {
+          setCloudAccount(null);
+          setAuthReady(true);
+        }
+      });
+    const unsubscribe = onCloudAuthStateChange((_event, session) => applySession(session));
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -193,6 +225,22 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
       window.removeEventListener('storage', refreshExternalSyncState);
     };
   }, []);
+
+  const handleSendLoginLink = async () => {
+    const normalizedEmail = loginEmail.trim();
+    if (!normalizedEmail || loginBusy) return;
+    setLoginBusy(true);
+    setMessage('');
+    setError('');
+    try {
+      await sendMagicLink(normalizedEmail, { name: 'sync' });
+      setMessage('ログイン用リンクを送信しました。メールのリンクを開くと、この画面へ戻ります。');
+    } catch (loginError) {
+      setError(loginError instanceof Error ? loginError.message : 'ログイン用リンクを送信できませんでした。');
+    } finally {
+      setLoginBusy(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -893,6 +941,43 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
           </div>
         ) : null}
 
+        {configured && !authReady ? (
+          <div className="sync-alert sync-alert--message" role="status">ログイン状態を確認しています…</div>
+        ) : null}
+
+        {configured && authReady && !authenticated ? (
+          <section className="sync-auth-gate" aria-labelledby="sync-auth-title">
+            <div>
+              <h2 id="sync-auth-title">同期にはログインが必要です</h2>
+              <p>同期データをアカウントごとに安全に分けます。問題作成と端末内の学習は、ログインなしでも使えます。</p>
+            </div>
+            <div className="sync-auth-gate__form">
+              <label htmlFor="sync-login-email">メールアドレス</label>
+              <div>
+                <input
+                  id="sync-login-email"
+                  className="sync-input"
+                  type="email"
+                  value={loginEmail}
+                  autoComplete="email"
+                  placeholder="you@example.com"
+                  onChange={(event) => setLoginEmail(event.target.value)}
+                />
+                <button type="button" className="sync-button sync-button--primary" disabled={loginBusy || !loginEmail.trim()} onClick={() => void handleSendLoginLink()}>
+                  {loginBusy ? '送信中…' : 'ログイン用リンクを送る'}
+                </button>
+              </div>
+            </div>
+          </section>
+        ) : null}
+
+        {configured && authenticated ? (
+          <div className="sync-account-line" role="status">
+            <span>同期アカウント</span>
+            <strong>{cloudAccount.label}</strong>
+          </div>
+        ) : null}
+
         {message ? <div className="sync-alert sync-alert--message" role="status" aria-live="polite">{message}</div> : null}
         {error ? <div className="sync-alert sync-alert--error" role="alert">{error}</div> : null}
 
@@ -902,8 +987,8 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
               <h2>端末をつなぐ</h2>
               <p>長いIDを入力せず、8文字の一時コードで接続できます。</p>
             </div>
-            <span className={`sync-status${hasStrongConnection ? ' sync-status--ok' : ' sync-status--unset'}`}>
-              {hasStrongConnection ? '接続済み' : '未接続'}
+            <span className={`sync-status${hasStrongConnection && authenticated ? ' sync-status--ok' : ' sync-status--unset'}`}>
+              {!authenticated ? 'ログイン待ち' : hasStrongConnection ? '接続済み' : '未接続'}
             </span>
           </div>
 
@@ -912,7 +997,7 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
               <strong>旧形式の同期IDがあります</strong>
               <p>端末内のデータを残したまま、安全な接続へ移行できます。</p>
               <div className="sync-actions">
-                <button type="button" className="sync-button sync-button--primary" onClick={() => void handleUpgradeLegacySyncId()} disabled={busy || !configured}>
+                <button type="button" className="sync-button sync-button--primary" onClick={() => void handleUpgradeLegacySyncId()} disabled={busy || !configured || !authenticated}>
                   旧IDを安全に移行
                 </button>
                 <button type="button" className="sync-button sync-button--secondary" onClick={handleGenerate} disabled={busy}>
@@ -929,7 +1014,7 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
                   <small>別の端末を追加するときだけ、接続コードを発行します。</small>
                 </span>
               </div>
-              <button type="button" className="sync-button sync-button--secondary" onClick={() => void handleIssuePairingCode()} disabled={busy || !configured}>
+              <button type="button" className="sync-button sync-button--secondary" onClick={() => void handleIssuePairingCode()} disabled={busy || !configured || !authenticated}>
                 8文字の接続コードを発行
               </button>
               {issuedPairingCode ? (
@@ -945,7 +1030,7 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
               ) : null}
             </div>
           ) : (
-            <button type="button" className="sync-start-button" onClick={handleGenerate} disabled={busy || !configured}>
+            <button type="button" className="sync-start-button" onClick={handleGenerate} disabled={busy || !configured || !authenticated}>
               <SyncIcon size={22} />
               <span>
                 <strong>この端末で同期を始める</strong>
@@ -966,8 +1051,9 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
                 autoComplete="one-time-code"
                 autoCapitalize="characters"
                 spellCheck={false}
+                disabled={!authenticated}
               />
-              <button type="button" className="sync-button sync-button--primary" onClick={() => void handleRedeemPairingCode()} disabled={busy || !configured || !pairingCodeValid}>
+              <button type="button" className="sync-button sync-button--primary" onClick={() => void handleRedeemPairingCode()} disabled={busy || !configured || !authenticated || !pairingCodeValid}>
                 接続する
               </button>
             </div>
@@ -1011,7 +1097,7 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
                 className={`sync-toggle__button${autoEnabled ? ' sync-toggle__button--active' : ''}`}
                 onClick={handleToggleAutoSync}
                 aria-pressed={autoEnabled}
-                disabled={!autoEnabled && (!configured || !syncIdConnected)}
+                disabled={!autoEnabled && (!configured || !authenticated || !syncIdConnected)}
               >
                 {autoEnabled ? 'ON' : 'OFF'}
               </button>
@@ -1053,7 +1139,7 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
                 <p className="sync-card__compact-note">入力内容はまだ保存されていません。</p>
               ) : null}
               <div className="sync-actions">
-                <button type="button" className="sync-button sync-button--primary" onClick={handleConnectSyncId} disabled={busy || !syncIdValid || syncIdConnected}>
+                <button type="button" className="sync-button sync-button--primary" onClick={handleConnectSyncId} disabled={busy || !authenticated || !syncIdValid || syncIdConnected}>
                   {syncIdConnected ? '接続済み' : 'このIDへ接続'}
                 </button>
                 <button type="button" className="sync-button sync-button--secondary" onClick={() => void handleCopySyncId()} disabled={busy || !syncIdValid}>

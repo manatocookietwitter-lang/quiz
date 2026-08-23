@@ -61,6 +61,9 @@ test('return target is validated, expires and is consumed once', () => {
   assert.deepEqual(consumeNativeAuthReturnTarget(storage, 1_001), target);
   assert.equal(consumeNativeAuthReturnTarget(storage, 1_002), null);
 
+  assert.equal(rememberNativeAuthReturnTarget({ name: 'sync' }, storage, 1_500), true);
+  assert.deepEqual(consumeNativeAuthReturnTarget(storage, 1_501), { name: 'sync' });
+
   assert.equal(rememberNativeAuthReturnTarget(target, storage, 2_000), true);
   assert.equal(consumeNativeAuthReturnTarget(storage, 2_000 + 30 * 60 * 1_000), null);
   assert.equal(

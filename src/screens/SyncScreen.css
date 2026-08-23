@@ -77,9 +77,72 @@
 
 .sync-card,
 .sync-alert,
-.sync-advanced {
+.sync-advanced,
+.sync-auth-gate,
+.sync-account-line {
   width: min(100%, 640px);
   margin: 0 auto 12px;
+}
+
+.sync-auth-gate {
+  border: 1px solid #c9d7ff;
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 15px;
+}
+
+.sync-auth-gate h2,
+.sync-auth-gate p {
+  margin: 0;
+}
+
+.sync-auth-gate h2 {
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.sync-auth-gate p {
+  margin-top: 4px;
+  color: #64758a;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.sync-auth-gate__form {
+  margin-top: 13px;
+}
+
+.sync-auth-gate__form > label {
+  display: block;
+  margin-bottom: 6px;
+  color: #536579;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.sync-auth-gate__form > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.sync-account-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid #dce5ef;
+  padding: 4px 2px 10px;
+  color: #718091;
+  font-size: 11px;
+}
+
+.sync-account-line strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #3654bf;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sync-card,
@@ -671,8 +734,14 @@
 
   .sync-card,
   .sync-alert,
-  .sync-advanced {
+  .sync-advanced,
+  .sync-auth-gate,
+  .sync-account-line {
     margin-bottom: 9px;
+  }
+
+  .sync-auth-gate__form > div {
+    grid-template-columns: 1fr;
   }
 
   .sync-card {
@@ -726,14 +795,18 @@
 
   .sync-card,
   .sync-alert,
-  .sync-advanced {
+  .sync-advanced,
+  .sync-auth-gate,
+  .sync-account-line {
     width: 100%;
     max-width: none;
     margin: 0;
   }
 
   .sync-alert,
-  .sync-advanced {
+  .sync-advanced,
+  .sync-auth-gate,
+  .sync-account-line {
     grid-column: 1 / -1;
   }
 

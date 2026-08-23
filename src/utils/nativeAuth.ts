@@ -18,6 +18,7 @@ type PersistentStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
 export type NativeAuthReturnTarget =
   | { name: 'settings' }
+  | { name: 'sync' }
   | {
       name: 'community';
       tab: 'mine' | 'groups' | 'discover';
@@ -282,6 +283,7 @@ function normalizeReturnTarget(value: unknown): NativeAuthReturnTarget | null {
   if (!value || typeof value !== 'object') return null;
   const target = value as Record<string, unknown>;
   if (target.name === 'settings') return { name: 'settings' };
+  if (target.name === 'sync') return { name: 'sync' };
   if (target.name !== 'community') return null;
   if (target.tab !== 'mine' && target.tab !== 'groups' && target.tab !== 'discover') return null;
 

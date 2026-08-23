@@ -1,4 +1,4 @@
--- Harden anonymous bearer-secret sync without changing existing payloads.
+-- Harden account-owned bearer-secret sync without changing existing payloads.
 -- Persistent sync IDs remain 144-bit secrets. Human-friendly 8-character
 -- codes are short-lived, one-time pairing tokens only.
 
@@ -64,111 +64,56 @@ as $function$
   where config.singleton
 $function$;
 
-create or replace function private.quiz_sync_actor_hash()
-returns bytea
+create or replace function private.quiz_sync_authenticated_user()
+returns uuid
 language plpgsql
 stable
 security definer
 set search_path = ''
 as $function$
 declare
-  request_headers jsonb := '{}'::jsonb;
-  cloudflare_ip text;
-  cloudflare_header_count integer := 0;
-  forwarded_chain text;
-  forwarded_header_count integer := 0;
-  forwarded_parts text[];
-  candidate_ip text;
-  normalized_ip inet;
-  actor_value text;
   authenticated_user uuid := auth.uid();
+  claims jsonb := '{}'::jsonb;
+  anonymous_claim text;
 begin
-  if authenticated_user is not null then
-    return private.quiz_sync_hash('user:' || authenticated_user::text);
-  end if;
-
   begin
-    request_headers := coalesce(
-      nullif(pg_catalog.current_setting('request.headers', true), '')::jsonb,
+    claims := coalesce(
+      nullif(pg_catalog.current_setting('request.jwt.claims', true), '')::jsonb,
       '{}'::jsonb
     );
   exception when others then
-    request_headers := '{}'::jsonb;
+    claims := '{}'::jsonb;
   end;
 
-  if pg_catalog.jsonb_typeof(request_headers) is distinct from 'object' then
-    request_headers := '{}'::jsonb;
-  end if;
-
-  -- Hosted Supabase is fronted by Cloudflare, which replaces this header with
-  -- the connecting client address. Header names are compared case-insensitively
-  -- because request.headers is a JSON object rather than an HTTP header map.
-  select count(*), min(header.value)
-    into cloudflare_header_count, cloudflare_ip
-    from pg_catalog.jsonb_each_text(request_headers) as header(key, value)
-    where pg_catalog.lower(header.key) = 'cf-connecting-ip';
-
-  if cloudflare_header_count > 0 then
-    -- If the trusted header is present but malformed, fail closed to the socket
-    -- address instead of consulting a potentially attacker-controlled XFF.
-    candidate_ip := case
-      when cloudflare_header_count = 1 then pg_catalog.btrim(cloudflare_ip)
-      else ''
-    end;
-  else
-    select count(*), min(header.value)
-      into forwarded_header_count, forwarded_chain
-      from pg_catalog.jsonb_each_text(request_headers) as header(key, value)
-      where pg_catalog.lower(header.key) = 'x-forwarded-for';
-
-    if forwarded_header_count = 1
-      and forwarded_chain is not null
-      and pg_catalog.octet_length(forwarded_chain) <= 4096
-    then
-      forwarded_parts := pg_catalog.string_to_array(forwarded_chain, ',');
-      if pg_catalog.array_length(forwarded_parts, 1) is not null then
-        -- Trusted proxies append their connection source at the right edge. Do
-        -- not accept the spoofable left-most value supplied by a client.
-        candidate_ip := pg_catalog.btrim(
-          forwarded_parts[pg_catalog.array_upper(forwarded_parts, 1)]
-        );
-      end if;
-    end if;
-  end if;
-
-  -- Forwarded headers must contain one bare address: no list, CIDR mask, port,
-  -- or oversized value. inet canonicalizes equivalent IPv4/IPv6 spellings.
-  if candidate_ip is not null
-    and candidate_ip <> ''
-    and pg_catalog.octet_length(candidate_ip) <= 64
-    and pg_catalog.strpos(candidate_ip, ',') = 0
-    and pg_catalog.strpos(candidate_ip, '/') = 0
+  anonymous_claim := pg_catalog.lower(coalesce(claims ->> 'is_anonymous', 'false'));
+  if authenticated_user is null
+    or anonymous_claim not in ('false', 'f', '0')
   then
-    begin
-      normalized_ip := candidate_ip::inet;
-    exception when others then
-      normalized_ip := null;
-    end;
+    raise sqlstate 'PGRST' using
+      message = pg_catalog.jsonb_build_object(
+        'code', 'quiz_sync_authentication_required',
+        'message', 'A signed-in, non-anonymous account is required for sync.'
+      )::text,
+      detail = pg_catalog.jsonb_build_object(
+        'status', 401,
+        'status_text', 'Unauthorized'
+      )::text;
   end if;
 
-  if normalized_ip is null then
-    normalized_ip := pg_catalog.inet_client_addr();
-  end if;
-
-  if normalized_ip is null then
-    actor_value := 'ip:direct-database-session';
-  elsif pg_catalog.family(normalized_ip) = 6 then
-    -- IPv6 privacy addresses rotate frequently.  A /64 actor keeps the rate
-    -- and quota identity stable without storing a raw address.
-    actor_value := 'ip:' || pg_catalog.network(
-      pg_catalog.set_masklen(normalized_ip, 64)
-    )::text;
-  else
-    actor_value := 'ip:' || pg_catalog.host(normalized_ip);
-  end if;
-
-  return private.quiz_sync_hash(actor_value);
+  return authenticated_user;
 end;
+$function$;
+
+create or replace function private.quiz_sync_actor_hash()
+returns bytea
+language sql
+stable
+security definer
+set search_path = ''
+as $function$
+  select private.quiz_sync_hash(
+    'user:' || private.quiz_sync_authenticated_user()::text
+  )
 $function$;
 
 create or replace function private.quiz_sync_lock_id(p_sync_id text)
@@ -254,6 +199,7 @@ end;
 $function$;
 
 revoke all on function private.quiz_sync_hash(text) from public, anon, authenticated;
+revoke all on function private.quiz_sync_authenticated_user() from public, anon, authenticated;
 revoke all on function private.quiz_sync_actor_hash() from public, anon, authenticated;
 revoke all on function private.quiz_sync_lock_id(text) from public, anon, authenticated;
 revoke all on function private.quiz_sync_lock_quota_actor(bytea) from public, anon, authenticated;
@@ -357,11 +303,15 @@ create table if not exists private.quiz_sync_legacy_migrations (
   winner_sync_id text not null references public.quiz_sync_data(sync_id)
     on update cascade on delete cascade,
   winner_updated_at timestamptz not null,
+  creator_hash bytea,
   created_at timestamptz not null default clock_timestamp(),
   expires_at timestamptz not null,
   check (winner_sync_id ~ '^[0-9a-f]{36}$'),
   check (expires_at > created_at)
 );
+
+alter table private.quiz_sync_legacy_migrations
+  add column if not exists creator_hash bytea;
 
 create index if not exists quiz_sync_legacy_migrations_expires_idx
   on private.quiz_sync_legacy_migrations (expires_at);
@@ -453,6 +403,8 @@ security definer
 set search_path = ''
 set statement_timeout = '5s'
 as $function$
+declare
+  actor bytea := private.quiz_sync_actor_hash();
 begin
   perform private.enforce_quiz_sync_rate_limit('read', 30, interval '1 minute');
 
@@ -460,15 +412,24 @@ begin
     return;
   end if;
 
+  perform private.quiz_sync_lock_id(p_sync_id);
+
+  update public.quiz_sync_data as row_data
+    set creator_hash = actor
+    where row_data.sync_id = p_sync_id
+      and row_data.creator_hash is null;
+
   update public.quiz_sync_data as row_data
     set last_accessed_at = clock_timestamp()
     where row_data.sync_id = p_sync_id
+      and row_data.creator_hash = actor
       and row_data.last_accessed_at < clock_timestamp() - interval '1 day';
 
   return query
     select row_data.sync_id, row_data.data, row_data.updated_at
     from public.quiz_sync_data as row_data
     where row_data.sync_id = p_sync_id
+      and row_data.creator_hash = actor
     limit 1;
 end;
 $function$;
@@ -483,6 +444,8 @@ security definer
 set search_path = ''
 set statement_timeout = '5s'
 as $function$
+declare
+  actor bytea := private.quiz_sync_actor_hash();
 begin
   perform private.enforce_quiz_sync_rate_limit('meta', 60, interval '1 minute');
 
@@ -490,15 +453,24 @@ begin
     return;
   end if;
 
+  perform private.quiz_sync_lock_id(p_sync_id);
+
+  update public.quiz_sync_data as row_data
+    set creator_hash = actor
+    where row_data.sync_id = p_sync_id
+      and row_data.creator_hash is null;
+
   update public.quiz_sync_data as row_data
     set last_accessed_at = clock_timestamp()
     where row_data.sync_id = p_sync_id
+      and row_data.creator_hash = actor
       and row_data.last_accessed_at < clock_timestamp() - interval '1 day';
 
   return query
     select row_data.sync_id, row_data.updated_at
     from public.quiz_sync_data as row_data
     where row_data.sync_id = p_sync_id
+      and row_data.creator_hash = actor
     limit 1;
 end;
 $function$;
@@ -659,6 +631,12 @@ begin
   row_exists := found;
 
   if row_exists then
+    if existing_creator is not null and existing_creator is distinct from actor then
+      return query
+        select 'not_found'::text, null::text, null::jsonb, null::timestamptz;
+      return;
+    end if;
+
     -- Force records an explicit user confirmation but never bypasses CAS. The
     -- revision confirmed by the user must still be the live revision at write
     -- time, otherwise a second intervening write would be silently erased.
@@ -669,7 +647,7 @@ begin
         select 'conflict'::text, null::text, null::jsonb, existing_updated_at;
       return;
     end if;
-    quota_actor := coalesce(existing_creator, actor);
+    quota_actor := actor;
   else
     if p_expected_updated_at is not null then
       return query
@@ -816,6 +794,8 @@ as $function$
 declare
   deleted_count integer;
   existing_updated_at timestamptz;
+  existing_creator bytea;
+  actor bytea := private.quiz_sync_actor_hash();
 begin
   perform private.enforce_quiz_sync_rate_limit('delete', 6, interval '1 minute');
 
@@ -826,13 +806,18 @@ begin
 
   perform private.quiz_sync_lock_id(p_sync_id);
 
-  select row_data.updated_at
-    into existing_updated_at
+  select row_data.updated_at, row_data.creator_hash
+    into existing_updated_at, existing_creator
     from public.quiz_sync_data as row_data
     where row_data.sync_id = p_sync_id
     for update;
 
   if not found then
+    return query select 'not_found'::text, null::text, null::timestamptz;
+    return;
+  end if;
+
+  if existing_creator is not null and existing_creator is distinct from actor then
     return query select 'not_found'::text, null::text, null::timestamptz;
     return;
   end if;
@@ -910,6 +895,8 @@ declare
   candidate_hash bytea;
   expiry timestamptz := clock_timestamp() + interval '5 minutes';
   attempt integer;
+  actor bytea := private.quiz_sync_actor_hash();
+  existing_creator bytea;
 begin
   perform private.enforce_quiz_sync_rate_limit('pair_create', 6, interval '1 minute');
 
@@ -920,7 +907,8 @@ begin
   end if;
 
   perform private.quiz_sync_lock_id(p_sync_id);
-  perform 1
+  select row_data.creator_hash
+  into existing_creator
   from public.quiz_sync_data as row_data
   where row_data.sync_id = p_sync_id
   for key share;
@@ -928,6 +916,18 @@ begin
   if not found then
     return query select 'not_found'::text, null::text, null::timestamptz;
     return;
+  end if;
+
+  if existing_creator is not null and existing_creator is distinct from actor then
+    return query select 'not_found'::text, null::text, null::timestamptz;
+    return;
+  end if;
+
+  if existing_creator is null then
+    update public.quiz_sync_data as row_data
+      set creator_hash = actor
+      where row_data.sync_id = p_sync_id
+        and row_data.creator_hash is null;
   end if;
 
   for attempt in 1..8 loop
@@ -986,6 +986,7 @@ declare
   candidate_sync_id text;
   locked_sync_id text;
   redeemed_sync_id text;
+  actor bytea := private.quiz_sync_actor_hash();
 begin
   perform private.enforce_quiz_sync_rate_limit('pair_redeem', 20, interval '1 minute');
 
@@ -1000,8 +1001,10 @@ begin
   select pairing.sync_id
     into candidate_sync_id
     from public.quiz_sync_pairing_codes as pairing
+    join public.quiz_sync_data as row_data on row_data.sync_id = pairing.sync_id
     where pairing.code_hash = private.quiz_sync_hash('pair:' || normalized_code)
-      and pairing.expires_at > clock_timestamp();
+      and pairing.expires_at > clock_timestamp()
+      and (row_data.creator_hash is null or row_data.creator_hash = actor);
 
   if candidate_sync_id is null then
     return query select 'not_found_or_expired'::text, null::text;
@@ -1016,8 +1019,10 @@ begin
   select pairing.sync_id
     into locked_sync_id
     from public.quiz_sync_pairing_codes as pairing
+    join public.quiz_sync_data as row_data on row_data.sync_id = pairing.sync_id
     where pairing.code_hash = private.quiz_sync_hash('pair:' || normalized_code)
-      and pairing.expires_at > clock_timestamp();
+      and pairing.expires_at > clock_timestamp()
+      and (row_data.creator_hash is null or row_data.creator_hash = actor);
 
   if locked_sync_id is null then
     return query select 'not_found_or_expired'::text, null::text;
@@ -1027,6 +1032,11 @@ begin
   if locked_sync_id is distinct from candidate_sync_id then
     perform private.quiz_sync_lock_id(locked_sync_id);
   end if;
+
+  update public.quiz_sync_data as row_data
+    set creator_hash = actor
+    where row_data.sync_id = locked_sync_id
+      and row_data.creator_hash is null;
 
   delete from public.quiz_sync_pairing_codes as pairing
   where pairing.code_hash = private.quiz_sync_hash('pair:' || normalized_code)
@@ -1068,8 +1078,10 @@ declare
   legacy_hash_value bytea;
   mapped_sync_id text;
   mapped_updated_at timestamptz;
+  mapped_creator bytea;
   mapping_created_at timestamptz;
-  quota_actor bytea;
+  quota_actor bytea := private.quiz_sync_actor_hash();
+  candidate_creator bytea;
   other_row_count integer;
   other_payload_bytes bigint;
 begin
@@ -1093,30 +1105,50 @@ begin
   -- Read the winner without a row lock, then acquire its standard advisory lock
   -- before re-reading. This preserves the global ID-before-row lock ordering used
   -- by delete/upsert and avoids deadlocking a cascading winner deletion.
-  select migration.winner_sync_id, migration.winner_updated_at
-    into mapped_sync_id, mapped_updated_at
+  select migration.winner_sync_id, migration.winner_updated_at, migration.creator_hash
+    into mapped_sync_id, mapped_updated_at, mapped_creator
     from private.quiz_sync_legacy_migrations as migration
     where migration.legacy_id_hash = legacy_hash_value
       and migration.expires_at > clock_timestamp();
 
   if found then
+    if mapped_creator is not null and mapped_creator is distinct from quota_actor then
+      return query select 'not_found'::text, null::text, null::timestamptz;
+      return;
+    end if;
+
     perform private.quiz_sync_lock_id(mapped_sync_id);
-    select migration.winner_sync_id, migration.winner_updated_at
-      into mapped_sync_id, mapped_updated_at
+    select migration.winner_sync_id, migration.winner_updated_at, migration.creator_hash
+      into mapped_sync_id, mapped_updated_at, mapped_creator
       from private.quiz_sync_legacy_migrations as migration
       where migration.legacy_id_hash = legacy_hash_value
         and migration.expires_at > clock_timestamp();
 
     if found then
+      if mapped_creator is not null and mapped_creator is distinct from quota_actor then
+        return query select 'not_found'::text, null::text, null::timestamptz;
+        return;
+      end if;
+
       if mapped_updated_at is distinct from p_expected_updated_at then
         return query select 'conflict'::text, null::text, null::timestamptz;
         return;
       end if;
 
+      update public.quiz_sync_data as row_data
+        set creator_hash = quota_actor
+        where row_data.sync_id = mapped_sync_id
+          and row_data.creator_hash is null;
+
       if exists (
         select 1 from public.quiz_sync_data as row_data
         where row_data.sync_id = mapped_sync_id
+          and row_data.creator_hash = quota_actor
       ) then
+        update private.quiz_sync_legacy_migrations as migration
+          set creator_hash = quota_actor
+          where migration.legacy_id_hash = legacy_hash_value
+            and migration.creator_hash is null;
         return query select 'ok'::text, mapped_sync_id, mapped_updated_at;
         return;
       end if;
@@ -1156,18 +1188,27 @@ begin
     -- A successful rotation can commit even if its HTTP response is lost. The
     -- client persists its candidate before calling, so the same request is an
     -- idempotent success when that candidate now holds the expected revision.
-    select row_data.updated_at
-      into candidate_updated_at
+    select row_data.updated_at, row_data.creator_hash
+      into candidate_updated_at, candidate_creator
       from public.quiz_sync_data as row_data
       where row_data.sync_id = p_candidate_sync_id
       for update;
 
     if found then
+      if candidate_creator is not null and candidate_creator is distinct from quota_actor then
+        return query select 'not_found'::text, null::text, null::timestamptz;
+        return;
+      end if;
+
       if candidate_updated_at is distinct from p_expected_updated_at then
         return query select 'conflict'::text, null::text, null::timestamptz;
         return;
       end if;
 
+      update public.quiz_sync_data as row_data
+        set creator_hash = quota_actor
+        where row_data.sync_id = p_candidate_sync_id
+          and row_data.creator_hash is null;
       return query select 'ok'::text, p_candidate_sync_id, candidate_updated_at;
       return;
     end if;
@@ -1191,13 +1232,21 @@ begin
     return;
   end if;
 
-  select row_data.updated_at
-    into candidate_updated_at
+  if existing_creator is not null and existing_creator is distinct from quota_actor then
+    return query select 'not_found'::text, null::text, null::timestamptz;
+    return;
+  end if;
+
+  select row_data.updated_at, row_data.creator_hash
+    into candidate_updated_at, candidate_creator
     from public.quiz_sync_data as row_data
     where row_data.sync_id = p_candidate_sync_id
     for update;
   if found then
-    return query select 'conflict'::text, null::text, null::timestamptz;
+    return query select case
+      when candidate_creator is null or candidate_creator = quota_actor then 'conflict'
+      else 'not_found'
+    end::text, null::text, null::timestamptz;
     return;
   end if;
 
@@ -1212,8 +1261,6 @@ begin
     return query select 'unavailable'::text, null::text, null::timestamptz;
     return;
   end if;
-
-  quota_actor := coalesce(existing_creator, private.quiz_sync_actor_hash());
 
   -- Rows created before creator_hash existed join the current actor's quota on
   -- migration. Serialize and account for that ownership transfer first.
@@ -1250,12 +1297,14 @@ begin
     legacy_id_hash,
     winner_sync_id,
     winner_updated_at,
+    creator_hash,
     created_at,
     expires_at
   ) values (
     legacy_hash_value,
     p_candidate_sync_id,
     existing_updated_at,
+    quota_actor,
     mapping_created_at,
     mapping_created_at + interval '90 days'
   );
@@ -1276,21 +1325,21 @@ revoke all on function public.quiz_sync_create_pairing_code(text) from public, a
 revoke all on function public.quiz_sync_redeem_pairing_code(text) from public, anon, authenticated;
 revoke all on function public.quiz_sync_upgrade_legacy_id(text, timestamptz, text) from public, anon, authenticated;
 
-grant execute on function public.quiz_sync_read(text) to anon, authenticated;
-grant execute on function public.quiz_sync_meta(text) to anon, authenticated;
-grant execute on function public.quiz_sync_probe(text) to anon, authenticated;
-grant execute on function public.quiz_sync_upsert(text, jsonb, timestamptz, timestamptz, boolean) to anon, authenticated;
-grant execute on function public.quiz_sync_upsert_v2(text, jsonb, timestamptz, timestamptz, boolean) to anon, authenticated;
-grant execute on function public.quiz_sync_delete_v2(text, timestamptz, boolean) to anon, authenticated;
-grant execute on function public.quiz_sync_delete(text) to anon, authenticated;
-grant execute on function public.quiz_sync_create_pairing_code(text) to anon, authenticated;
-grant execute on function public.quiz_sync_redeem_pairing_code(text) to anon, authenticated;
-grant execute on function public.quiz_sync_upgrade_legacy_id(text, timestamptz, text) to anon, authenticated;
+grant execute on function public.quiz_sync_read(text) to authenticated;
+grant execute on function public.quiz_sync_meta(text) to authenticated;
+grant execute on function public.quiz_sync_probe(text) to authenticated;
+grant execute on function public.quiz_sync_upsert(text, jsonb, timestamptz, timestamptz, boolean) to authenticated;
+grant execute on function public.quiz_sync_upsert_v2(text, jsonb, timestamptz, timestamptz, boolean) to authenticated;
+grant execute on function public.quiz_sync_delete_v2(text, timestamptz, boolean) to authenticated;
+grant execute on function public.quiz_sync_delete(text) to authenticated;
+grant execute on function public.quiz_sync_create_pairing_code(text) to authenticated;
+grant execute on function public.quiz_sync_redeem_pairing_code(text) to authenticated;
+grant execute on function public.quiz_sync_upgrade_legacy_id(text, timestamptz, text) to authenticated;
 
 comment on table public.quiz_sync_pairing_codes is
   'Hashed, one-time, five-minute pairing codes. Plain codes are returned only at creation.';
 comment on table private.quiz_sync_legacy_migrations is
-  'Bounded HMAC-keyed legacy migration winners for retry convergence; never stores a legacy ID.';
+  'Bounded account-owned HMAC-keyed legacy migration winners for retry convergence; never stores a legacy ID.';
 comment on function public.quiz_sync_meta(text) is
   'Returns only the authoritative server revision for a strong sync ID.';
 comment on function public.quiz_sync_upsert(text, jsonb, timestamptz, timestamptz, boolean) is

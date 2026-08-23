@@ -46,80 +46,56 @@ declare
   legacy_wrapper_sync_id text;
   legacy_wrapper_data jsonb;
   legacy_wrapper_revision timestamptz;
-  cloudflare_actor bytea;
-  forwarded_actor bytea;
-  fallback_actor bytea;
+  test_user uuid := '11111111-1111-4111-8111-111111111111'::uuid;
+  other_user uuid := '22222222-2222-4222-8222-222222222222'::uuid;
+  other_actor bytea;
 begin
+  -- Sync is available only to a real signed-in account. Supabase anonymous-auth
+  -- users carry the authenticated DB role too, so the JWT claim is checked in
+  -- addition to function grants.
+  perform pg_catalog.set_config('request.jwt.claim.sub', '', true);
   perform pg_catalog.set_config(
-    'request.headers',
-    '{"CF-Connecting-IP":" 2001:0DB8:1234:5678:0:0:0:1 ","x-forwarded-for":"198.51.100.10, 203.0.113.77"}',
+    'request.jwt.claims',
+    '{}',
     true
   );
-  cloudflare_actor := private.quiz_sync_actor_hash();
-  if cloudflare_actor is distinct from private.quiz_sync_hash(
-    'ip:2001:db8:1234:5678::/64'
-  ) then
-    raise exception 'trusted Cloudflare IP was not preferred and canonically normalized';
-  end if;
+  begin
+    perform private.quiz_sync_actor_hash();
+    raise exception 'a missing JWT was accepted for sync';
+  exception when sqlstate 'PGRST' then
+    null;
+  end;
 
+  perform pg_catalog.set_config('request.jwt.claim.sub', test_user::text, true);
   perform pg_catalog.set_config(
-    'request.headers',
-    '{"cf-connecting-ip":"2001:db8:1234:5678::abcd"}',
+    'request.jwt.claims',
+    pg_catalog.jsonb_build_object(
+      'sub', test_user,
+      'role', 'authenticated',
+      'is_anonymous', true
+    )::text,
     true
   );
-  if private.quiz_sync_actor_hash() is distinct from cloudflare_actor then
-    raise exception 'equivalent IPv6 client addresses did not share the /64 actor';
-  end if;
+  begin
+    perform private.quiz_sync_actor_hash();
+    raise exception 'an anonymous-auth JWT was accepted for sync';
+  exception when sqlstate 'PGRST' then
+    null;
+  end;
 
   perform pg_catalog.set_config(
-    'request.headers',
-    '{"x-forwarded-for":"198.51.100.10, 203.0.113.77"}',
-    true
-  );
-  forwarded_actor := private.quiz_sync_actor_hash();
-  if forwarded_actor is distinct from private.quiz_sync_hash('ip:203.0.113.77')
-    or forwarded_actor = private.quiz_sync_hash('ip:198.51.100.10')
-  then
-    raise exception 'X-Forwarded-For did not use its trusted right-most address';
-  end if;
-
-  -- A malformed trusted header must not fall through to a spoofable XFF value.
-  perform pg_catalog.set_config(
-    'request.headers',
-    '{"cf-connecting-ip":"203.0.113.9/24","x-forwarded-for":"198.51.100.10, 203.0.113.77"}',
-    true
-  );
-  if private.quiz_sync_actor_hash() = forwarded_actor then
-    raise exception 'malformed Cloudflare header fell back to attacker-controlled XFF';
-  end if;
-
-  perform pg_catalog.set_config(
-    'request.headers',
-    '{"CF-Connecting-IP":"198.51.100.20","cf-connecting-ip":"203.0.113.20","x-forwarded-for":"203.0.113.77"}',
-    true
-  );
-  if private.quiz_sync_actor_hash() = forwarded_actor
-    or private.quiz_sync_actor_hash() = private.quiz_sync_hash('ip:198.51.100.20')
-    or private.quiz_sync_actor_hash() = private.quiz_sync_hash('ip:203.0.113.20')
-  then
-    raise exception 'duplicate case-variant Cloudflare headers were trusted';
-  end if;
-
-  perform pg_catalog.set_config('request.headers', '{}', true);
-  fallback_actor := private.quiz_sync_actor_hash();
-  perform pg_catalog.set_config('request.headers', '[]', true);
-  if private.quiz_sync_actor_hash() is distinct from fallback_actor then
-    raise exception 'missing or malformed header maps did not fail closed consistently';
-  end if;
-
-  -- Use a documentation-only IP range so quota/rate tests cannot collide with
-  -- a real application caller when this script is run against a staging copy.
-  perform pg_catalog.set_config(
-    'request.headers',
-    '{"x-forwarded-for":"203.0.113.254"}',
+    'request.jwt.claims',
+    pg_catalog.jsonb_build_object(
+      'sub', test_user,
+      'role', 'authenticated',
+      'is_anonymous', false
+    )::text,
     true
   );
   test_actor := private.quiz_sync_actor_hash();
+  if test_actor is distinct from private.quiz_sync_hash('user:' || test_user::text) then
+    raise exception 'signed-in account did not receive a stable user actor';
+  end if;
 
   delete from private.quiz_sync_rate_limits where actor_hash = test_actor;
   delete from public.quiz_sync_data where creator_hash = test_actor;
@@ -171,63 +147,34 @@ begin
     raise exception 'sync tables must not be directly accessible to API roles';
   end if;
 
+  foreach function_definition in array array[
+    'public.quiz_sync_read(text)',
+    'public.quiz_sync_meta(text)',
+    'public.quiz_sync_probe(text)',
+    'public.quiz_sync_upsert(text,jsonb,timestamp with time zone,timestamp with time zone,boolean)',
+    'public.quiz_sync_upsert_v2(text,jsonb,timestamp with time zone,timestamp with time zone,boolean)',
+    'public.quiz_sync_delete_v2(text,timestamp with time zone,boolean)',
+    'public.quiz_sync_delete(text)',
+    'public.quiz_sync_create_pairing_code(text)',
+    'public.quiz_sync_redeem_pairing_code(text)',
+    'public.quiz_sync_upgrade_legacy_id(text,timestamp with time zone,text)'
+  ] loop
+    if pg_catalog.has_function_privilege('anon', function_definition, 'execute')
+      or not pg_catalog.has_function_privilege('authenticated', function_definition, 'execute')
+    then
+      raise exception 'sync RPC grants are not account-only: %', function_definition;
+    end if;
+  end loop;
+
   if pg_catalog.to_regprocedure(
     'public.quiz_sync_delete(text,timestamp with time zone,boolean)'
-  ) is not null
-    or not pg_catalog.has_function_privilege(
-    'anon',
-    'public.quiz_sync_delete_v2(text,timestamp with time zone,boolean)',
-    'execute'
-  ) or not pg_catalog.has_function_privilege(
-    'authenticated',
-    'public.quiz_sync_delete_v2(text,timestamp with time zone,boolean)',
-    'execute'
-  ) or not pg_catalog.has_function_privilege(
-    'anon',
-    'public.quiz_sync_delete(text)',
-    'execute'
-  ) or not pg_catalog.has_function_privilege(
-    'authenticated',
-    'public.quiz_sync_delete(text)',
-    'execute'
-  ) then
-    raise exception 'delete v2 and non-overloaded compatibility grants are incorrect';
-  end if;
-
-  if not pg_catalog.has_function_privilege(
-    'anon',
-    'public.quiz_sync_upsert(text,jsonb,timestamp with time zone,timestamp with time zone,boolean)',
-    'execute'
-  ) or not pg_catalog.has_function_privilege(
-    'authenticated',
-    'public.quiz_sync_upsert(text,jsonb,timestamp with time zone,timestamp with time zone,boolean)',
-    'execute'
-  ) or not pg_catalog.has_function_privilege(
-    'anon',
-    'public.quiz_sync_upsert_v2(text,jsonb,timestamp with time zone,timestamp with time zone,boolean)',
-    'execute'
-  ) or not pg_catalog.has_function_privilege(
-    'authenticated',
-    'public.quiz_sync_upsert_v2(text,jsonb,timestamp with time zone,timestamp with time zone,boolean)',
-    'execute'
-  ) then
-    raise exception 'legacy and v2 upsert RPCs must both be explicitly granted';
+  ) is not null then
+    raise exception 'unsupported overloaded delete RPC still exists';
   end if;
 
   if pg_catalog.to_regprocedure(
     'public.quiz_sync_upgrade_legacy_id(text,timestamp with time zone)'
-  ) is not null
-    or not pg_catalog.has_function_privilege(
-      'anon',
-      'public.quiz_sync_upgrade_legacy_id(text,timestamp with time zone,text)',
-      'execute'
-    )
-    or not pg_catalog.has_function_privilege(
-      'authenticated',
-      'public.quiz_sync_upgrade_legacy_id(text,timestamp with time zone,text)',
-      'execute'
-    )
-  then
+  ) is not null then
     raise exception 'only the retry-safe three-argument legacy RPC may be exposed';
   end if;
 
@@ -282,6 +229,7 @@ begin
       ))
       or (namespace.nspname = 'private' and procedure.proname in (
         'quiz_sync_hash',
+        'quiz_sync_authenticated_user',
         'quiz_sync_actor_hash',
         'quiz_sync_lock_id',
         'quiz_sync_lock_quota_actor',
@@ -395,6 +343,88 @@ begin
     raise exception 'initial upsert failed: %', result_code;
   end if;
   revision_r0 := remote_revision;
+
+  if not exists (
+    select 1 from public.quiz_sync_data
+    where sync_id = sync_a and creator_hash = test_actor
+  ) then
+    raise exception 'new sync row was not bound to the signed-in account';
+  end if;
+
+  -- A different permanent account may know the random ID but must not learn or
+  -- mutate its data. Ownership failures intentionally look like missing data.
+  perform pg_catalog.set_config('request.jwt.claim.sub', other_user::text, true);
+  perform pg_catalog.set_config(
+    'request.jwt.claims',
+    pg_catalog.jsonb_build_object(
+      'sub', other_user,
+      'role', 'authenticated',
+      'is_anonymous', false
+    )::text,
+    true
+  );
+  other_actor := private.quiz_sync_actor_hash();
+  if other_actor = test_actor then
+    raise exception 'different users received the same quota/ownership actor';
+  end if;
+
+  select count(*) into before_count from public.quiz_sync_read(sync_a);
+  select count(*) into after_count from public.quiz_sync_meta(sync_a);
+  if before_count <> 0 or after_count <> 0 then
+    raise exception 'another account could read sync data or metadata';
+  end if;
+
+  select response.result_code
+    into result_code
+    from public.quiz_sync_upsert_v2(
+      sync_a, payload, clock_timestamp(), remote_revision, false
+    ) as response;
+  if result_code is distinct from 'not_found' then
+    raise exception 'another account could address an owned sync for update';
+  end if;
+
+  select response.result_code
+    into result_code
+    from public.quiz_sync_create_pairing_code(sync_a) as response;
+  if result_code is distinct from 'not_found' then
+    raise exception 'another account could create a pairing code';
+  end if;
+
+  select response.result_code
+    into result_code
+    from public.quiz_sync_delete_v2(sync_a, remote_revision, true) as response;
+  if result_code is distinct from 'not_found'
+    or not exists (
+      select 1 from public.quiz_sync_data
+      where sync_id = sync_a and creator_hash = test_actor
+    )
+  then
+    raise exception 'another account could delete or reassign an owned sync';
+  end if;
+
+  perform pg_catalog.set_config('request.jwt.claim.sub', test_user::text, true);
+  perform pg_catalog.set_config(
+    'request.jwt.claims',
+    pg_catalog.jsonb_build_object(
+      'sub', test_user,
+      'role', 'authenticated',
+      'is_anonymous', false
+    )::text,
+    true
+  );
+
+  -- Rows created before account ownership existed are claimed by the first
+  -- authenticated holder of their 144-bit secret, preserving installed data.
+  insert into public.quiz_sync_data (sync_id, data, updated_at, last_accessed_at)
+  values (sync_c, payload, clock_timestamp(), clock_timestamp());
+  select count(*) into before_count from public.quiz_sync_meta(sync_c);
+  if before_count <> 1 or not exists (
+    select 1 from public.quiz_sync_data
+    where sync_id = sync_c and creator_hash = test_actor
+  ) then
+    raise exception 'pre-ownership strong sync was not claimed by its authenticated holder';
+  end if;
+  delete from public.quiz_sync_data where sync_id = sync_c;
 
   if not exists (
     select 1
@@ -809,6 +839,39 @@ begin
     end if;
   end if;
 
+  perform pg_catalog.set_config('request.jwt.claim.sub', other_user::text, true);
+  perform pg_catalog.set_config(
+    'request.jwt.claims',
+    pg_catalog.jsonb_build_object(
+      'sub', other_user,
+      'role', 'authenticated',
+      'is_anonymous', false
+    )::text,
+    true
+  );
+  select response.result_code
+    into result_code
+    from public.quiz_sync_redeem_pairing_code(second_pairing_code) as response;
+  if result_code is distinct from 'not_found_or_expired'
+    or not exists (
+      select 1 from public.quiz_sync_pairing_codes
+      where sync_id = sync_a
+    )
+  then
+    raise exception 'another account could inspect or consume a pairing code';
+  end if;
+
+  perform pg_catalog.set_config('request.jwt.claim.sub', test_user::text, true);
+  perform pg_catalog.set_config(
+    'request.jwt.claims',
+    pg_catalog.jsonb_build_object(
+      'sub', test_user,
+      'role', 'authenticated',
+      'is_anonymous', false
+    )::text,
+    true
+  );
+
   select response.result_code, response.sync_id
     into result_code, returned_sync_id
     from public.quiz_sync_redeem_pairing_code(second_pairing_code) as response;
@@ -912,6 +975,7 @@ begin
     where migration.legacy_id_hash = private.quiz_sync_hash('legacy:' || legacy_id)
       and migration.winner_sync_id = legacy_candidate_id
       and migration.winner_updated_at = legacy_revision
+      and migration.creator_hash = test_actor
       and migration.expires_at > clock_timestamp() + interval '89 days'
       and migration.expires_at < clock_timestamp() + interval '91 days'
   ) then

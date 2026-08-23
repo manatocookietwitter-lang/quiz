@@ -75,6 +75,11 @@ const coordination = await vite.ssrLoadModule('/src/utils/dataCoordination.ts');
 const storage = await vite.ssrLoadModule('/src/storage.ts');
 const notes = await vite.ssrLoadModule('/src/utils/noteStorage.ts');
 const sync = await vite.ssrLoadModule('/src/utils/syncService.ts');
+sync.setSyncAccessTokenProviderForTests(async () => ({
+  ok: true,
+  accessToken: 'test-user-access-token',
+  userId: '00000000-0000-4000-8000-000000000001',
+}));
 
 after(async () => {
   await vite.close();

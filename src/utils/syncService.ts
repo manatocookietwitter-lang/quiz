@@ -39,6 +39,7 @@ import {
   withCoordinatedDataMutation,
   withCoordinatedDataRead,
 } from './dataCoordination';
+import type { CloudAccessTokenResult } from './cloudService';
 export type SyncPayload = {
   version: 1;
   updatedAt: string;
@@ -47,6 +48,7 @@ export type SyncPayload = {
 };
 
 export type SyncErrorCode =
+  | 'authentication_required'
   | 'connection_changed'
   | 'conflict'
   | 'deleted'
@@ -157,6 +159,17 @@ const DATA_IMPORT_IN_PROGRESS_KEY = 'quizMake:sync:dataImportInProgress';
 const REMOTE_REQUEST_TIMEOUT_MS = 15_000;
 let syncDataOperationQueue: Promise<void> = Promise.resolve();
 const recoveryOnlyPayloads = new WeakSet<object>();
+type SyncAccessTokenProvider = () => Promise<CloudAccessTokenResult>;
+const defaultSyncAccessTokenProvider: SyncAccessTokenProvider = async () => {
+  const { getCloudAccessToken } = await import('./cloudService');
+  return getCloudAccessToken();
+};
+let syncAccessTokenProvider: SyncAccessTokenProvider = defaultSyncAccessTokenProvider;
+
+export function setSyncAccessTokenProviderForTests(provider: SyncAccessTokenProvider | null): void {
+  if (!import.meta.env.DEV) throw new Error('同期認証のテスト用差し替えは開発ビルドでのみ利用できます。');
+  syncAccessTokenProvider = provider ?? defaultSyncAccessTokenProvider;
+}
 
 export type PendingLegacySyncUpgrade = {
   legacySyncId: string;
@@ -655,6 +668,10 @@ export async function uploadSyncData(
     if (!isCurrentSyncConnection(normalizedSyncId)) return syncConnectionChangedResult();
     if (exportedRevision !== beforeUpload.value) return localDataChangedBeforeUploadResult();
 
+    const authenticatedHeaders = await getAuthenticatedSyncHeaders(config);
+    if (!authenticatedHeaders.ok) return authenticatedHeaders;
+    if (!isCurrentSyncConnection(normalizedSyncId)) return syncConnectionChangedResult();
+
     try {
       const uploaded = await withCoordinatedDataRead(['app', 'notes'], async () => {
         if (!isCurrentSyncConnection(normalizedSyncId)) return syncConnectionChangedResult();
@@ -665,6 +682,7 @@ export async function uploadSyncData(
           validation.value,
           options,
           config,
+          authenticatedHeaders.value,
           beforeUpload.value,
         );
       }, { requireCrossContext: true });
@@ -710,6 +728,7 @@ async function uploadSyncDataUnlocked(
   payload: SyncPayload,
   options: UploadSyncOptions,
   config: { url: string; anonKey: string },
+  authenticatedHeaders: Record<string, string>,
   uploadStartRevision: number,
 ): Promise<SyncResult<RemoteSyncRecord>> {
   try {
@@ -717,7 +736,7 @@ async function uploadSyncDataUnlocked(
     const uploadPayload = { ...payload, updatedAt };
     const response = await fetchWithTimeout(`${config.url}/rest/v1/rpc/${SUPABASE_UPSERT_RPC}`, {
       method: 'POST',
-      headers: createSupabaseHeaders(config.anonKey),
+      headers: authenticatedHeaders,
       body: JSON.stringify({
         p_sync_id: normalizedSyncId,
         p_data: uploadPayload,
@@ -781,10 +800,14 @@ export async function downloadSyncData(syncId: string): Promise<SyncResult<Remot
   const config = getRemoteSyncConfig();
   if (!config) return { ok: false, error: 'Supabaseの環境変数が未設定です。VITE_SUPABASE_URL と VITE_SUPABASE_ANON_KEY を設定してください。' };
 
+  const authenticatedHeaders = await getAuthenticatedSyncHeaders(config);
+  if (!authenticatedHeaders.ok) return authenticatedHeaders;
+  if (!isCurrentSyncConnection(normalizedSyncId)) return syncConnectionChangedResult();
+
   try {
     const response = await fetchWithTimeout(`${config.url}/rest/v1/rpc/${SUPABASE_READ_RPC}`, {
       method: 'POST',
-      headers: createSupabaseHeaders(config.anonKey),
+      headers: authenticatedHeaders.value,
       body: JSON.stringify({ p_sync_id: normalizedSyncId }),
     });
     if (!isCurrentSyncConnection(normalizedSyncId)) return syncConnectionChangedResult();
@@ -820,10 +843,13 @@ export async function getRemoteSyncMeta(syncId: string): Promise<SyncResult<Remo
   const config = getRemoteSyncConfig();
   if (!config) return { ok: false, error: 'Supabaseの環境変数が未設定です。' };
 
+  const authenticatedHeaders = await getAuthenticatedSyncHeaders(config);
+  if (!authenticatedHeaders.ok) return authenticatedHeaders;
+
   try {
     const response = await fetchWithTimeout(`${config.url}/rest/v1/rpc/${SUPABASE_META_RPC}`, {
       method: 'POST',
-      headers: createSupabaseHeaders(config.anonKey),
+      headers: authenticatedHeaders.value,
       body: JSON.stringify({ p_sync_id: normalizedSyncId }),
     });
 
@@ -897,10 +923,18 @@ export async function runSyncDiagnostic(syncId: string): Promise<SyncDiagnosticR
     return { ok: steps.every((step) => step.ok), steps };
   }
 
+  const authenticatedHeaders = await getAuthenticatedSyncHeaders(config);
+  addStep({
+    name: 'ログイン',
+    ok: authenticatedHeaders.ok,
+    message: authenticatedHeaders.ok ? 'ログイン済みアカウントを確認しました' : authenticatedHeaders.error,
+  });
+  if (!authenticatedHeaders.ok) return { ok: false, steps };
+
   try {
     const probeResponse = await fetchWithTimeout(`${config.url}/rest/v1/rpc/${SUPABASE_PROBE_RPC}`, {
       method: 'POST',
-      headers: createSupabaseHeaders(config.anonKey),
+      headers: authenticatedHeaders.value,
       body: JSON.stringify({ p_sync_id: normalizedSyncId }),
     });
     addStep(await responseToDiagnosticStep(probeResponse, '安全な同期RPC', '同期IDを限定したRPCへ接続できます'));
@@ -1067,10 +1101,14 @@ export async function deleteRemoteSyncData(
   const config = getRemoteSyncConfig();
   if (!config) return { ok: false, error: 'クラウド同期が設定されていません。' };
 
+  const authenticatedHeaders = await getAuthenticatedSyncHeaders(config);
+  if (!authenticatedHeaders.ok) return authenticatedHeaders;
+  if (!isCurrentSyncConnection(normalizedSyncId)) return syncConnectionChangedResult();
+
   try {
     const response = await fetchWithTimeout(`${config.url}/rest/v1/rpc/${SUPABASE_DELETE_RPC}`, {
       method: 'POST',
-      headers: createSupabaseHeaders(config.anonKey),
+      headers: authenticatedHeaders.value,
       body: JSON.stringify({
         p_sync_id: normalizedSyncId,
         p_expected_updated_at: expectedUpdatedAt || null,
@@ -1128,10 +1166,14 @@ export async function createSyncPairingCode(syncId: string): Promise<SyncResult<
   const config = getRemoteSyncConfig();
   if (!config) return { ok: false, error: 'クラウド同期が設定されていません。' };
 
+  const authenticatedHeaders = await getAuthenticatedSyncHeaders(config);
+  if (!authenticatedHeaders.ok) return authenticatedHeaders;
+  if (!isCurrentSyncConnection(normalizedSyncId)) return syncConnectionChangedResult();
+
   try {
     const response = await fetchWithTimeout(`${config.url}/rest/v1/rpc/${SUPABASE_CREATE_PAIRING_RPC}`, {
       method: 'POST',
-      headers: createSupabaseHeaders(config.anonKey),
+      headers: authenticatedHeaders.value,
       body: JSON.stringify({ p_sync_id: normalizedSyncId }),
     });
     if (!isCurrentSyncConnection(normalizedSyncId)) return syncConnectionChangedResult();
@@ -1169,10 +1211,13 @@ export async function redeemSyncPairingCode(pairingCode: string): Promise<SyncRe
   const config = getRemoteSyncConfig();
   if (!config) return { ok: false, error: 'クラウド同期が設定されていません。' };
 
+  const authenticatedHeaders = await getAuthenticatedSyncHeaders(config);
+  if (!authenticatedHeaders.ok) return authenticatedHeaders;
+
   try {
     const response = await fetchWithTimeout(`${config.url}/rest/v1/rpc/${SUPABASE_REDEEM_PAIRING_RPC}`, {
       method: 'POST',
-      headers: createSupabaseHeaders(config.anonKey),
+      headers: authenticatedHeaders.value,
       body: JSON.stringify({ p_pairing_code: normalizedCode }),
     });
     if (!response.ok) return { ok: false, error: await syncRpcHttpError(response, '接続コードを確認できませんでした。') };
@@ -1332,10 +1377,13 @@ async function completePendingLegacySyncUpgrade(
   const config = getRemoteSyncConfig();
   if (!config) return { ok: false, error: 'クラウド同期が設定されていません。' };
 
+  const authenticatedHeaders = await getAuthenticatedSyncHeaders(config);
+  if (!authenticatedHeaders.ok) return authenticatedHeaders;
+
   try {
     const response = await fetchWithTimeout(`${config.url}/rest/v1/rpc/${SUPABASE_UPGRADE_LEGACY_RPC}`, {
       method: 'POST',
-      headers: createSupabaseHeaders(config.anonKey),
+      headers: authenticatedHeaders.value,
       body: JSON.stringify({
         p_legacy_sync_id: pending.legacySyncId,
         p_expected_updated_at: pending.expectedUpdatedAt,
@@ -1566,7 +1614,7 @@ async function readSupabaseError(response: Response): Promise<{ message: string;
 function getDiagnosticSuggestion(errorText: string): string | undefined {
   const value = errorText.toLowerCase();
   if (value.includes('invalid api key') || value.includes('jwt')) {
-    return 'anon key が間違っている、空、またはURLと別プロジェクトのkeyの可能性があります。GitHub Secrets の VITE_SUPABASE_ANON_KEY を確認してください。';
+    return 'ログイン状態を確認して、必要なら一度ログアウトしてから再ログインしてください。解決しない場合は公開APIキーとSupabase URLの組み合わせを確認してください。';
   }
   if (value.includes('relation') && value.includes('quiz_sync_data') && value.includes('does not exist')) {
     return 'Supabase側に quiz_sync_data テーブルがまだ作成されていません。';
@@ -1589,10 +1637,31 @@ function getDiagnosticSuggestion(errorText: string): string | undefined {
   return undefined;
 }
 
-function createSupabaseHeaders(anonKey: string, extra: Record<string, string> = {}) {
+async function getAuthenticatedSyncHeaders(
+  config: { anonKey: string },
+): Promise<SyncResult<Record<string, string>>> {
+  const access = await syncAccessTokenProvider();
+  if (!access.ok) {
+    return {
+      ok: false,
+      code: access.reason === 'not-configured' ? undefined : 'authentication_required',
+      error: access.message,
+    };
+  }
   return {
-    apikey: anonKey,
-    Authorization: `Bearer ${anonKey}`,
+    ok: true,
+    value: createSupabaseHeaders(config.anonKey, access.accessToken),
+  };
+}
+
+function createSupabaseHeaders(
+  apiKey: string,
+  accessToken: string,
+  extra: Record<string, string> = {},
+) {
+  return {
+    apikey: apiKey,
+    Authorization: `Bearer ${accessToken}`,
     'Content-Type': 'application/json',
     ...extra,
   };

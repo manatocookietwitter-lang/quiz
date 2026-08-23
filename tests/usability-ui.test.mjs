@@ -105,7 +105,9 @@ test('sync id edits stay as a draft until the user explicitly connects', () => {
   assert.match(syncSource, /const applyConnectedSyncId[\s\S]*?setStoredSyncId\(normalizedNextId\)/);
   assert.match(syncSource, /['"]このIDへ接続['"]/);
   assert.match(syncSource, /if \(!autoEnabled && \(!configured \|\| !syncIdConnected\)\)/);
-  assert.match(syncSource, /disabled=\{!autoEnabled && \(!configured \|\| !syncIdConnected\)\}/);
+  assert.match(syncSource, /disabled=\{!autoEnabled && \(!configured \|\| !authenticated \|\| !syncIdConnected\)\}/);
+  assert.match(syncSource, /同期にはログインが必要です/);
+  assert.match(syncSource, /sendMagicLink\(normalizedEmail, \{ name: 'sync' \}\)/);
 });
 
 test('legacy upgrade reconciliation never overwrites a connection changed by another tab', () => {

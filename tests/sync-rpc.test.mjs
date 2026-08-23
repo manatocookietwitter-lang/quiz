@@ -58,6 +58,12 @@ const vite = await createServer({
 });
 const sync = await vite.ssrLoadModule('/src/utils/syncService.ts');
 const storage = await vite.ssrLoadModule('/src/storage.ts');
+const testAccessTokenProvider = async () => ({
+  ok: true,
+  accessToken: 'test-user-access-token',
+  userId: '00000000-0000-4000-8000-000000000001',
+});
+sync.setSyncAccessTokenProviderForTests(testAccessTokenProvider);
 
 after(async () => {
   await vite.close();
@@ -83,9 +89,11 @@ function rpcResponse(body, status = 200) {
 test('remote metadata uses the lightweight meta RPC instead of downloading the payload', async () => {
   let calledUrl = '';
   let calledBody = null;
+  let calledHeaders = null;
   globalThis.fetch = async (url, init) => {
     calledUrl = String(url);
     calledBody = JSON.parse(String(init.body));
+    calledHeaders = new Headers(init.headers);
     return rpcResponse([{ sync_id: syncId, updated_at: updatedAt }]);
   };
 
@@ -94,6 +102,34 @@ test('remote metadata uses the lightweight meta RPC instead of downloading the p
   assert.deepEqual(result, { ok: true, value: { syncId, updatedAt } });
   assert.match(calledUrl, /\/rest\/v1\/rpc\/quiz_sync_meta$/u);
   assert.deepEqual(calledBody, { p_sync_id: syncId });
+  assert.equal(calledHeaders.get('apikey'), 'test-anon-key');
+  assert.equal(calledHeaders.get('authorization'), 'Bearer test-user-access-token');
+  assert.notEqual(calledHeaders.get('authorization'), 'Bearer test-anon-key');
+});
+
+test('signed-out sync fails before network I/O and never falls back to the public API key', async () => {
+  let fetchCount = 0;
+  globalThis.fetch = async () => {
+    fetchCount += 1;
+    return rpcResponse([]);
+  };
+  sync.setSyncAccessTokenProviderForTests(async () => ({
+    ok: false,
+    reason: 'signed-out',
+    message: 'クラウド同期を使うにはログインが必要です。',
+  }));
+
+  try {
+    const result = await sync.getRemoteSyncMeta(syncId);
+    assert.deepEqual(result, {
+      ok: false,
+      code: 'authentication_required',
+      error: 'クラウド同期を使うにはログインが必要です。',
+    });
+    assert.equal(fetchCount, 0);
+  } finally {
+    sync.setSyncAccessTokenProviderForTests(testAccessTokenProvider);
+  }
 });
 
 test('pairing codes are normalized, issued for five-minute transfer, and redeemed once', async () => {
@@ -235,6 +271,7 @@ test('reload resumes a response-lost legacy migration without overwriting a newe
 
   sync.setStoredSyncId(syncId);
   const reloadedSync = await vite.ssrLoadModule(`/src/utils/syncService.ts?legacy-recovery=${Date.now()}`);
+  reloadedSync.setSyncAccessTokenProviderForTests(testAccessTokenProvider);
   const recovered = await reloadedSync.resumePendingLegacySyncUpgrade();
 
   assert.equal(recovered.ok, true);

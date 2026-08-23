@@ -68,8 +68,11 @@ export function AutoSyncController({ protectedWorkReason }: AutoSyncControllerPr
       return;
     }
     if (!download.ok) {
-      console.warn('Auto sync download failed.', download.error);
-      setLastSyncState({ status: 'クラウド読み込み失敗', error: download.error });
+      if (download.code !== 'authentication_required') console.warn('Auto sync download failed.', download.error);
+      setLastSyncState({
+        status: download.code === 'authentication_required' ? '自動同期: ログインが必要です' : 'クラウド読み込み失敗',
+        error: download.error,
+      });
       promptedRemoteUpdatedAtRef.current = '';
       setPendingRemoteImport(null);
       setRemoteImportBusy(false);
@@ -181,9 +184,13 @@ export function AutoSyncController({ protectedWorkReason }: AutoSyncControllerPr
             setLastSyncState({ status: '自動同期: 最新の変更を再確認中...', error: '' });
             return;
           }
-          console.warn('Auto sync upload failed.', result.error);
+          if (result.code !== 'authentication_required') console.warn('Auto sync upload failed.', result.error);
           setLastSyncState({
-            status: result.code === 'conflict' ? 'クラウドに新しいデータがあります' : '自動同期失敗',
+            status: result.code === 'authentication_required'
+              ? '自動同期: ログインが必要です'
+              : result.code === 'conflict'
+                ? 'クラウドに新しいデータがあります'
+                : '自動同期失敗',
             error: result.error,
           });
           if (result.code === 'conflict') shouldCheckRemoteAfterUpload = true;
@@ -232,8 +239,11 @@ export function AutoSyncController({ protectedWorkReason }: AutoSyncControllerPr
         const latestSettings = getAutoSyncSettings();
         if (!latestSettings.enabled || latestSettings.syncId !== settings.syncId) return;
         if (!meta.ok) {
-          console.warn('Auto sync remote check failed.', meta.error);
-          setLastSyncState({ status: 'クラウド確認失敗', error: meta.error });
+          if (meta.code !== 'authentication_required') console.warn('Auto sync remote check failed.', meta.error);
+          setLastSyncState({
+            status: meta.code === 'authentication_required' ? '自動同期: ログインが必要です' : 'クラウド確認失敗',
+            error: meta.error,
+          });
           return;
         }
         if (!meta.value) {

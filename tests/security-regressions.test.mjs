@@ -8,12 +8,14 @@ const [
   cloudServiceSource,
   communityScreenSource,
   syncServiceSource,
+  syncSecuritySql,
 ] = await Promise.all([
   readFile(new URL('../supabase/migrations/20260806_create_collaboration_mvp.sql', import.meta.url), 'utf8'),
   readFile(new URL('../supabase/migrations/20260814163631_secure_collaboration_rpc_only.sql', import.meta.url), 'utf8'),
   readFile(new URL('../src/utils/cloudService.ts', import.meta.url), 'utf8'),
   readFile(new URL('../src/screens/CommunityScreen.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/utils/syncService.ts', import.meta.url), 'utf8'),
+  readFile(new URL('../supabase/migrations/20260814193646_harden_sync_and_add_pairing_codes.sql', import.meta.url), 'utf8'),
 ]);
 
 function sourceBetween(source, start, end) {
@@ -209,4 +211,34 @@ test('sync network access is timeout-bound and never falls back to direct table 
   assert.match(syncServiceSource, /if\s*\(!response\.ok\s*&&\s*await\s+isMissingSyncRpc\(response\)\)/);
   assert.match(syncServiceSource, /if\s*\(!cryptoApi\?\.getRandomValues\)\s*\{[\s\S]*?throw new Error/);
   assert.doesNotMatch(syncServiceSource, /Math\.random\(\)/);
+});
+
+test('sync RPCs require a permanent account and keep rows account-owned', () => {
+  assert.match(syncSecuritySql, /authenticated_user\s+uuid\s*:=\s*auth\.uid\(\)/i);
+  assert.match(syncSecuritySql, /claims\s*->>\s*'is_anonymous'/i);
+  assert.match(syncSecuritySql, /quiz_sync_authentication_required/i);
+
+  for (const signature of [
+    'quiz_sync_read\\(text\\)',
+    'quiz_sync_meta\\(text\\)',
+    'quiz_sync_probe\\(text\\)',
+    'quiz_sync_upsert_v2\\(text,\\s*jsonb,\\s*timestamptz,\\s*timestamptz,\\s*boolean\\)',
+    'quiz_sync_delete_v2\\(text,\\s*timestamptz,\\s*boolean\\)',
+    'quiz_sync_create_pairing_code\\(text\\)',
+    'quiz_sync_redeem_pairing_code\\(text\\)',
+    'quiz_sync_upgrade_legacy_id\\(text,\\s*timestamptz,\\s*text\\)',
+  ]) {
+    assert.match(
+      syncSecuritySql,
+      new RegExp(`grant\\s+execute\\s+on\\s+function\\s+public\\.${signature}\\s+to\\s+authenticated\\s*;`, 'i'),
+    );
+    assert.doesNotMatch(
+      syncSecuritySql,
+      new RegExp(`grant\\s+execute\\s+on\\s+function\\s+public\\.${signature}\\s+to\\s+[^;]*\\banon\\b`, 'i'),
+    );
+  }
+
+  assert.match(syncSecuritySql, /existing_creator\s+is\s+not\s+null\s+and\s+existing_creator\s+is\s+distinct\s+from\s+actor/i);
+  assert.match(syncSecuritySql, /row_data\.creator_hash\s*=\s*actor/i);
+  assert.match(syncSecuritySql, /update\s+private\.quiz_sync_legacy_migrations\s+as\s+migration\s+set\s+creator_hash\s*=\s*quota_actor/i);
 });
