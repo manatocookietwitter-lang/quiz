@@ -15,7 +15,7 @@ const [
   readFile(new URL('../src/utils/cloudService.ts', import.meta.url), 'utf8'),
   readFile(new URL('../src/screens/CommunityScreen.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/utils/syncService.ts', import.meta.url), 'utf8'),
-  readFile(new URL('../supabase/migrations/20260814193646_harden_sync_and_add_pairing_codes.sql', import.meta.url), 'utf8'),
+  readFile(new URL('../supabase/migrations/20260823172155_harden_account_owned_sync_and_add_pairing_codes.sql', import.meta.url), 'utf8'),
 ]);
 
 function sourceBetween(source, start, end) {

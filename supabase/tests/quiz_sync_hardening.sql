@@ -1,4 +1,4 @@
--- Integration checks for 20260814193646_harden_sync_and_add_pairing_codes.sql.
+-- Integration checks for 20260823172155_harden_account_owned_sync_and_add_pairing_codes.sql.
 -- Run after the migration has been loaded. Every mutation is rolled back.
 
 begin;
