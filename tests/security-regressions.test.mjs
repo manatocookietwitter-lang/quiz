@@ -9,6 +9,7 @@ const [
   communityScreenSource,
   syncServiceSource,
   syncSecuritySql,
+  accountOwnedSyncDeletionSql,
 ] = await Promise.all([
   readFile(new URL('../supabase/migrations/20260806_create_collaboration_mvp.sql', import.meta.url), 'utf8'),
   readFile(new URL('../supabase/migrations/20260814163631_secure_collaboration_rpc_only.sql', import.meta.url), 'utf8'),
@@ -16,6 +17,7 @@ const [
   readFile(new URL('../src/screens/CommunityScreen.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/utils/syncService.ts', import.meta.url), 'utf8'),
   readFile(new URL('../supabase/migrations/20260823172155_harden_account_owned_sync_and_add_pairing_codes.sql', import.meta.url), 'utf8'),
+  readFile(new URL('../supabase/migrations/20260823180238_delete_account_owned_sync_data.sql', import.meta.url), 'utf8'),
 ]);
 
 function sourceBetween(source, start, end) {
@@ -241,4 +243,16 @@ test('sync RPCs require a permanent account and keep rows account-owned', () => 
   assert.match(syncSecuritySql, /existing_creator\s+is\s+not\s+null\s+and\s+existing_creator\s+is\s+distinct\s+from\s+actor/i);
   assert.match(syncSecuritySql, /row_data\.creator_hash\s*=\s*actor/i);
   assert.match(syncSecuritySql, /update\s+private\.quiz_sync_legacy_migrations\s+as\s+migration\s+set\s+creator_hash\s*=\s*quota_actor/i);
+});
+
+test('account deletion removes owned sync data and rejects deleted-user tokens', () => {
+  assert.match(accountOwnedSyncDeletionSql, /pg_advisory_xact_lock_shared[\s\S]*?quiz-sync-account:/i);
+  assert.match(accountOwnedSyncDeletionSql, /from\s+auth\.users[\s\S]*?account\.id\s*=\s*authenticated_user/i);
+  assert.match(accountOwnedSyncDeletionSql, /pg_advisory_xact_lock[\s\S]*?quiz-sync-account:/i);
+  assert.match(accountOwnedSyncDeletionSql, /delete\s+from\s+private\.quiz_sync_tombstones/i);
+  assert.match(accountOwnedSyncDeletionSql, /delete\s+from\s+public\.quiz_sync_data[\s\S]*?creator_hash\s*=\s*current_creator_hash/i);
+  assert.match(accountOwnedSyncDeletionSql, /delete\s+from\s+private\.quiz_sync_rate_limits[\s\S]*?actor_hash\s*=\s*current_creator_hash/i);
+  assert.match(accountOwnedSyncDeletionSql, /delete\s+from\s+auth\.users[\s\S]*?account\.id\s*=\s*current_user_id/i);
+  assert.match(accountOwnedSyncDeletionSql, /revoke\s+all\s+on\s+function\s+public\.delete_quiz_account\(\)\s+from\s+public,\s*anon/i);
+  assert.match(accountOwnedSyncDeletionSql, /grant\s+execute\s+on\s+function\s+public\.delete_quiz_account\(\)\s+to\s+authenticated/i);
 });

@@ -17,6 +17,8 @@ VITE_SUPABASE_ANON_KEY=PUBLIC_ANON_KEY
 
 ## Android / Google Play
 
+提出環境にはJDK 17とAndroid SDK 36が必要です（現在のAndroid Gradle Plugin 8.13構成）。
+
 1. Android Studioで `android` フォルダを開く
 2. 実機またはエミュレーターでデバッグ版を確認
 3. **Build > Generate Signed Bundle / APK > Android App Bundle** を選ぶ
@@ -25,6 +27,8 @@ VITE_SUPABASE_ANON_KEY=PUBLIC_ANON_KEY
 6. `store/privacy-declarations.md` を基にData safetyを入力して実機確認後に本番提出
 
 ## iOS / App Store
+
+2026年8月時点の提出には、Xcode 26以降とiOS 26 SDK以降が必要です。
 
 1. Macへリポジトリを取得し、共通準備を実行
 2. `npm run mobile:ios` でXcodeを開く

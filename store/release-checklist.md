@@ -6,7 +6,7 @@
 - Bundle ID / Application ID: `io.github.manatocookietwitterlang.quizmake`
 - バージョン: `1.0` / build `1`
 - Android target SDK 36、min SDK 24
-- iOS deployment target 15.0
+- iOS deployment target 15.4
 - iOS / Androidアイコン・スプラッシュ
 - iOS Privacy Manifest（Filesystem: `C617.1`）
 - ネイティブのバックアップ保存・共有
@@ -17,12 +17,14 @@
 - 審査用サンプル問題
 - ストア説明文・プライバシー申告案・審査メモ
 - スマートフォン掲載用スクリーンショット（1290 x 2796）
+- Supabase本番マイグレーション適用済み
+- Web版とネイティブ版のAuth Redirect URL登録済み
 
 ## 現在の公開ブロッカー
 
-- Supabaseプロジェクト `xqknwsjbvczyexfxlgar` が一時停止中。管理者がダッシュボードで再開したあと、`npx supabase link --project-ref xqknwsjbvczyexfxlgar` と `npx supabase db push` を実行して、クラウド削除RPCを反映する
 - App Store Connect / Play Consoleの開発者登録、本人確認、契約・支払い情報
-- iOSはMacとXcodeで署名・Archive、AndroidはAndroid Studio/JDK/SDKで署名付きAABを生成する
+- iOSはMac・Xcode 26以降・iOS 26 SDK以降で署名とArchive、AndroidはAndroid Studio・JDK 17・Android SDK 36で署名付きAABを生成する
+- Magic Linkを本番利用する前に、独自SMTPを設定して実メール送受信を確認する
 
 ## 本人による外部手続き
 
@@ -50,6 +52,6 @@
 
 - ストア上の開発者名とプライバシーポリシーの運営者表記が一致していること
 - GitHub Issuesを正式な問い合わせ窓口として使うか、専用メールアドレスへ置換すること
-- Supabaseの最新マイグレーションが本番へ適用済みであること
+- Supabaseの最新マイグレーションとAuth Redirect URLが本番へ適用済みであること
 - 各ストアが要求する最新OS・SDK・Xcode要件
 - スクリーンショットが提出するビルドの画面と一致していること

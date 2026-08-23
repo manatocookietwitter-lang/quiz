@@ -77,7 +77,8 @@ test('store review can exercise the app without an external account', () => {
   assert.match(sample, /detailedExplanation/);
   assert.match(sample, /\| --- \| --- \| --- \|/);
   assert.match(sample, /英語サンプル/);
-  assert.match(notes, /アカウント登録やログインを必要としません/);
+  assert.match(notes, /問題作成・学習・端末内バックアップは、アカウント登録やログインなしで利用できます/);
+  assert.match(notes, /クラウド同期と共有は任意機能で、利用時のみメールアドレスのMagic Linkでログインします/);
 });
 
 test('root render failures show recovery actions instead of a blank screen', () => {

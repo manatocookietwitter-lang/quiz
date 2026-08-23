@@ -122,7 +122,7 @@ export function SettingsScreen({ onExport, onImportBackup, onClearAll, onOpenSyn
       await deleteCloudAccount();
       setSession(null);
       setDeleteAccountConfirmOpen(false);
-      setAccountMessage('共有アカウントを削除しました。端末内の問題と学習履歴は残っています。');
+      setAccountMessage('ログインアカウントと関連するクラウドデータを削除しました。端末内の問題と学習履歴は残っています。');
     } catch (reason) {
       setAccountError(getErrorMessage(reason));
     } finally {
@@ -158,7 +158,7 @@ export function SettingsScreen({ onExport, onImportBackup, onClearAll, onOpenSyn
           <section className="settings-section" aria-labelledby="settings-account-title">
             <div className="settings-section__heading">
               <h2 id="settings-account-title">アカウント</h2>
-              <p>問題セットの共有に使うアカウントです。端末内の学習だけならログインは不要です。</p>
+              <p>問題セットの共有と端末間同期に使うアカウントです。端末内の学習だけならログインは不要です。</p>
             </div>
             <div className="settings-account">
               <span className="settings-account__icon" aria-hidden="true"><GroupIcon /></span>
@@ -175,7 +175,7 @@ export function SettingsScreen({ onExport, onImportBackup, onClearAll, onOpenSyn
                     <button type="button" className="settings-account__primary" disabled={accountBusy || !displayName.trim()} onClick={() => void saveDisplayName()}>表示名を保存</button>
                     <button type="button" disabled={accountBusy} onClick={() => void logout()}>ログアウト</button>
                   </div>
-                  <button type="button" className="settings-account__delete" disabled={accountBusy} onClick={() => setDeleteAccountConfirmOpen(true)}>共有アカウントを削除</button>
+                  <button type="button" className="settings-account__delete" disabled={accountBusy} onClick={() => setDeleteAccountConfirmOpen(true)}>ログインアカウントを削除</button>
                 </div>
               ) : (
                 <div className="settings-account__content">
@@ -226,8 +226,8 @@ export function SettingsScreen({ onExport, onImportBackup, onClearAll, onOpenSyn
         />
         <ConfirmDialog
           open={deleteAccountConfirmOpen}
-          title="共有アカウントを削除しますか？"
-          message="公開した問題セット、グループなどクラウド上のアカウントデータを削除します。端末内の問題セット、回答履歴、復習状態は削除されません。"
+          title="ログインアカウントを削除しますか？"
+          message="公開した問題セット、グループ、端末間同期データなど、このアカウントに関連するクラウドデータを削除します。端末内の問題セット、回答履歴、復習状態は削除されません。"
           confirmLabel={accountBusy ? '削除中…' : 'アカウントを削除'}
           busy={accountBusy}
           onCancel={() => setDeleteAccountConfirmOpen(false)}

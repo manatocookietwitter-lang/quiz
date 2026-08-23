@@ -6,7 +6,8 @@
 - カテゴリ: 教育
 - 価格: 無料
 - 広告: なし
-- アカウント登録: なし
+- アカウント登録: 任意（問題作成・学習は不要。同期・共有のみメールログイン）
+- アカウント削除案内URL: `https://manatocookietwitter-lang.github.io/quiz/support.html#account-deletion`
 - プライバシーポリシー: `https://manatocookietwitter-lang.github.io/quiz/privacy.html`
 - サポートURL: `https://manatocookietwitter-lang.github.io/quiz/support.html`
 - マーケティングURL: `https://manatocookietwitter-lang.github.io/quiz/`
@@ -38,6 +39,6 @@ QuizMakeは、自分で用意した問題をフォルダと問題セットに整
 - Markdown表を含む解説表示
 - JSONバックアップと復元
 - 任意の端末間同期
-- 広告・アカウント登録なし
+- 広告なし・主要な学習機能はアカウント登録不要
 
-データは基本的に端末内へ保存されます。クラウド同期は利用者が有効にした場合だけ使用されます。
+データは基本的に端末内へ保存されます。クラウド同期と共有は任意で、利用時だけメールアドレスによるログインを使用します。
