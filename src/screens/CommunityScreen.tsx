@@ -220,7 +220,13 @@ export function CommunityScreen({
     setBusy(true);
     setError('');
     try {
-      await sendMagicLink(email);
+      const returnSetId = directSet?.id || shareLocalSetId || initialSetId;
+      await sendMagicLink(email, {
+        name: 'community',
+        tab,
+        ...(returnSetId ? { shareSetId: returnSetId } : {}),
+        ...(shareToken ? { shareToken } : {}),
+      });
       setAuthMessage('ログイン用リンクをメールへ送りました。この画面に戻るとログインが完了します。');
     } catch (reason) {
       setError(getErrorMessage(reason));

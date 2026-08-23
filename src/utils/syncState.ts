@@ -34,20 +34,33 @@ export function hasPersistedSyncHistory(
   storage: Pick<Storage, 'getItem'> = localStorage,
 ): boolean {
   try {
-    if (hasMeaningfulSyncValue(storage.getItem(LAST_UPLOAD_HASH_KEY))) return true;
-    if (isValidSyncTimestamp(storage.getItem(LAST_SYNC_AT_KEY))) return true;
-    if (isValidSyncTimestamp(storage.getItem(LAST_REMOTE_UPDATED_AT_KEY))) return true;
+    // Any non-empty authoritative value is evidence of prior sync activity.
+    // A malformed timestamp/hash is not safe evidence of "no history": treating
+    // it as history prevents an unverified empty local snapshot from replacing
+    // cloud data after storage corruption.
+    if (hasStoredValue(storage.getItem(LAST_UPLOAD_HASH_KEY))) return true;
+    if (hasStoredValue(storage.getItem(LAST_SYNC_AT_KEY))) return true;
+    if (hasStoredValue(storage.getItem(LAST_REMOTE_UPDATED_AT_KEY))) return true;
 
     const rawRecord = storage.getItem(LAST_SYNC_RECORD_KEY);
-    if (!rawRecord) return false;
+    if (rawRecord === null || rawRecord.length === 0) return false;
     const parsed = JSON.parse(rawRecord) as unknown;
-    if (typeof parsed !== 'object' || parsed === null) return false;
+    if (typeof parsed !== 'object' || parsed === null) return true;
+    if (typeof (parsed as { owner?: unknown }).owner !== 'string') return true;
     const state = (parsed as { state?: unknown }).state;
-    if (typeof state !== 'object' || state === null) return false;
+    if (typeof state !== 'object' || state === null) return true;
     const values = state as Record<string, unknown>;
-    return hasMeaningfulSyncValue(values.lastUploadHash)
-      || isValidSyncTimestamp(values.lastSyncAt)
-      || isValidSyncTimestamp(values.lastRemoteUpdatedAt);
+    if (
+      typeof values.lastUploadHash !== 'string'
+      || typeof values.lastSyncAt !== 'string'
+      || typeof values.lastRemoteUpdatedAt !== 'string'
+      || typeof values.status !== 'string'
+      || typeof values.error !== 'string'
+    ) return true;
+
+    return hasStoredValue(values.lastUploadHash)
+      || hasStoredValue(values.lastSyncAt)
+      || hasStoredValue(values.lastRemoteUpdatedAt);
   } catch {
     // If the history cannot be inspected, fail closed rather than allowing an
     // unverified empty database to replace an existing cloud copy.
@@ -55,12 +68,6 @@ export function hasPersistedSyncHistory(
   }
 }
 
-function hasMeaningfulSyncValue(value: unknown): boolean {
-  return typeof value === 'string' && value.trim().length > 0;
-}
-
-function isValidSyncTimestamp(value: unknown): boolean {
-  return typeof value === 'string'
-    && value.trim().length > 0
-    && Number.isFinite(Date.parse(value));
+function hasStoredValue(value: unknown): boolean {
+  return typeof value === 'string' && value.length > 0;
 }

@@ -48,7 +48,10 @@ export function loadAppData(): AppData {
   }
 }
 
-export async function loadAppDataAsync(): Promise<AppData> {
+export async function loadAppDataAsync(
+  options: { coordinationLockHeld?: boolean } = {},
+): Promise<AppData> {
+  if (options.coordinationLockHeld) return loadAppDataUnlocked();
   await waitForPendingAppDataSaves();
   return loadLatestCoordinatedData(['app'], loadAppDataUnlocked);
 }
@@ -442,7 +445,13 @@ function markAppDataExpectedBestEffort(savedAt: string): void {
 }
 
 function isAppDataRecoveryRequired(): boolean {
-  return safeLocalStorageGet(APP_DATA_RECOVERY_REQUIRED_KEY) !== null;
+  try {
+    return localStorage.getItem(APP_DATA_RECOVERY_REQUIRED_KEY) !== null;
+  } catch {
+    // If this safety marker cannot be inspected, do not assume that the
+    // current app snapshot is authoritative enough to overwrite a backup.
+    return true;
+  }
 }
 
 function markAppDataRecoveryRequiredBestEffort(reason: 'missing-primary' | 'backup-only'): void {

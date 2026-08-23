@@ -126,7 +126,10 @@ export async function waitForPendingCategoryNoteSaves(): Promise<void> {
   await noteSaveQueue;
 }
 
-export async function deleteCategoryNotesForProblemSetIds(problemSetIds: Iterable<string>): Promise<number> {
+export async function deleteCategoryNotesForProblemSetIds(
+  problemSetIds: Iterable<string>,
+  options: { coordinationLockHeld?: boolean } = {},
+): Promise<number> {
   const ids = new Set(Array.from(problemSetIds).filter((id) => typeof id === 'string' && id.length > 0));
   if (ids.size === 0) return 0;
   return enqueueCategoryNoteOperation(async () => {
@@ -134,17 +137,19 @@ export async function deleteCategoryNotesForProblemSetIds(problemSetIds: Iterabl
     const deleted = await deleteCategoryNotesWhere(predicate);
     await recordCategoryNoteDeletionBestEffort(predicate);
     return deleted;
-  });
+  }, options);
 }
 
-export async function deleteAllCategoryNotes(): Promise<number> {
+export async function deleteAllCategoryNotes(
+  options: { coordinationLockHeld?: boolean } = {},
+): Promise<number> {
   return enqueueCategoryNoteOperation(async () => {
     const deleted = await deleteCategoryNotesWhere(isCategoryNoteKey);
     if (writeCategoryNotesManifestBestEffort([])) {
       safeLocalStorageRemove(CATEGORY_NOTES_RECOVERY_REQUIRED_KEY);
     }
     return deleted;
-  });
+  }, options);
 }
 
 function enqueueCategoryNoteOperation<T>(

@@ -8,6 +8,18 @@ import {
   shouldSnapshotNoteOnExit,
   waitForNoteSave,
 } from '../src/components/noteExitGuard.ts';
+import {
+  appendByteBudgetHistory,
+  ByteBudgetLruCache,
+  createByteBudgetHistory,
+  estimateDataUrlMemoryBytes,
+  estimateRgbaPixelBytes,
+  getCanvasBackingStoreSize,
+  NOTE_CANVAS_PIXEL_BUDGET_BYTES,
+  NOTE_DECODED_IMAGE_CACHE_BUDGET_BYTES,
+  NOTE_UNDO_HISTORY_BUDGET_BYTES,
+  popByteBudgetHistory,
+} from '../src/components/noteMemory.ts';
 
 const readSource = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 const noteListSource = readSource('../src/screens/NoteListScreen.tsx');
@@ -124,4 +136,59 @@ test('a timeout keeps the transition blocked and a later retry can succeed', asy
   );
   assert.equal(retried, true);
   assert.equal(proceeded, 1);
+});
+
+test('decoded note images use a strict pixel-byte LRU budget across giant pages', () => {
+  const cache = new ByteBudgetLruCache(NOTE_DECODED_IMAGE_CACHE_BUDGET_BYTES);
+  const giantBackingStore = getCanvasBackingStoreSize(4096, 5793, 4);
+  assert.ok(giantBackingStore.pixelBytes <= NOTE_CANVAS_PIXEL_BUDGET_BYTES);
+
+  for (let page = 0; page < 12; page += 1) {
+    assert.equal(cache.set(`page-${page}`, { page }, giantBackingStore.pixelBytes), true);
+    assert.ok(cache.byteSize <= NOTE_DECODED_IMAGE_CACHE_BUDGET_BYTES);
+    assert.ok(cache.size <= 1, 'only one full-budget decoded page may remain resident');
+  }
+
+  const giantPageBytes = estimateRgbaPixelBytes(4096, 4096);
+  assert.equal(cache.set('oversized-page', {}, giantPageBytes), false);
+  assert.equal(cache.peek('oversized-page'), undefined);
+  assert.ok(cache.byteSize <= NOTE_DECODED_IMAGE_CACHE_BUDGET_BYTES);
+  assert.doesNotMatch(notePanelSource, /NOTE_IMAGE_CACHE_LIMIT|MAX_HISTORY/);
+});
+
+test('high-DPR giant canvases are capped without changing their logical drawing area', () => {
+  const logicalWidth = 4096;
+  const logicalHeight = 5793;
+  const backingStore = getCanvasBackingStoreSize(logicalWidth, logicalHeight, 4);
+
+  assert.ok(backingStore.pixelBytes <= NOTE_CANVAS_PIXEL_BUDGET_BYTES);
+  assert.ok(backingStore.width < logicalWidth * 4);
+  assert.ok(backingStore.height < logicalHeight * 4);
+  assert.equal(backingStore.scaleX, backingStore.width / logicalWidth);
+  assert.equal(backingStore.scaleY, backingStore.height / logicalHeight);
+  assert.match(notePanelSource, /context\.setTransform\(backingStore\.scaleX, 0, 0, backingStore\.scaleY/);
+});
+
+test('undo keeps only the newest snapshots that fit its memory budget', () => {
+  const entryBytes = 10 * 1024 * 1024;
+  let history = createByteBudgetHistory();
+  for (let page = 0; page < 10; page += 1) {
+    history = appendByteBudgetHistory(history, `page-${page}`, entryBytes, NOTE_UNDO_HISTORY_BUDGET_BYTES);
+    assert.ok(history.byteSize <= NOTE_UNDO_HISTORY_BUDGET_BYTES);
+  }
+
+  assert.deepEqual(history.entries.map((entry) => entry.value), ['page-8', 'page-9']);
+  const popped = popByteBudgetHistory(history);
+  assert.equal(popped.value, 'page-9');
+  assert.deepEqual(popped.history.entries.map((entry) => entry.value), ['page-8']);
+
+  const oversized = appendByteBudgetHistory(
+    history,
+    'cannot-fit',
+    NOTE_UNDO_HISTORY_BUDGET_BYTES + 1,
+    NOTE_UNDO_HISTORY_BUDGET_BYTES,
+  );
+  assert.equal(oversized.byteSize, 0);
+  assert.equal(oversized.entries.length, 0, 'Undo must not skip over an unrecorded action');
+  assert.ok(estimateDataUrlMemoryBytes('data:image/png;base64,AAAA') > 'data:image/png;base64,AAAA'.length);
 });

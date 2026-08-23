@@ -13,10 +13,11 @@ import { FolderScreen } from './screens/FolderScreen';
 import { ProblemSetDetailScreen } from './screens/ProblemSetDetailScreen';
 import { ProblemListScreen } from './screens/ProblemListScreen';
 import { ResultScreen } from './screens/ResultScreen';
-import type { CreateProblemSetSubmission } from './screens/CreateProblemSetScreen';
+import type { CreateProblemSetSubmission, LegacyImportTarget } from './screens/CreateProblemSetScreen';
 import { AutoSyncController } from './components/AutoSyncController';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { PrimaryBottomNav, type PrimaryNavItem } from './components/PrimaryBottomNav';
+import { StorageRecoveryPanel } from './components/StorageRecoveryPanel';
 import { createId } from './utils/id';
 import { formatBackupDate, nowIso } from './utils/date';
 import {
@@ -37,12 +38,18 @@ import {
 } from './utils/quiz';
 import { validateImportJson } from './utils/importValidator';
 import { getDraftAnswerIndexes } from './utils/bulkQuestionParser';
-import { exportQuizMakeRecoveryData, importQuizMakeData, summarizeSyncPayload, validateSyncPayload, type SyncPayload, type SyncPayloadSummary } from './utils/syncService';
-import { deleteAllCategoryNotes, deleteCategoryNotesForProblemSetIds, waitForPendingCategoryNoteSaves } from './utils/noteStorage';
+import { exportQuizMakeRecoveryData, getAutoSyncSettings, importQuizMakeData, setAutoSyncEnabled, summarizeSyncPayload, validateSyncPayload, type SyncPayload, type SyncPayloadSummary } from './utils/syncService';
+import { waitForPendingCategoryNoteSaves } from './utils/noteStorage';
+import { persistLibraryDeletion, type LibraryDeletionResult } from './utils/libraryDeletion';
 import { saveJsonBackup } from './utils/nativePlatform';
 import { createSampleAppData } from './utils/sampleData';
 import { setActiveProtectedWorkReason, type ProtectedWorkReason } from './utils/protectedWork';
-import type { CloudProblemSet, CloudPublishResult } from './utils/cloudService';
+import {
+  initializeCloudNativeAuth,
+  onNativeAuthResult,
+  type CloudProblemSet,
+  type CloudPublishResult,
+} from './utils/cloudService';
 const CommunityScreen = lazy(() => import('./screens/CommunityScreen').then((module) => ({ default: module.CommunityScreen })));
 const CreateProblemSetScreen = lazy(() => import('./screens/CreateProblemSetScreen').then((module) => ({ default: module.CreateProblemSetScreen })));
 const QuizScreen = lazy(() => import('./screens/QuizScreen').then((module) => ({ default: module.QuizScreen })));
@@ -71,6 +78,10 @@ export default function App() {
   const [pendingBackupImport, setPendingBackupImport] = useState<PendingBackupImport | null>(null);
   const [backupImportBusy, setBackupImportBusy] = useState(false);
   const [backupImportError, setBackupImportError] = useState('');
+  const [backupExportNotice, setBackupExportNotice] = useState('');
+  const [authNotice, setAuthNotice] = useState('');
+  const [storageRecoverySyncOpen, setStorageRecoverySyncOpen] = useState(false);
+  const [libraryMutationBusy, setLibraryMutationBusy] = useState(false);
   const [storageError, setStorageError] = useState('');
   const navigationStackRef = useRef<AppScreen[]>([{ name: 'home' }]);
   const browserDepthRef = useRef(0);
@@ -82,6 +93,7 @@ export default function App() {
   const createDraftDirtyRef = useRef(false);
   const screenRef = useRef<AppScreen>({ name: 'home' });
   const dataRevisionRef = useRef(0);
+  const libraryMutationBusyRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -126,6 +138,7 @@ export default function App() {
     screen,
     createDraftDirty,
     pendingBackupImport !== null || backupImportBusy,
+    libraryMutationBusy,
   );
 
   useEffect(() => {
@@ -171,6 +184,10 @@ export default function App() {
   }, []);
 
   const commitData = async (nextData: AppData): Promise<boolean> => {
+    if (libraryMutationBusyRef.current) {
+      setStorageError('削除処理が完了するまでお待ちください。');
+      return false;
+    }
     const revision = dataRevisionRef.current + 1;
     dataRevisionRef.current = revision;
     dataRef.current = nextData;
@@ -190,6 +207,10 @@ export default function App() {
   };
 
   const persistThenCommitData = async (nextData: AppData): Promise<boolean> => {
+    if (libraryMutationBusyRef.current) {
+      setStorageError('削除処理が完了するまでお待ちください。');
+      return false;
+    }
     const revision = dataRevisionRef.current + 1;
     dataRevisionRef.current = revision;
     // Reserve the next snapshot immediately. Any action taken while this durable
@@ -277,6 +298,39 @@ export default function App() {
     setScreen(next);
   };
 
+  useEffect(() => {
+    let cancelled = false;
+    let stopNativeListener: (() => Promise<void>) | null = null;
+    const unsubscribeResult = onNativeAuthResult((event) => {
+      if (cancelled) return;
+      if (event.type === 'error') {
+        setStorageError(event.message);
+        return;
+      }
+
+      setAuthNotice(event.message);
+      setStorageError('');
+      const target: AppScreen = event.returnTarget ?? { name: 'settings' };
+      if (getProtectedExitReason(screenRef.current, createDraftDirtyRef.current)) return;
+      replaceScreen(target);
+    });
+
+    void initializeCloudNativeAuth()
+      .then((stop) => {
+        if (cancelled) void stop();
+        else stopNativeListener = stop;
+      })
+      .catch(() => {
+        if (!cancelled) setStorageError('ログインリンクを受け取る準備ができませんでした。アプリを開き直して、もう一度お試しください。');
+      });
+
+    return () => {
+      cancelled = true;
+      unsubscribeResult();
+      if (stopNativeListener) void stopNativeListener();
+    };
+  }, []);
+
   const cancelProtectedExit = () => {
     pendingExitTargetRef.current = null;
     pendingExitModeRef.current = 'back';
@@ -354,37 +408,76 @@ export default function App() {
   };
 
   const handleDeleteFolder = async (folderId: string) => {
-    const previousData = dataRef.current;
-    const setIds = previousData.problemSets.filter((set) => set.folderId === folderId).map((set) => set.id);
-    const saved = await persistThenCommitData(deleteFolder(previousData, folderId));
-    if (!saved) return;
+    if (libraryMutationBusyRef.current) return;
+    libraryMutationBusyRef.current = true;
+    setLibraryMutationBusy(true);
     try {
-      await deleteCategoryNotesForProblemSetIds(setIds);
-    } catch {
-      const restored = await persistThenCommitData(previousData);
-      setStorageError(restored
-        ? 'ノートを削除できなかったため、フォルダの削除を取り消しました。もう一度お試しください。'
-        : 'ノートの削除とフォルダの復元に失敗しました。バックアップを書き出してから再読み込みしてください。');
-      return;
+      const result = await persistLibraryDeletion({
+        buildPlan: (currentData) => ({
+          nextData: deleteFolder(currentData, folderId),
+          problemSetIds: currentData.problemSets
+            .filter((set) => set.folderId === folderId)
+            .map((set) => set.id),
+        }),
+      });
+      if (!applyLibraryDeletionResult(result, 'フォルダ')) return;
+      goBackTo({ name: 'home' });
+    } finally {
+      libraryMutationBusyRef.current = false;
+      setLibraryMutationBusy(false);
     }
-    goBackTo({ name: 'home' });
   };
 
   const handleDeleteProblemSet = async (setId: string) => {
-    const previousData = dataRef.current;
-    const saved = await persistThenCommitData(deleteProblemSet(previousData, setId));
-    if (!saved) return;
+    if (libraryMutationBusyRef.current) return;
+    libraryMutationBusyRef.current = true;
+    setLibraryMutationBusy(true);
     try {
-      await deleteCategoryNotesForProblemSetIds([setId]);
-    } catch {
-      const restored = await persistThenCommitData(previousData);
-      setStorageError(restored
-        ? 'ノートを削除できなかったため、問題セットの削除を取り消しました。もう一度お試しください。'
-        : 'ノートの削除と問題セットの復元に失敗しました。バックアップを書き出してから再読み込みしてください。');
+      const result = await persistLibraryDeletion({
+        buildPlan: (currentData) => ({
+          nextData: deleteProblemSet(currentData, setId),
+          problemSetIds: [setId],
+        }),
+      });
+      applyLibraryDeletionResult(result, '問題セット');
+    } finally {
+      libraryMutationBusyRef.current = false;
+      setLibraryMutationBusy(false);
     }
   };
 
-  const handleImportProblemSet = async (folderId: string, titleOverride: string, jsonText: string, stayOnScreen = false): Promise<string | null> => {
+  const applyLibraryDeletionResult = (
+    result: LibraryDeletionResult,
+    targetLabel: 'フォルダ' | '問題セット' | '全データ',
+  ): boolean => {
+    if (!result.ok) {
+      if (result.reason === 'notes-delete-failed') {
+        setStorageError(`ノートを削除できなかったため、${targetLabel}の削除を取り消しました。もう一度お試しください。`);
+      } else if (result.reason === 'rollback-failed') {
+        setStorageError(`ノートの削除と${targetLabel}の復元に失敗しました。復旧用バックアップを書き出してから再読み込みしてください。`);
+      } else if (result.reason === 'coordination-failed') {
+        setStorageError('別のタブでデータが変更されたため、削除を中止しました。再読み込みしてからもう一度お試しください。');
+      } else {
+        setStorageError('端末へ保存できなかったため、削除を中止しました。空き容量や保存設定を確認してください。');
+      }
+      return false;
+    }
+
+    dataRevisionRef.current += 1;
+    dataRef.current = result.data;
+    durableDataRef.current = result.data;
+    setData(result.data);
+    setStorageError('');
+    return true;
+  };
+
+  const handleImportProblemSet = async (
+    folderId: string,
+    newFolderName: string,
+    titleOverride: string,
+    jsonText: string,
+    stayOnScreen = false,
+  ): Promise<string | null> => {
     const validation = validateImportJson(jsonText);
     if (!validation.ok) {
       return validation.errors.join('\n');
@@ -415,6 +508,14 @@ export default function App() {
     }));
 
     const current = dataRef.current;
+    const existingFolder = current.folders.find((folder) => folder.id === folderId);
+    const requestedFolderName = newFolderName.trim();
+    if (!existingFolder && !requestedFolderName) {
+      return '保存先フォルダが見つかりません。作成画面へ戻って保存先を選び直してください。';
+    }
+    const nextFolders = existingFolder
+      ? current.folders
+      : [{ id: folderId, name: requestedFolderName, createdAt: timestamp, updatedAt: timestamp }, ...current.folders];
     const problemSet: ProblemSet = {
       id: setId,
       folderId,
@@ -425,6 +526,7 @@ export default function App() {
     };
     const saved = await persistThenCommitData({
       ...current,
+      folders: nextFolders,
       problemSets: [problemSet, ...current.problemSets],
       questions: [...questions, ...current.questions],
       progress: [...current.progress, ...questions.map((question) => ({
@@ -806,19 +908,15 @@ export default function App() {
     if (!saved) throw new Error('共有停止の状態を端末に保存できませんでした。');
   };
 
-  const handleOpenLegacyImport = async (requestedFolderId: string) => {
-    let folderId = requestedFolderId;
-    if (!folderId) {
-      const timestamp = nowIso();
-      folderId = createId('folder');
-      const current = dataRef.current;
-      const saved = await persistThenCommitData({
-        ...current,
-        folders: [{ id: folderId, name: 'マイ問題セット', createdAt: timestamp, updatedAt: timestamp }, ...current.folders],
-      });
-      if (!saved) return;
-    }
-    navigate({ name: 'import', folderId, backScreen: screenRef.current });
+  const handleOpenLegacyImport = (target: LegacyImportTarget) => {
+    const existingFolder = dataRef.current.folders.some((folder) => folder.id === target.folderId);
+    const folderId = existingFolder ? target.folderId : createId('folder');
+    navigate({
+      name: 'import',
+      folderId,
+      ...(existingFolder ? {} : { newFolderName: target.newFolderName.trim() || 'マイ問題セット' }),
+      backScreen: screenRef.current,
+    });
   };
 
   const handleToggleAmbiguous = async (questionId: string) => {
@@ -836,29 +934,54 @@ export default function App() {
   };
 
   const handleClearAll = async (): Promise<boolean> => {
-    const previousData = dataRef.current;
-    const saved = await persistThenCommitData(createEmptyAppData());
-    if (!saved) return false;
+    if (libraryMutationBusyRef.current) return false;
+    libraryMutationBusyRef.current = true;
+    setLibraryMutationBusy(true);
     try {
-      await deleteAllCategoryNotes();
-    } catch {
-      const restored = await persistThenCommitData(previousData);
-      setStorageError(restored
-        ? 'ノートを削除できなかったため、全データ削除を取り消しました。もう一度お試しください。'
-        : 'ノートの削除と学習データの復元に失敗しました。バックアップを書き出してから再読み込みしてください。');
-      return false;
+      const autoSyncWasEnabled = getAutoSyncSettings().enabled;
+      const autoDisableResult = setAutoSyncEnabled(false);
+      if (!autoDisableResult.ok) {
+        setStorageError(`自動同期を停止できないため、全データ削除を中止しました。${autoDisableResult.error}`);
+        return false;
+      }
+      const result = await persistLibraryDeletion({
+        buildPlan: (currentData) => ({
+          nextData: createEmptyAppData(),
+          problemSetIds: currentData.problemSets.map((set) => set.id),
+        }),
+        deleteAllNotes: true,
+      });
+      if (!result.ok) {
+        applyLibraryDeletionResult(result, '全データ');
+        if (autoSyncWasEnabled && result.reason !== 'rollback-failed') {
+          const autoRestoreResult = setAutoSyncEnabled(true);
+          if (!autoRestoreResult.ok) {
+            setStorageError(`データ削除を取り消しましたが、自動同期はOFFのままです。同期設定で再度ONにしてください。${autoRestoreResult.error}`);
+          }
+        } else if (autoSyncWasEnabled) {
+          setStorageError('データを完全には復元できなかったため、自動同期は安全のためOFFのままです。復旧用バックアップを書き出してから再読み込みしてください。');
+        }
+        return false;
+      }
+      applyLibraryDeletionResult(result, '全データ');
+      if (!establishCurrentAppDataAuthority()) {
+        setStorageError('データは削除しましたが、端末の復旧状態を更新できませんでした。再読み込みしてからもう一度お試しください。');
+      }
+      replaceScreen({ name: 'home' });
+      return true;
+    } finally {
+      libraryMutationBusyRef.current = false;
+      setLibraryMutationBusy(false);
     }
-    if (!establishCurrentAppDataAuthority()) {
-      setStorageError('データは削除しましたが、端末の復旧状態を更新できませんでした。再読み込みしてからもう一度お試しください。');
-    }
-    replaceScreen({ name: 'home' });
-    return true;
   };
 
   const handleExport = async () => {
     try {
+      setBackupImportError('');
+      setBackupExportNotice('');
       const payload = await exportQuizMakeRecoveryData();
       await saveJsonBackup(`quiz-make-backup-${formatBackupDate()}.json`, JSON.stringify(payload, null, 2));
+      setBackupExportNotice('バックアップを書き出しました。');
     } catch (error) {
       setBackupImportError(error instanceof Error ? `バックアップの作成に失敗しました: ${error.message}` : 'バックアップの作成に失敗しました。');
     }
@@ -949,6 +1072,7 @@ export default function App() {
       }
       setPendingBackupImport(null);
       setBackupImportBusy(false);
+      setStorageLoadError('');
       replaceScreen({ name: 'home' });
       return;
     }
@@ -974,6 +1098,7 @@ export default function App() {
     setData(loaded);
     setPendingBackupImport(null);
     setBackupImportBusy(false);
+    setStorageLoadError('');
     replaceScreen({ name: 'home' });
   };
   const handleStartQuizSession = (session: QuizSession) => {
@@ -1056,16 +1181,38 @@ export default function App() {
   }
 
   if (storageLoadError) {
+    if (storageRecoverySyncOpen) {
+      return (
+        <Suspense fallback={<div className="quiz-app-loading">同期設定を読み込み中...</div>}>
+          <SyncScreen onBack={() => setStorageRecoverySyncOpen(false)} />
+        </Suspense>
+      );
+    }
     return (
-      <div className="quiz-storage-recovery" role="alert">
-        <div className="quiz-storage-recovery__panel">
-          <p className="quiz-storage-recovery__eyebrow">データを保護するため停止しました</p>
-          <h1>保存データを読み込めません</h1>
-          <p>{storageLoadError}</p>
-          <p>空の状態では保存を開始していません。ブラウザやアプリを閉じずに、まず再試行してください。</p>
-          <button type="button" onClick={() => setStorageLoadAttempt((attempt) => attempt + 1)}>読み込みを再試行</button>
-        </div>
-      </div>
+      <>
+        <StorageRecoveryPanel
+          error={storageLoadError}
+          actionError={backupImportError}
+          notice={backupExportNotice}
+          busy={backupImportBusy}
+          onRetry={() => {
+            setStorageRecoverySyncOpen(false);
+            setStorageLoadAttempt((attempt) => attempt + 1);
+          }}
+          onExport={handleExport}
+          onImportFile={handleImportBackup}
+          onOpenSync={() => setStorageRecoverySyncOpen(true)}
+        />
+        <ConfirmDialog
+          open={pendingBackupImport !== null}
+          title="バックアップを読み込みますか？"
+          message={pendingBackupImport ? getBackupImportMessage(pendingBackupImport) : ''}
+          confirmLabel={backupImportBusy ? '読み込み中…' : '読み込む'}
+          busy={backupImportBusy}
+          onCancel={cancelImportBackup}
+          onConfirm={() => void confirmImportBackup()}
+        />
+      </>
     );
   }
 
@@ -1080,7 +1227,7 @@ export default function App() {
           onSave={(submission) => screen.editSetId
             ? handleUpdateProblemSet(screen.editSetId, submission)
             : handleCreateProblemSet(submission)}
-          onOpenLegacyImport={(folderId) => void handleOpenLegacyImport(folderId)}
+          onOpenLegacyImport={handleOpenLegacyImport}
           onDirtyChange={setCreateDraftDirty}
           initialFolderId={screen.folderId}
           editSetId={screen.editSetId}
@@ -1089,6 +1236,9 @@ export default function App() {
       </Suspense>
     );
   } else if (screen.name === 'community') {
+    const communityBackScreen = screen.backScreen && screen.backScreen.name !== 'community'
+      ? screen.backScreen
+      : null;
     content = (
       <Suspense fallback={<div className="quiz-app-loading">共有機能を読み込み中...</div>}>
         <CommunityScreen
@@ -1096,7 +1246,7 @@ export default function App() {
           initialTab={screen.tab}
           initialSetId={screen.shareSetId}
           shareToken={screen.shareToken}
-          onBack={goHome}
+          onBack={communityBackScreen ? () => goBackTo(communityBackScreen) : goHome}
           onCreateProblemSet={() => navigate({ name: 'createProblemSet', backScreen: screen })}
           onOpenLocalSet={(setId) => navigate({ name: 'problemSetDetail', setId })}
           onCopySharedSet={handleCopySharedProblemSet}
@@ -1135,7 +1285,12 @@ export default function App() {
         })}
         onOpenProblemList={() => navigate({ name: 'problemList', setId: screen.setId })}
         onOpenNoteList={() => navigate({ name: 'noteList', setId: screen.setId })}
-        onShare={() => navigate({ name: 'community', tab: 'mine', shareSetId: screen.setId })}
+        onShare={() => navigate({
+          name: 'community',
+          tab: 'mine',
+          shareSetId: screen.setId,
+          backScreen: { name: 'problemSetDetail', setId: screen.setId },
+        })}
         onStartSession={({ questions, mode, initialIndex, title, subtitle, setId }) => handleStartQuizSession({
           title,
           subtitle,
@@ -1179,9 +1334,15 @@ export default function App() {
     const folder = data.folders.find((item) => item.id === screen.folderId);
     content = (
       <ImportScreen
-        folderName={folder?.name ?? 'フォルダ'}
+        folderName={folder?.name ?? screen.newFolderName ?? '新しいフォルダ'}
         onBack={() => goBackTo(screen.backScreen ?? { name: 'folder', folderId: screen.folderId })}
-        onImport={(titleOverride, jsonText, stayOnScreen) => handleImportProblemSet(screen.folderId, titleOverride, jsonText, stayOnScreen)}
+        onImport={(titleOverride, jsonText, stayOnScreen) => handleImportProblemSet(
+          screen.folderId,
+          screen.newFolderName ?? '',
+          titleOverride,
+          jsonText,
+          stayOnScreen,
+        )}
         onImportComplete={() => replaceScreen({ name: 'folder', folderId: screen.folderId })}
       />
     );
@@ -1296,12 +1457,24 @@ export default function App() {
         onCancel={cancelProtectedExit}
         onConfirm={confirmProtectedExit}
       />
-      {(backupImportError || storageError || waitingWorker) ? (
+      {(backupImportError || backupExportNotice || authNotice || storageError || waitingWorker) ? (
         <div className="quiz-toast-stack">
           {backupImportError ? (
             <div className="quiz-update-toast" role="alert">
               <span>{backupImportError}</span>
               <button type="button" onClick={() => setBackupImportError('')}>閉じる</button>
+            </div>
+          ) : null}
+          {backupExportNotice ? (
+            <div className="quiz-update-toast" role="status" aria-live="polite">
+              <span>{backupExportNotice}</span>
+              <button type="button" onClick={() => setBackupExportNotice('')}>閉じる</button>
+            </div>
+          ) : null}
+          {authNotice ? (
+            <div className="quiz-update-toast" role="status" aria-live="polite">
+              <span>{authNotice}</span>
+              <button type="button" onClick={() => setAuthNotice('')}>閉じる</button>
             </div>
           ) : null}
           {storageError ? (
@@ -1353,7 +1526,13 @@ function getProtectedExitReason(screen: AppScreen, createDraftDirty: boolean): '
   return null;
 }
 
-function getSyncProtectedWorkReason(screen: AppScreen, createDraftDirty: boolean, backupImportActive = false) {
+function getSyncProtectedWorkReason(
+  screen: AppScreen,
+  createDraftDirty: boolean,
+  backupImportActive = false,
+  libraryMutationActive = false,
+) {
+  if (libraryMutationActive) return 'library' as const;
   if (backupImportActive) return 'backup' as const;
   if (screen.name === 'import') return 'import' as const;
   if (screen.name === 'noteList') return 'notes' as const;
@@ -1362,6 +1541,7 @@ function getSyncProtectedWorkReason(screen: AppScreen, createDraftDirty: boolean
 }
 
 function getUpdateBlockedMessage(reason: ProtectedWorkReason) {
+  if (reason === 'library') return '新しいバージョンがあります。データの削除が終わってから更新できます。';
   if (reason === 'backup') return '新しいバージョンがあります。バックアップの読み込みを終えてから更新できます。';
   if (reason === 'import') return '新しいバージョンがあります。問題セットの取り込みを終えてから更新できます。';
   if (reason === 'notes') return '新しいバージョンがあります。ノートを閉じてから更新できます。';

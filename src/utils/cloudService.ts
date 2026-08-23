@@ -1,19 +1,38 @@
 import { createClient, type AuthChangeEvent, type Session } from '@supabase/supabase-js';
 import type { AppData, ProblemSetVisibility } from '../types';
+import {
+  beginNativeAuthAttempt,
+  getCloudAuthRedirectUrl,
+  isNativeAuthPlatform,
+  onNativeAuthResult,
+  startNativeAuthListener,
+  type NativeAuthResultEvent,
+  type NativeAuthReturnTarget,
+} from './nativeAuth';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim() ?? '';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim() ?? '';
 
 export const cloudConfigured = Boolean(supabaseUrl && supabaseAnonKey);
+const nativeAuthPlatform = isNativeAuthPlatform();
 export const cloudClient = cloudConfigured
   ? createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
-        detectSessionInUrl: true,
+        detectSessionInUrl: !nativeAuthPlatform,
+        ...(nativeAuthPlatform
+          ? {
+              flowType: 'pkce' as const,
+              experimental: { appendPkceFlowIdToRedirects: true },
+            }
+          : {}),
       },
     })
   : null;
+
+export { onNativeAuthResult };
+export type { NativeAuthResultEvent, NativeAuthReturnTarget };
 
 export interface CloudQuestion {
   question: string;
@@ -78,14 +97,67 @@ export function onCloudAuthStateChange(callback: (event: AuthChangeEvent, sessio
   return () => data.subscription.unsubscribe();
 }
 
-export async function sendMagicLink(email: string): Promise<void> {
+export async function sendMagicLink(email: string, returnTarget?: NativeAuthReturnTarget): Promise<void> {
   const client = requireCloudClient();
-  const redirect = new URL(import.meta.env.BASE_URL, window.location.origin).toString();
+  if (nativeAuthPlatform) beginNativeAuthAttempt(returnTarget);
   const { error } = await client.auth.signInWithOtp({
     email: email.trim(),
-    options: { emailRedirectTo: redirect },
+    options: { emailRedirectTo: getCloudAuthRedirectUrl() },
   });
   if (error) throw new Error(toFriendlyCloudError(error.message));
+}
+
+export async function initializeCloudNativeAuth(): Promise<() => Promise<void>> {
+  if (!cloudClient || !nativeAuthPlatform) return async () => undefined;
+  return startNativeAuthListener(cloudClient);
+}
+
+export type CloudAccessTokenResult =
+  | { ok: true; accessToken: string; userId: string }
+  | {
+      ok: false;
+      reason: 'not-configured' | 'signed-out' | 'validation-failed';
+      message: string;
+    };
+
+export async function getCloudAccessToken(): Promise<CloudAccessTokenResult> {
+  if (!cloudClient) {
+    return { ok: false, reason: 'not-configured', message: 'クラウド接続が設定されていません。' };
+  }
+
+  try {
+    const { data: sessionData, error: sessionError } = await cloudClient.auth.getSession();
+    const session = sessionData.session;
+    if (sessionError) {
+      return {
+        ok: false,
+        reason: 'validation-failed',
+        message: 'ログイン状態を確認できませんでした。通信状態を確認して、もう一度お試しください。',
+      };
+    }
+    if (!session?.access_token || session.user.is_anonymous) {
+      return { ok: false, reason: 'signed-out', message: 'クラウド同期を使うにはログインが必要です。' };
+    }
+
+    // getSession() alone reads client storage. Validate this exact JWT with the
+    // Auth server before another service uses it as a Bearer credential.
+    const { data: userData, error: userError } = await cloudClient.auth.getUser(session.access_token);
+    if (userError || !userData.user || userData.user.is_anonymous || userData.user.id !== session.user.id) {
+      return {
+        ok: false,
+        reason: 'validation-failed',
+        message: 'ログイン状態を確認できませんでした。通信状態を確認して、もう一度ログインしてください。',
+      };
+    }
+
+    return { ok: true, accessToken: session.access_token, userId: userData.user.id };
+  } catch {
+    return {
+      ok: false,
+      reason: 'validation-failed',
+      message: 'ログイン状態を確認できませんでした。通信状態を確認して、もう一度お試しください。',
+    };
+  }
 }
 
 export async function signOutCloud(): Promise<void> {

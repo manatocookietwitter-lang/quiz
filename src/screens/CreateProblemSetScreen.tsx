@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { AppData, Difficulty, ProblemSet, ProblemSetCreationMethod } from '../types';
 import { BackButton } from '../components/BackButton';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -11,6 +12,15 @@ import {
   validateImportJson,
 } from '../utils/importValidator';
 import { writeClipboardText } from '../utils/nativePlatform';
+import {
+  hasUncommittedManualQuestion,
+  inspectPendingManualQuestion,
+  normalizeDraftAnswers,
+  normalizeEditableQuestionDraft,
+  resolvePendingQuestionSave,
+  type PendingManualQuestion,
+  type PendingQuestionSaveDecision,
+} from './createProblemSetSave';
 import './CreateProblemSetScreen.css';
 
 export interface CreateProblemSetSubmission {
@@ -27,10 +37,15 @@ export interface CreateProblemSetSubmission {
   questions: BulkQuestionDraft[];
 }
 
+export interface LegacyImportTarget {
+  folderId: string;
+  newFolderName: string;
+}
+
 interface CreateProblemSetScreenProps {
   data: AppData;
   onSave: (submission: CreateProblemSetSubmission) => Promise<string | null>;
-  onOpenLegacyImport: (folderId: string) => void;
+  onOpenLegacyImport: (target: LegacyImportTarget) => void;
   onDirtyChange?: (dirty: boolean) => void;
   initialFolderId?: string;
   editSetId?: string;
@@ -64,19 +79,25 @@ export function CreateProblemSetScreen({ data, onSave, onOpenLegacyImport, onDir
   const [busy, setBusy] = useState(false);
   const [copiedTemplate, setCopiedTemplate] = useState<'material' | 'past-exam' | ''>('');
   const [pendingMethod, setPendingMethod] = useState<CreationView | null>(null);
+  const [pendingQuestionSave, setPendingQuestionSave] = useState<PendingManualQuestion | null>(null);
   const csvInputRef = useRef<HTMLInputElement | null>(null);
+  const saveInFlightRef = useRef(false);
   const initialMetaRef = useRef(meta);
   const activeMethodRef = useRef<CreationView | null>(editingProblemSet ? 'manual' : null);
 
   const reviewedDrafts = useMemo(() => drafts.map(refreshIssues), [drafts]);
   const needsReviewCount = reviewedDrafts.filter((draft) => draft.issues.length > 0).length;
+  const hasUncommittedQuestion = useMemo(
+    () => hasUncommittedManualQuestion(drafts, questionEditor, editingIndex),
+    [drafts, editingIndex, questionEditor],
+  );
   const isDirty = useMemo(() => (
     JSON.stringify(meta) !== JSON.stringify(initialMetaRef.current)
     || JSON.stringify(drafts) !== JSON.stringify(initialDraftsRef.current)
     || pasteText.trim().length > 0
     || sourceSetId !== undefined
-    || hasDraftQuestionContent(questionEditor)
-  ), [drafts, meta, pasteText, questionEditor, sourceSetId]);
+    || hasUncommittedQuestion
+  ), [drafts, hasUncommittedQuestion, meta, pasteText, sourceSetId]);
   const creationMethod: ProblemSetCreationMethod = sourceSetId
     ? 'copy'
     : view === 'chatgpt'
@@ -152,6 +173,16 @@ export function CreateProblemSetScreen({ data, onSave, onOpenLegacyImport, onDir
     document.querySelector<HTMLElement>('.app-layout__scroll')?.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const deleteQuestion = (index: number) => {
+    setDrafts((items) => items.filter((_, itemIndex) => itemIndex !== index));
+    if (editingIndex === index) {
+      setEditingIndex(null);
+      setQuestionEditor(createBlankDraft('manual-editor'));
+    } else if (editingIndex !== null && editingIndex > index) {
+      setEditingIndex(editingIndex - 1);
+    }
+  };
+
   const parsePastedContent = () => {
     if (!pasteText.trim()) {
       setError('貼り付ける内容を入力してください。');
@@ -162,17 +193,39 @@ export function CreateProblemSetScreen({ data, onSave, onOpenLegacyImport, onDir
       setError('問題を読み取れませんでした。問題文、選択肢、正解を分けて入力してください。');
       return;
     }
-    setDrafts(generated.questions.map(normalizeEditableChoices));
+    setDrafts(generated.questions.map(normalizeEditableQuestionDraft));
     setError('');
   };
 
+  const persistDrafts = async (finalDrafts: BulkQuestionDraft[]) => {
+    if (saveInFlightRef.current) return false;
+    saveInFlightRef.current = true;
+    setBusy(true);
+    setError('');
+    try {
+      const saveError = await onSave({ ...meta, creationMethod, sourceSetId, questions: finalDrafts });
+      if (saveError) {
+        setError(saveError);
+        return false;
+      }
+      return true;
+    } catch {
+      setError('問題セットを保存できませんでした。時間をおいてもう一度お試しください。');
+      return false;
+    } finally {
+      saveInFlightRef.current = false;
+      setBusy(false);
+    }
+  };
+
   const submit = async () => {
+    if (saveInFlightRef.current) return;
     const metaError = getMetaError(meta);
     if (metaError) {
       setError(metaError);
       return;
     }
-    const finalDrafts = reviewedDrafts.map(normalizeEditableChoices).map(refreshIssues);
+    const finalDrafts = reviewedDrafts.map(normalizeEditableQuestionDraft).map(refreshIssues);
     if (finalDrafts.length === 0) {
       setError('1問以上追加してください。');
       return;
@@ -182,11 +235,53 @@ export function CreateProblemSetScreen({ data, onSave, onOpenLegacyImport, onDir
       setError('確認が必要な問題を修正してください。正解は自動では決めません。');
       return;
     }
-    setBusy(true);
+    if (view === 'manual') {
+      const pending = inspectPendingManualQuestion(finalDrafts, questionEditor, editingIndex, getDraftIssues);
+      if (pending) {
+        setQuestionEditor(pending.draft);
+        setPendingQuestionSave(pending);
+        setError('');
+        return;
+      }
+    }
+    await persistDrafts(finalDrafts);
+  };
+
+  const resolveManualQuestionBeforeSave = async (decision: PendingQuestionSaveDecision) => {
+    const pending = pendingQuestionSave;
+    if (!pending || saveInFlightRef.current) return;
+    const finalDrafts = reviewedDrafts.map(normalizeEditableQuestionDraft).map(refreshIssues);
+    const resolution = resolvePendingQuestionSave(finalDrafts, pending, decision);
+    if (resolution.status === 'cancel') {
+      setPendingQuestionSave(null);
+      return;
+    }
+    if (resolution.status === 'invalid') {
+      setPendingQuestionSave(null);
+      setQuestionEditor(pending.draft);
+      setError(`入力中の問題を追加するには、${resolution.issues.join('、')}。`);
+      return;
+    }
+    setPendingQuestionSave(null);
+    const saved = await persistDrafts(resolution.drafts);
+    if (saved) {
+      setDrafts(resolution.drafts);
+      setQuestionEditor(createBlankDraft('manual-editor'));
+      setEditingIndex(null);
+    }
+  };
+
+  const openLegacyImport = () => {
+    const newFolderName = meta.newFolderName.trim();
+    if (!meta.folderId && !newFolderName) {
+      setError('追加先のフォルダ名を入力してください。');
+      return;
+    }
     setError('');
-    const saveError = await onSave({ ...meta, creationMethod, sourceSetId, questions: finalDrafts });
-    if (saveError) setError(saveError);
-    setBusy(false);
+    onOpenLegacyImport({
+      folderId: meta.folderId,
+      newFolderName: meta.folderId ? '' : newFolderName,
+    });
   };
 
   const chooseCopySource = (setId: string) => {
@@ -234,7 +329,7 @@ export function CreateProblemSetScreen({ data, onSave, onOpenLegacyImport, onDir
       setError('CSVから問題を読み取れませんでした。見出しに「問題文、選択肢1〜4、正解」を含めてください。');
       return;
     }
-    setDrafts(result.questions.map(normalizeEditableChoices));
+    setDrafts(result.questions.map(normalizeEditableQuestionDraft));
     setPasteText('');
     setView('bulk');
     activeMethodRef.current = 'bulk';
@@ -285,7 +380,7 @@ export function CreateProblemSetScreen({ data, onSave, onOpenLegacyImport, onDir
                 {editingIndex === null ? '追加して次の問題へ' : '変更を反映'}
               </button>
             </section>
-            <DraftList drafts={reviewedDrafts} onEdit={editQuestion} onDelete={(index) => setDrafts((items) => items.filter((_, itemIndex) => itemIndex !== index))} />
+            <DraftList drafts={reviewedDrafts} onEdit={editQuestion} onDelete={deleteQuestion} />
             {reviewedDrafts.length > 0 ? <SaveBar count={reviewedDrafts.length} busy={busy} disabled={false} label={editingProblemSet ? '変更を保存' : '問題セットを保存'} onSave={() => void submit()} /> : null}
           </div>
         ) : null}
@@ -357,7 +452,7 @@ export function CreateProblemSetScreen({ data, onSave, onOpenLegacyImport, onDir
         {view === 'other' ? (
           <section className="create-set__panel create-set__other">
             <SetMetaFields data={data} value={meta} onChange={setMeta} compact />
-            <button type="button" className="create-set__method" onClick={() => onOpenLegacyImport(meta.folderId)}>
+            <button type="button" className="create-set__method" onClick={openLegacyImport}>
               <span className="create-set__method-icon"><DocumentOutlineIcon /></span><span><strong>問題セットファイルを読み込む</strong><small>従来形式の問題データを追加</small></span><ChevronRightIcon />
             </button>
             <button type="button" className="create-set__method" onClick={() => csvInputRef.current?.click()}>
@@ -381,7 +476,146 @@ export function CreateProblemSetScreen({ data, onSave, onOpenLegacyImport, onDir
           if (next) resetAndStartMethod(next);
         }}
       />
+      <PendingQuestionSaveDialog
+        pending={pendingQuestionSave}
+        busy={busy}
+        onDecision={(decision) => void resolveManualQuestionBeforeSave(decision)}
+      />
     </Layout>
+  );
+}
+
+function PendingQuestionSaveDialog({
+  pending,
+  busy,
+  onDecision,
+}: {
+  pending: PendingManualQuestion | null;
+  busy: boolean;
+  onDecision: (decision: PendingQuestionSaveDecision) => void;
+}) {
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const includeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const onDecisionRef = useRef(onDecision);
+  const busyRef = useRef(busy);
+  const titleId = useId();
+  const messageId = useId();
+  const issuesId = useId();
+  const open = pending !== null;
+  onDecisionRef.current = onDecision;
+  busyRef.current = busy;
+
+  useEffect(() => {
+    if (!open) return;
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const preferredButton = pending?.issues.length === 0 ? includeButtonRef.current : cancelButtonRef.current;
+    preferredButton?.focus();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        if (!busyRef.current) onDecisionRef.current('cancel');
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const buttons = Array.from(cardRef.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? []);
+      if (buttons.length === 0) {
+        event.preventDefault();
+        cardRef.current?.focus();
+        return;
+      }
+      const first = buttons[0];
+      const last = buttons[buttons.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousBodyOverflow;
+      previouslyFocused?.focus();
+    };
+  }, [open]);
+
+  if (!pending) return null;
+  const canInclude = pending.issues.length === 0;
+  const isEditing = pending.editingIndex !== null;
+  const describedBy = canInclude ? messageId : `${messageId} ${issuesId}`;
+
+  return createPortal(
+    <div
+      className="create-set__pending-overlay"
+      role="presentation"
+      onClick={(event) => {
+        if (!busy && event.target === event.currentTarget) onDecision('cancel');
+      }}
+    >
+      <div
+        ref={cardRef}
+        className="create-set__pending-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={describedBy}
+        aria-busy={busy}
+        tabIndex={-1}
+      >
+        <h2 id={titleId}>{isEditing ? '編集中の変更があります' : '入力中の問題があります'}</h2>
+        <p id={messageId} className="create-set__pending-message">
+          {isEditing
+            ? 'この変更は、まだ追加済みの問題へ反映されていません。保存方法を選んでください。'
+            : 'この問題は、まだ追加済みの一覧へ反映されていません。保存方法を選んでください。'}
+        </p>
+        <div className={`create-set__pending-status${canInclude ? '' : ' create-set__pending-status--warning'}`}>
+          <strong>{canInclude ? 'この内容を保存できます' : '追加するには修正が必要です'}</strong>
+          <p>{pending.draft.question.trim() || '問題文は未入力です'}</p>
+          {!canInclude ? (
+            <div id={issuesId}>
+              <span>不足している項目</span>
+              <ul>{pending.issues.map((issue) => <li key={issue}>{issue}</li>)}</ul>
+            </div>
+          ) : null}
+        </div>
+        <div className="create-set__pending-actions">
+          <button
+            ref={includeButtonRef}
+            type="button"
+            className="create-set__pending-button create-set__pending-button--include"
+            disabled={busy || !canInclude}
+            onClick={() => onDecision('include')}
+          >
+            {isEditing ? '変更を反映して保存' : '追加して保存'}
+          </button>
+          <button
+            type="button"
+            className="create-set__pending-button create-set__pending-button--discard"
+            disabled={busy}
+            onClick={() => onDecision('discard')}
+          >
+            {isEditing ? '変更を破棄して保存' : '入力を破棄して保存'}
+          </button>
+          <button
+            ref={cancelButtonRef}
+            type="button"
+            className="create-set__pending-button create-set__pending-button--cancel"
+            disabled={busy}
+            onClick={() => onDecision('cancel')}
+          >
+            キャンセル
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -418,7 +652,7 @@ function SetMetaFields({ data, value, onChange, compact = false }: { data: AppDa
 }
 
 function QuestionFields({ value, onChange }: { value: BulkQuestionDraft; onChange: (value: BulkQuestionDraft) => void }) {
-  const choices = normalizeEditableChoices(value).choices;
+  const choices = normalizeEditableQuestionDraft(value).choices;
   const answerIndexes = getDraftAnswerIndexes({ ...value, choices });
   return (
     <div className="create-set__question-fields">
@@ -488,31 +722,8 @@ function createBlankDraft(id: string): BulkQuestionDraft {
   return { id, question: '', choices: ['', '', '', ''], answerIndex: null, answerIndexes: [], explanation: '', detailedExplanation: '', category: '', sourcePage: '', issues: [] };
 }
 
-function hasDraftQuestionContent(draft: BulkQuestionDraft): boolean {
-  return Boolean(
-    draft.question.trim()
-    || draft.choices.some((choice) => choice.trim())
-    || getDraftAnswerIndexes(draft).length
-    || draft.explanation.trim()
-    || draft.detailedExplanation?.trim()
-    || draft.category.trim()
-    || draft.sourcePage.trim()
-  );
-}
-
 function refreshIssues(draft: BulkQuestionDraft): BulkQuestionDraft {
   return { ...draft, issues: getDraftIssues(draft) };
-}
-
-function normalizeEditableChoices(draft: BulkQuestionDraft): BulkQuestionDraft {
-  const choices = [...draft.choices];
-  while (choices.length < 4) choices.push('');
-  return normalizeDraftAnswers({ ...draft, choices: choices.slice(0, 5) });
-}
-
-function normalizeDraftAnswers(draft: BulkQuestionDraft): BulkQuestionDraft {
-  const answerIndexes = getDraftAnswerIndexes(draft);
-  return { ...draft, answerIndex: answerIndexes[0] ?? null, answerIndexes };
 }
 
 function updateDraftAnswerSelection(draft: BulkQuestionDraft, choices: string[], index: number, checked: boolean): BulkQuestionDraft {

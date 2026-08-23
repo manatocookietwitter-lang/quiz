@@ -15,6 +15,7 @@ process.on('exit', () => extensionHook.deregister());
 
 class MemoryStorage {
   #values = new Map();
+  failReadsFor = new Set();
 
   get length() {
     return this.#values.size;
@@ -22,10 +23,13 @@ class MemoryStorage {
 
   clear() {
     this.#values.clear();
+    this.failReadsFor.clear();
   }
 
   getItem(key) {
-    return this.#values.get(String(key)) ?? null;
+    const normalizedKey = String(key);
+    if (this.failReadsFor.has(normalizedKey)) throw new Error('storage read failed');
+    return this.#values.get(normalizedKey) ?? null;
   }
 
   key(index) {
@@ -402,6 +406,57 @@ test('an explicit local recovery decision can re-establish app authority', async
   assert.equal(storage.establishCurrentAppDataAuthority(), true);
   const exported = await sync.exportQuizMakeData(timestamp);
   assert.deepEqual(JSON.parse(exported.localStorage[storage.APP_DATA_STORAGE_KEY]), appData);
+});
+
+test('unreadable recovery and import markers fail closed for authoritative export', async (t) => {
+  await t.test('app recovery-required marker read failure', async () => {
+    resetState();
+    seedCurrentApp();
+    setNoteManifest([]);
+    localStorage.failReadsFor.add(storage.APP_DATA_RECOVERY_REQUIRED_KEY);
+
+    await assert.rejects(storage.exportAppDataRaw(), /復旧確認が必要/u);
+    const recovery = await storage.exportAppDataRaw({ mode: 'recovery' });
+    assert.deepEqual(JSON.parse(recovery), appData);
+  });
+
+  await t.test('data import-in-progress marker read failure', async () => {
+    resetState();
+    seedCurrentApp();
+    setNoteManifest([]);
+    localStorage.failReadsFor.add('quizMake:sync:dataImportInProgress');
+
+    await assert.rejects(sync.exportQuizMakeData(timestamp), /前回のデータ読込/u);
+    const recovery = await sync.exportQuizMakeRecoveryData(timestamp);
+    assert.deepEqual(JSON.parse(recovery.localStorage[storage.APP_DATA_STORAGE_KEY]), appData);
+  });
+});
+
+test('corrupt non-empty sync history fails closed', () => {
+  resetState();
+  localStorage.setItem(syncState.LAST_SYNC_AT_KEY, 'not-a-timestamp');
+  assert.equal(syncState.hasPersistedSyncHistory(), true);
+
+  resetState();
+  localStorage.setItem(syncState.LAST_REMOTE_UPDATED_AT_KEY, '   ');
+  assert.equal(syncState.hasPersistedSyncHistory(), true);
+
+  resetState();
+  localStorage.setItem(syncState.LAST_SYNC_RECORD_KEY, '{broken');
+  assert.equal(syncState.hasPersistedSyncHistory(), true);
+
+  resetState();
+  localStorage.setItem(syncState.LAST_SYNC_RECORD_KEY, JSON.stringify({
+    owner: syncId,
+    state: {
+      lastSyncAt: 'not-a-timestamp',
+      lastUploadHash: '',
+      lastRemoteUpdatedAt: '',
+      status: '自動同期OFF',
+      error: '',
+    },
+  }));
+  assert.equal(syncState.hasPersistedSyncHistory(), true);
 });
 
 test('a status-only atomic sync record is not history and permits a first empty authoritative export', async () => {

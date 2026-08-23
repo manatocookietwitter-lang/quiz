@@ -150,7 +150,7 @@ export interface QuizSession {
 export type AppScreen =
   | { name: 'home' }
   | { name: 'settings' }
-  | { name: 'community'; tab?: 'mine' | 'groups' | 'discover'; shareSetId?: string; shareToken?: string }
+  | { name: 'community'; tab?: 'mine' | 'groups' | 'discover'; shareSetId?: string; shareToken?: string; backScreen?: AppScreen }
   | { name: 'sync' }
   | { name: 'privacy' }
   | { name: 'createProblemSet'; folderId?: string; editSetId?: string; backScreen?: AppScreen }
@@ -158,7 +158,7 @@ export type AppScreen =
   | { name: 'problemSetDetail'; setId: string }
   | { name: 'problemList'; setId: string; sortMode?: ProblemSortMode }
   | { name: 'noteList'; setId: string }
-  | { name: 'import'; folderId: string; backScreen?: AppScreen }
+  | { name: 'import'; folderId: string; newFolderName?: string; backScreen?: AppScreen }
   | { name: 'quiz'; setId: string; mode: QuizMode }
   | { name: 'quizSession'; session: QuizSession }
   | { name: 'result'; result: QuizResult };

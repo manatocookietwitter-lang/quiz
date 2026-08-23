@@ -192,7 +192,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
   if (questions.length === 0 || !currentQuestion) {
     return (
       <Layout>
-        <div className="flex h-full flex-col bg-[#E9E5D8] text-[#111111]">
+        <div className="quiz-runner flex h-full flex-col">
           <QuizHeader title={title} onBack={handleQuizBack} />
           {noteTransitionError ? (
             <div role="alert" className="shrink-0 border-b border-red-200 bg-red-50 px-4 py-2 text-center text-sm font-bold text-red-800">
@@ -318,7 +318,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
 
   return (
     <Layout>
-      <div className={`quiz-runner relative flex h-full flex-col overflow-hidden bg-[#E9E5D8] text-[#111111]${noteAreaOpen ? ' quiz-runner--note-open' : ''}`}>
+      <div className={`quiz-runner relative flex h-full flex-col overflow-hidden${noteAreaOpen ? ' quiz-runner--note-open' : ''}`}>
         <QuizHeader title={title} current={currentIndex + 1} total={questions.length} onBack={handleQuizBack} />
         {noteTransitionError ? (
           <div role="alert" className="shrink-0 border-b border-red-200 bg-red-50 px-4 py-2 text-center text-sm font-bold text-red-800">
@@ -332,10 +332,10 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
         />
 
         <main className="quiz-runner__main flex min-h-0 flex-1 flex-col">
-          <section className="quiz-runner__question-panel flex h-[clamp(104px,17dvh,132px)] shrink-0 items-center justify-center overflow-hidden bg-[#B89C79] px-5 py-3 text-center text-[#111111]">
+          <section className="quiz-runner__question-panel flex h-[clamp(104px,17dvh,132px)] shrink-0 items-center justify-center overflow-hidden px-5 py-3 text-center">
             <div className="min-h-0 w-full">
               {currentQuestion.category ? (
-                <div className="mb-1 truncate text-xs font-semibold text-[#4F3F2F]/75">{currentQuestion.category}</div>
+                <div className="quiz-runner__question-category mb-1 truncate text-xs font-semibold">{currentQuestion.category}</div>
               ) : null}
               {(instructionInfo.hasMultiple || instructionInfo.hasNegative) ? (
                 <div className="mb-2 flex flex-wrap justify-center gap-1.5">
@@ -349,7 +349,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
             </div>
           </section>
 
-          <section className={`quiz-runner__choices flex min-h-0 flex-1 flex-col justify-center gap-2.5 px-6 py-3 transition-opacity ${answered ? 'opacity-75' : ''}`}>
+          <section className={`quiz-runner__choices flex min-h-0 flex-1 flex-col justify-center gap-2.5 px-6 py-3${answered ? ' quiz-runner__choices--answered' : ''}`}>
             {currentQuestion.choices.map((_, index) => (
               <QuizChoiceButton
                 key={`${currentQuestion.id}_${index}`}
@@ -372,14 +372,14 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
             aria-hidden={answered}
           >
             {!answered && answerMessage ? (
-              <p className="mb-2 text-center text-sm font-bold text-[#C94F4F]">{answerMessage}</p>
+              <p className="quiz-runner__answer-message mb-2 text-center text-sm font-bold">{answerMessage}</p>
             ) : null}
             <div className="quiz-runner__answer-action-grid grid grid-cols-2 gap-3">
               <button
                 type="button"
                 onClick={handleUnknown}
                 disabled={answered}
-                className="flex h-[52px] items-center justify-center rounded-full border border-[#D0D0D0] bg-[#F4F4F4] text-base font-bold text-[#8A8A8A] active:scale-[0.98]"
+                className="quiz-runner__unknown-button"
               >
                 {'\u308f\u304b\u3089\u306a\u3044'}
               </button>
@@ -388,11 +388,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
                 onClick={handleSubmitAnswer}
                 disabled={answered}
                 aria-disabled={selectedIndexes.length === 0}
-                className={`flex h-[52px] items-center justify-center rounded-full text-base font-bold active:scale-[0.98] ${
-                  selectedIndexes.length > 0
-                    ? 'bg-[#5FA9DD] text-white'
-                    : 'bg-[#CFCFCF] text-[#777777]'
-                }`}
+                className={`quiz-runner__submit-button${selectedIndexes.length > 0 ? ' quiz-runner__submit-button--ready' : ''}`}
               >
                 {'\u89e3\u7b54'}
               </button>
@@ -441,10 +437,10 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
 
 function QuizHeader({ title, current, total, onBack }: { title: string; current?: number; total?: number; onBack: () => void }) {
   return (
-    <header className="quiz-runner__header flex shrink-0 items-center bg-[#F7F7F5] px-4">
+    <header className="quiz-runner__header flex shrink-0 items-center px-4">
       <BackButton onClick={onBack} />
-      <h1 className="min-w-0 flex-1 truncate px-3 text-center text-[24px] font-bold leading-none text-[#5FA9DD]">{title}</h1>
-      <div className="flex h-9 min-w-[72px] shrink-0 items-center justify-center rounded-full bg-[#F7F7F5] px-2 text-sm font-bold text-[#5FA9DD]">
+      <h1 className="quiz-runner__title min-w-0 flex-1 truncate px-3 text-center">{title}</h1>
+      <div className="quiz-runner__counter flex h-9 min-w-[72px] shrink-0 items-center justify-center px-2">
         {current && total ? `${current}/${total}` : ''}
       </div>
     </header>
@@ -453,12 +449,12 @@ function QuizHeader({ title, current, total, onBack }: { title: string; current?
 
 function ProgressBand({ label, percent }: { label: string; percent: number }) {
   return (
-    <section className="flex h-8 shrink-0 items-center gap-3 bg-[#B89C79] py-1 pl-4 pr-4">
+    <section className="quiz-runner__progress-band flex h-9 shrink-0 items-center gap-3 py-1 pl-4 pr-4">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="shrink-0 text-xs font-bold text-white/90">{label}</span>
-          <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-white/25">
-            <div className="h-full rounded-full bg-white" style={{ width: `${Math.min(100, Math.max(0, percent))}%` }} />
+          <span className="quiz-runner__progress-label shrink-0 truncate text-xs font-bold">{label}</span>
+          <div className="quiz-runner__progress-track h-1.5 min-w-0 flex-1 overflow-hidden rounded-full">
+            <div className="quiz-runner__progress-value h-full rounded-full" style={{ width: `${Math.min(100, Math.max(0, percent))}%` }} />
           </div>
         </div>
       </div>
@@ -489,23 +485,22 @@ function QuizChoiceButton({
   answered: boolean;
   onClick: () => void;
 }) {
-  let stateClass = 'border-[#D0D0D0] bg-[#F8F8F8] text-[#111111]';
-  const sizeClass = choiceCount >= 5 ? 'min-h-[52px] max-h-[78px]' : 'min-h-[64px] max-h-[92px]';
-  const textMaxClass = choiceCount >= 5 ? 'max-h-[58px]' : 'max-h-[72px]';
+  let stateClass = '';
+  const densityClass = choiceCount >= 5 ? ' quiz-choice--compact' : '';
   const textSizeClass = veryLongChoice
-    ? 'text-[clamp(15px,3.7vw,18px)]'
+    ? ' quiz-choice--very-long'
     : longChoice
-      ? 'text-[clamp(16px,4vw,20px)]'
-      : 'text-[clamp(18px,4.6vw,22px)]';
+      ? ' quiz-choice--long'
+      : '';
 
   if (!answered && isSelected) {
-    stateClass = 'border-[#5FA9DD] bg-[#E8F4FB] text-[#111111]';
+    stateClass = ' quiz-choice--selected';
   } else if (answered && isCorrectChoice) {
-    stateClass = 'border-[#72C486] bg-[#DDF5E3] text-[#111111]';
+    stateClass = ' quiz-choice--correct';
   } else if (answered && isSelected && !isCorrectChoice) {
-    stateClass = 'border-[#E08B8B] bg-[#F8DADA] text-[#111111]';
+    stateClass = ' quiz-choice--wrong';
   } else if (answered) {
-    stateClass = 'border-[#D8D8D8] bg-[#F8F8F8] text-[#8A8A8A] opacity-70';
+    stateClass = ' quiz-choice--muted';
   }
 
   return (
@@ -514,12 +509,12 @@ function QuizChoiceButton({
       disabled={disabled}
       onClick={onClick}
       aria-pressed={!answered ? isSelected : undefined}
-      className={`mx-auto flex w-full flex-1 items-center justify-start gap-3 rounded-2xl border px-[14px] py-2.5 text-left font-semibold leading-snug shadow-sm transition active:scale-[0.99] ${sizeClass} ${textSizeClass} ${stateClass}`}
+      className={`quiz-choice${densityClass}${textSizeClass}${stateClass}`}
     >
-      <span className="shrink-0 self-start pt-[2px] text-[0.9em] font-black leading-snug text-[#333333]">
+      <span className="quiz-choice__label">
         ({label})
       </span>
-      <span className={`${textMaxClass} min-w-0 flex-1 overflow-y-auto break-words leading-[1.38] no-scrollbar`}>{text}</span>
+      <span className="quiz-choice__text">{text}</span>
     </button>
   );
 }

@@ -156,8 +156,8 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
 
         setSyncId(result.value.syncId);
         setActiveSyncId(result.value.syncId);
-        setAutoSyncEnabled(false);
-        setAutoEnabledState(false);
+        const autoDisableResult = setAutoSyncEnabled(false);
+        setAutoEnabledState(autoDisableResult.ok ? false : getAutoSyncSettings().enabled);
         if (!setLastSyncStateForConnection(result.value.syncId, {
           lastSyncAt: result.value.updatedAt,
           lastRemoteUpdatedAt: result.value.updatedAt,
@@ -179,6 +179,9 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
         }
         setLastState(getLastSyncState());
         setMessage('前回中断した旧ID移行を完了しました。自動同期は確認後にONにしてください。');
+        if (!autoDisableResult.ok) {
+          setError(`旧IDの移行は完了しましたが、自動同期設定を端末へ保存できませんでした: ${autoDisableResult.error}`);
+        }
       }).finally(() => {
         if (!cancelled) setBusy(false);
       });
@@ -229,17 +232,33 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
     setError('');
   };
 
-  const applyConnectedSyncId = (nextId: string) => {
+  const applyConnectedSyncId = (nextId: string): boolean => {
     const normalizedNextId = nextId.trim();
     if (!isStrongSyncId(normalizedNextId)) {
+      setMessage('');
       setError('同期IDは「新しいIDを作る」で作成した36文字のIDを使用してください。');
-      return;
+      return false;
     }
-    if (autoEnabled && normalizedNextId !== activeSyncId) {
-      setAutoSyncEnabled(false);
+    const shouldDisableAutoSync = autoEnabled && normalizedNextId !== activeSyncId;
+    if (shouldDisableAutoSync) {
+      const autoResult = setAutoSyncEnabled(false);
+      if (!autoResult.ok) {
+        setMessage('');
+        setError(`同期先を変更する前に自動同期を停止できませんでした: ${autoResult.error}`);
+        return false;
+      }
       setAutoEnabledState(false);
     }
-    setStoredSyncId(normalizedNextId);
+
+    const persistResult = setStoredSyncId(normalizedNextId);
+    if (!persistResult.ok) {
+      setPendingConnectSyncId('');
+      setMessage('');
+      setError(persistResult.error);
+      setLastState(getLastSyncState());
+      return false;
+    }
+
     clearPendingLegacySyncCompletion(normalizedNextId);
     setSyncId(normalizedNextId);
     setActiveSyncId(normalizedNextId);
@@ -247,9 +266,10 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
     setIssuedPairingCode(null);
     setLastState(getLastSyncState());
     setError('');
-    setMessage(autoEnabled && normalizedNextId !== activeSyncId
+    setMessage(shouldDisableAutoSync
       ? '同期IDへ接続しました。誤った自動送信を防ぐため、自動同期はOFFにしました。'
       : '同期IDへ接続しました。');
+    return true;
   };
 
   const handleConnectSyncId = () => {
@@ -276,8 +296,9 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
   };
 
   const applyGeneratedSyncId = (nextId: string) => {
-    applyConnectedSyncId(nextId);
+    const connected = applyConnectedSyncId(nextId);
     setPendingGeneratedSyncId('');
+    if (!connected) return;
     setMessage('同期を開始しました。まず、この端末のデータをクラウドへ保存してください。');
   };
 
@@ -347,9 +368,9 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
         setError(result.error);
         return;
       }
-      setPairingCodeInput('');
       const currentConnection = getStoredSyncId().trim();
       if (currentConnection !== connectionAtStart) {
+        setPairingCodeInput('');
         if (result.value === currentConnection) {
           setSyncId(currentConnection);
           setActiveSyncId(currentConnection);
@@ -361,11 +382,19 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
         return;
       }
       if (currentConnection && result.value !== currentConnection) {
+        setPairingCodeInput('');
         setPendingConnectSyncId(result.value);
         setMessage('接続コードを確認しました。同期先の変更を確認してください。');
         return;
       }
-      applyConnectedSyncId(result.value);
+      const connected = applyConnectedSyncId(result.value);
+      setPairingCodeInput('');
+      if (!connected) {
+        // The one-time code was redeemed successfully. Keep its resolved sync
+        // ID as an unconnected draft so the user can retry local persistence.
+        setSyncId(result.value);
+        return;
+      }
       setMessage('別の端末へ接続しました。「クラウドから読込」で内容を確認できます。');
     } finally {
       setBusy(false);
@@ -397,8 +426,8 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
       }
       setSyncId(result.value.syncId);
       setActiveSyncId(result.value.syncId);
-      setAutoSyncEnabled(false);
-      setAutoEnabledState(false);
+      const autoDisableResult = setAutoSyncEnabled(false);
+      setAutoEnabledState(autoDisableResult.ok ? false : getAutoSyncSettings().enabled);
       if (!setLastSyncStateForConnection(result.value.syncId, {
         lastSyncAt: result.value.updatedAt,
         lastRemoteUpdatedAt: result.value.updatedAt,
@@ -420,6 +449,9 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
       }
       setLastState(getLastSyncState());
       setMessage('旧同期IDを安全な接続へ移行しました。自動同期は確認後にONにしてください。');
+      if (!autoDisableResult.ok) {
+        setError(`旧IDの移行は完了しましたが、自動同期設定を端末へ保存できませんでした: ${autoDisableResult.error}`);
+      }
     } finally {
       setBusy(false);
     }
@@ -512,22 +544,33 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
         setError('削除中に別のタブで同期接続が変更されたため、現在の接続は解除していません。');
         return;
       }
-      setAutoSyncEnabled(false);
+      const autoDisableResult = setAutoSyncEnabled(false);
       if (getStoredSyncId().trim() !== target.syncId) {
         setPendingCloudDelete(null);
         setMessage('');
         setError('削除完了直後に同期接続が変更されたため、現在の接続は解除していません。');
         return;
       }
-      setStoredSyncId('');
+      const disconnectResult = setStoredSyncId('');
+      if (!disconnectResult.ok) {
+        setPendingCloudDelete(null);
+        setAutoEnabledState(getAutoSyncSettings().enabled);
+        setLastState(getLastSyncState());
+        setMessage('');
+        setError(`クラウドデータは削除しましたが、この端末の同期接続を解除できませんでした: ${disconnectResult.error}`);
+        return;
+      }
       setSyncId('');
       setActiveSyncId('');
       setIssuedPairingCode(null);
-      setAutoEnabledState(false);
+      setAutoEnabledState(autoDisableResult.ok ? false : getAutoSyncSettings().enabled);
       setLastState(getLastSyncState());
       setMessage(result.value
         ? 'クラウド上の同期データを削除し、この端末の同期接続を解除しました。端末内のデータは残っています。'
         : 'クラウドデータは見つかりませんでした。この端末の古い同期接続を解除しました。');
+      if (!autoDisableResult.ok) {
+        setError(`同期接続は解除しましたが、自動同期設定を端末へ保存できませんでした: ${autoDisableResult.error}`);
+      }
       setPendingCloudDelete(null);
     } finally {
       setBusy(false);

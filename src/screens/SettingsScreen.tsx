@@ -77,7 +77,7 @@ export function SettingsScreen({ onExport, onImportBackup, onClearAll, onOpenSyn
     setAccountBusy(true);
     setAccountError('');
     try {
-      await sendMagicLink(email);
+      await sendMagicLink(email, { name: 'settings' });
       setAccountMessage('ログイン用リンクを送信しました。メールを確認してください。');
     } catch (reason) {
       setAccountError(getErrorMessage(reason));
@@ -218,7 +218,7 @@ export function SettingsScreen({ onExport, onImportBackup, onClearAll, onOpenSyn
         <ConfirmDialog
           open={clearConfirmOpen}
           title="端末の学習データを削除しますか？"
-          message="フォルダ、問題セット、問題、回答記録、復習Level、曖昧登録、カテゴリーノートをこの端末から削除します。同期接続とクラウド上の同期データは削除されません。この操作は元に戻せません。"
+          message="フォルダ、問題セット、問題、回答記録、復習Level、曖昧登録、カテゴリーノートをこの端末から削除します。クラウド上の同期データを守るため自動同期はOFFになります。同期接続とクラウド上のデータは削除されません。この操作は元に戻せません。"
           confirmLabel={clearBusy ? '削除中…' : '学習データを削除'}
           busy={clearBusy}
           onCancel={() => setClearConfirmOpen(false)}

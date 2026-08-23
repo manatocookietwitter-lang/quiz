@@ -5,6 +5,8 @@ import { createServer } from 'vite';
 class MemoryStorage {
   #values = new Map();
   failWrites = false;
+  failReadsFor = new Set();
+  ignoreWritesFor = new Set();
   onSetItem = null;
 
   get length() {
@@ -13,10 +15,16 @@ class MemoryStorage {
 
   clear() {
     this.#values.clear();
+    this.failReadsFor.clear();
+    this.ignoreWritesFor.clear();
+    this.failWrites = false;
+    this.onSetItem = null;
   }
 
   getItem(key) {
-    return this.#values.get(String(key)) ?? null;
+    const normalizedKey = String(key);
+    if (this.failReadsFor.has(normalizedKey)) throw new Error('storage read failed');
+    return this.#values.get(normalizedKey) ?? null;
   }
 
   key(index) {
@@ -29,8 +37,10 @@ class MemoryStorage {
 
   setItem(key, value) {
     if (this.failWrites) throw new Error('storage write failed');
-    this.#values.set(String(key), String(value));
-    this.onSetItem?.(String(key), String(value));
+    const normalizedKey = String(key);
+    if (this.ignoreWritesFor.has(normalizedKey)) return;
+    this.#values.set(normalizedKey, String(value));
+    this.onSetItem?.(normalizedKey, String(value));
   }
 }
 
@@ -96,6 +106,42 @@ function appDataWithFolder(name) {
     }],
   };
 }
+
+test('sync connection changes report set/get failures and silent read-back mismatches', () => {
+  resetStorage();
+  const initial = sync.setStoredSyncId(syncId);
+  assert.equal(initial.ok, true);
+  assert.equal(sync.getStoredSyncId(), syncId);
+  const previousState = {
+    lastSyncAt: timestamp,
+    lastUploadHash: 'existing-upload-hash',
+    lastRemoteUpdatedAt: timestamp,
+    status: '同期済み',
+    error: '',
+  };
+  sync.setLastSyncState(previousState);
+
+  localStorage.failWrites = true;
+  const setFailure = sync.setStoredSyncId(replacementSyncId);
+  localStorage.failWrites = false;
+  assert.equal(setFailure.ok, false);
+  assert.equal(sync.getStoredSyncId(), syncId, 'a throwing write must keep the previous connection');
+  assert.deepEqual(sync.getLastSyncState(), previousState, 'a throwing ID write must preserve the previous CAS/hash state');
+
+  localStorage.failReadsFor.add(sync.SYNC_ID_STORAGE_KEY);
+  const getFailure = sync.setStoredSyncId(replacementSyncId);
+  localStorage.failReadsFor.delete(sync.SYNC_ID_STORAGE_KEY);
+  assert.equal(getFailure.ok, false);
+  assert.equal(sync.getStoredSyncId(), syncId, 'an unreadable current connection must not be replaced');
+  assert.deepEqual(sync.getLastSyncState(), previousState);
+
+  localStorage.ignoreWritesFor.add(sync.SYNC_ID_STORAGE_KEY);
+  const mismatch = sync.setStoredSyncId(replacementSyncId);
+  localStorage.ignoreWritesFor.delete(sync.SYNC_ID_STORAGE_KEY);
+  assert.equal(mismatch.ok, false);
+  assert.equal(sync.getStoredSyncId(), syncId, 'a silently ignored write must fail read-back verification');
+  assert.deepEqual(sync.getLastSyncState(), previousState, 'a silently ignored ID write must not clear sync history');
+});
 
 test('successful app and note persistence advances one shared monotonic revision', async () => {
   delete globalThis.indexedDB;

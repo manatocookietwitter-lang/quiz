@@ -10,6 +10,18 @@ import {
 } from './noteExitGuard';
 import { createId } from '../utils/id';
 import { loadCategoryNoteRaw, saveCategoryNoteRaw } from '../utils/noteStorage';
+import {
+  appendByteBudgetHistory,
+  ByteBudgetLruCache,
+  createByteBudgetHistory,
+  estimateDataUrlMemoryBytes,
+  estimateRgbaPixelBytes,
+  getCanvasBackingStoreSize,
+  NOTE_DECODED_IMAGE_CACHE_BUDGET_BYTES,
+  NOTE_UNDO_HISTORY_BUDGET_BYTES,
+  popByteBudgetHistory,
+  type ByteBudgetHistory,
+} from './noteMemory';
 import './CategoryNoteDrawer.css';
 
 const UNCATEGORIZED = '\u672a\u5206\u985e';
@@ -20,11 +32,9 @@ const NOTE_COLORS = {
 } as const;
 const PEN_WIDTHS = [1, 2, 3] as const;
 const ERASER_WIDTHS = [10, 15, 30] as const;
-const MAX_HISTORY = 30;
 const OVERSCROLL_LIMIT = 36;
 const PAN_EDGE_BREATHING_ROOM = 18;
-const NOTE_IMAGE_CACHE_LIMIT = 100;
-const noteImageCache = new Map<string, HTMLImageElement>();
+const noteImageCache = new ByteBudgetLruCache<string, HTMLImageElement>(NOTE_DECODED_IMAGE_CACHE_BUDGET_BYTES);
 
 type NoteColorKey = keyof typeof NOTE_COLORS;
 type PenSize = (typeof PEN_WIDTHS)[number];
@@ -218,7 +228,7 @@ export const CategoryNotePanel = forwardRef<CategoryNotePanelHandle, CategoryNot
   const drawingRef = useRef(false);
   const pendingResizeRef = useRef(false);
   const lastPointRef = useRef<{ x: number; y: number } | null>(null);
-  const historyRef = useRef<string[]>([]);
+  const historyRef = useRef<ByteBudgetHistory<string>>(createByteBudgetHistory());
   const pageSwipeRef = useRef<{ x: number; y: number; pointerId: number } | null>(null);
   const touchPointsRef = useRef(new Map<number, { x: number; y: number }>());
   const pinchRef = useRef<{ startDistance: number; startScale: number } | null>(null);
@@ -441,10 +451,6 @@ export const CategoryNotePanel = forwardRef<CategoryNotePanelHandle, CategoryNot
   }, [problemSetId, noteKey, normalizedCategory]);
 
   useEffect(() => {
-    [pages[currentPageIndex - 1]?.dataUrl, currentPage?.dataUrl, pages[currentPageIndex + 1]?.dataUrl].forEach(preloadNoteImage);
-  }, [currentPage?.dataUrl, currentPageIndex, pages]);
-
-  useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || noteLoadState !== 'ready') return;
 
@@ -458,8 +464,8 @@ export const CategoryNotePanel = forwardRef<CategoryNotePanelHandle, CategoryNot
         return;
       }
 
-      const ratio = window.devicePixelRatio || 1;
-      const sizeChanged = canvas.width !== Math.round(width * ratio) || canvas.height !== Math.round(height * ratio);
+      const backingStore = getCanvasBackingStoreSize(width, height, window.devicePixelRatio || 1);
+      const sizeChanged = canvas.width !== backingStore.width || canvas.height !== backingStore.height;
       if (sizeChanged || forceDraw) {
         drawDataUrlToCanvas(pageDataUrlRef.current, currentPage?.id ?? '');
       }
@@ -620,7 +626,7 @@ export const CategoryNotePanel = forwardRef<CategoryNotePanelHandle, CategoryNot
   useImperativeHandle(ref, () => ({ flush: flushPendingNote }));
 
   function clearHistory() {
-    historyRef.current = [];
+    historyRef.current = createByteBudgetHistory();
     setCanUndo(false);
   }
 
@@ -635,17 +641,23 @@ export const CategoryNotePanel = forwardRef<CategoryNotePanelHandle, CategoryNot
   const pushHistory = () => {
     const image = snapshot();
     if (!image) return;
-    historyRef.current = [...historyRef.current.slice(-(MAX_HISTORY - 1)), image];
-    setCanUndo(historyRef.current.length > 0);
+    historyRef.current = appendByteBudgetHistory(
+      historyRef.current,
+      image,
+      estimateDataUrlMemoryBytes(image),
+      NOTE_UNDO_HISTORY_BUDGET_BYTES,
+    );
+    setCanUndo(historyRef.current.entries.length > 0);
   };
 
   const undo = () => {
     if (flushingRef.current || noteLoadStateRef.current !== 'ready' || notePaintStateRef.current !== 'ready') return;
-    const previous = historyRef.current[historyRef.current.length - 1];
+    const popped = popByteBudgetHistory(historyRef.current);
+    const previous = popped.value;
     if (!previous) return;
-    historyRef.current = historyRef.current.slice(0, -1);
-    setCanUndo(historyRef.current.length > 0);
-      drawDataUrlToCanvas(previous);
+    historyRef.current = popped.history;
+    setCanUndo(historyRef.current.entries.length > 0);
+    drawDataUrlToCanvas(previous);
     updateCurrentPage(previous);
   };
 
@@ -1016,12 +1028,10 @@ export const CategoryNotePanel = forwardRef<CategoryNotePanelHandle, CategoryNot
     renderedPageIdRef.current = '';
     notePaintStateRef.current = 'loading';
     setNotePaintState('loading');
-    const ratio = window.devicePixelRatio || 1;
-    const nextWidth = Math.round(width * ratio);
-    const nextHeight = Math.round(height * ratio);
-    if (canvas.width !== nextWidth || canvas.height !== nextHeight) {
-      canvas.width = nextWidth;
-      canvas.height = nextHeight;
+    const backingStore = getCanvasBackingStoreSize(width, height, window.devicePixelRatio || 1);
+    if (canvas.width !== backingStore.width || canvas.height !== backingStore.height) {
+      canvas.width = backingStore.width;
+      canvas.height = backingStore.height;
     }
     const context = canvas.getContext('2d');
     if (!context) {
@@ -1031,7 +1041,7 @@ export const CategoryNotePanel = forwardRef<CategoryNotePanelHandle, CategoryNot
       return;
     }
     ctxRef.current = context;
-    context.setTransform(ratio, 0, 0, ratio, 0, 0);
+    context.setTransform(backingStore.scaleX, 0, 0, backingStore.scaleY, 0, 0);
     const pendingPaint = drawDataUrlToContext(
       context,
       dataUrl,
@@ -1335,25 +1345,28 @@ function preloadNoteImage(dataUrl: string | undefined) {
   if (!dataUrl || getCachedNoteImage(dataUrl)) return;
   const image = new Image();
   image.src = dataUrl;
-  setCachedNoteImage(dataUrl, image);
+  // Reserve the full cache budget while dimensions are unknown so concurrent
+  // preloads cannot accumulate outside the byte limit.
+  setCachedNoteImage(dataUrl, image, NOTE_DECODED_IMAGE_CACHE_BUDGET_BYTES);
+  void decodeNoteImage(image).then(
+    () => updateCachedNoteImageWeight(dataUrl, image),
+    () => {
+      if (noteImageCache.peek(dataUrl) === image) noteImageCache.delete(dataUrl);
+    },
+  );
 }
 
 function getCachedNoteImage(dataUrl: string) {
-  const image = noteImageCache.get(dataUrl);
-  if (!image) return undefined;
-  noteImageCache.delete(dataUrl);
-  noteImageCache.set(dataUrl, image);
-  return image;
+  return noteImageCache.get(dataUrl);
 }
 
-function setCachedNoteImage(dataUrl: string, image: HTMLImageElement) {
-  if (noteImageCache.has(dataUrl)) noteImageCache.delete(dataUrl);
-  noteImageCache.set(dataUrl, image);
-  while (noteImageCache.size > NOTE_IMAGE_CACHE_LIMIT) {
-    const oldestKey = noteImageCache.keys().next().value;
-    if (!oldestKey) break;
-    noteImageCache.delete(oldestKey);
-  }
+function setCachedNoteImage(dataUrl: string, image: HTMLImageElement, byteSize: number) {
+  noteImageCache.set(dataUrl, image, byteSize);
+}
+
+function updateCachedNoteImageWeight(dataUrl: string, image: HTMLImageElement) {
+  if (noteImageCache.peek(dataUrl) !== image) return;
+  setCachedNoteImage(dataUrl, image, estimateRgbaPixelBytes(image.naturalWidth, image.naturalHeight));
 }
 async function drawDataUrlToContext(
   context: CanvasRenderingContext2D,
@@ -1371,7 +1384,7 @@ async function drawDataUrlToContext(
   const image = cached ?? new Image();
   if (!cached) {
     image.src = dataUrl;
-    setCachedNoteImage(dataUrl, image);
+    setCachedNoteImage(dataUrl, image, NOTE_DECODED_IMAGE_CACHE_BUDGET_BYTES);
   }
   try {
     await decodeNoteImage(image);
@@ -1379,6 +1392,7 @@ async function drawDataUrlToContext(
     if (noteImageCache.get(dataUrl) === image) noteImageCache.delete(dataUrl);
     throw error;
   }
+  updateCachedNoteImageWeight(dataUrl, image);
   if (shouldDraw()) context.drawImage(image, 0, 0, width, height);
 }
 

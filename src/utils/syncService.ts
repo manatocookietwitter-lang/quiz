@@ -224,18 +224,79 @@ export function getStoredSyncId(): string {
   return safeGetItem(SYNC_ID_STORAGE_KEY);
 }
 
-export function setStoredSyncId(syncId: string): void {
+export function setStoredSyncId(syncId: string): SyncResult<string> {
+  const value = syncId.trim();
+  let previousRaw: string | null | undefined;
+  let previousState: Map<string, string | null> | null = null;
   try {
-    const value = syncId.trim();
-    const previousValue = safeGetItem(SYNC_ID_STORAGE_KEY).trim();
+    previousRaw = localStorage.getItem(SYNC_ID_STORAGE_KEY);
+    const previousValue = previousRaw?.trim() ?? '';
+    previousState = captureSyncStateStorage();
+
+    // Persist and verify the new owner before clearing the old owner's state.
+    // A failed or silently ignored ID write must leave every CAS/hash field for
+    // the still-active connection intact.
     if (value) localStorage.setItem(SYNC_ID_STORAGE_KEY, value);
     else localStorage.removeItem(SYNC_ID_STORAGE_KEY);
-    if (clearSyncStateForChangedId(localStorage, previousValue, value)) {
-      window.dispatchEvent(new CustomEvent('quiz-make-sync-state-change'));
+
+    const persisted = localStorage.getItem(SYNC_ID_STORAGE_KEY);
+    const expected = value || null;
+    if (persisted !== expected) {
+      // A few restricted/custom storage implementations silently ignore a
+      // write. Restore the previous value when possible, then report failure.
+      try {
+        if (previousRaw === null) localStorage.removeItem(SYNC_ID_STORAGE_KEY);
+        else localStorage.setItem(SYNC_ID_STORAGE_KEY, previousRaw);
+      } catch {
+        // The verified result below remains a failure; no UI may claim success.
+      }
+      return { ok: false, error: '同期IDを端末に保存できませんでした。端末の保存設定と空き容量を確認してください。' };
     }
+
+    const connectionChanged = clearSyncStateForChangedId(localStorage, previousValue, value);
+    if (connectionChanged) dispatchSyncStateChanged();
     dispatchSyncSettingsChanged();
-  } catch {
-    // Sync ID persistence is convenient, not required for the app to work.
+    return { ok: true, value };
+  } catch (error) {
+    // Clearing the prior state can involve several storage keys. If any step
+    // fails, restore both the old connection and its exact state best-effort so
+    // a partial cleanup cannot weaken the next conflict check.
+    if (previousRaw !== undefined) {
+      try {
+        if (previousRaw === null) localStorage.removeItem(SYNC_ID_STORAGE_KEY);
+        else localStorage.setItem(SYNC_ID_STORAGE_KEY, previousRaw);
+        if (previousState) restoreSyncStateStorage(previousState);
+      } catch {
+        // The operation still reports failure; callers must not update the UI.
+      }
+    }
+    return {
+      ok: false,
+      error: error instanceof Error
+        ? `同期IDを端末に保存できませんでした: ${error.message}`
+        : '同期IDを端末に保存できませんでした。端末の保存設定と空き容量を確認してください。',
+    };
+  }
+}
+
+const SYNC_STATE_STORAGE_KEYS = [
+  LAST_SYNC_AT_KEY,
+  LAST_UPLOAD_HASH_KEY,
+  LAST_REMOTE_UPDATED_AT_KEY,
+  LAST_SYNC_STATUS_KEY,
+  LAST_SYNC_ERROR_KEY,
+  LAST_SYNC_OWNER_KEY,
+  LAST_SYNC_RECORD_KEY,
+] as const;
+
+function captureSyncStateStorage(): Map<string, string | null> {
+  return new Map(SYNC_STATE_STORAGE_KEYS.map((key) => [key, localStorage.getItem(key)]));
+}
+
+function restoreSyncStateStorage(snapshot: ReadonlyMap<string, string | null>): void {
+  for (const [key, storedValue] of snapshot) {
+    if (storedValue === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, storedValue);
   }
 }
 
@@ -254,7 +315,11 @@ export function setAutoSyncEnabled(enabled: boolean): SyncResult<boolean> {
   if (enabled && !isSyncConfigured()) return { ok: false, error: 'Supabaseの環境変数が未設定です。' };
 
   try {
-    localStorage.setItem(AUTO_SYNC_ENABLED_KEY, enabled ? 'true' : 'false');
+    const storedValue = enabled ? 'true' : 'false';
+    localStorage.setItem(AUTO_SYNC_ENABLED_KEY, storedValue);
+    if (localStorage.getItem(AUTO_SYNC_ENABLED_KEY) !== storedValue) {
+      return { ok: false, error: '自動同期設定を端末に保存できませんでした。端末の保存設定と空き容量を確認してください。' };
+    }
     setLastSyncState({ status: enabled ? '自動同期ON' : '自動同期OFF', error: '' });
     dispatchSyncSettingsChanged();
     return { ok: true, value: enabled };
@@ -358,13 +423,13 @@ export function exportQuizMakeData(
   options: { mode?: 'authoritative' | 'recovery' } = {},
 ): Promise<SyncPayload> {
   return runSyncDataOperation(async () => {
-    if (options.mode !== 'recovery' && safeGetItem(DATA_IMPORT_IN_PROGRESS_KEY).trim()) {
+    if (options.mode !== 'recovery' && isDataImportInProgress()) {
       throw new Error('前回のデータ読込が完了したことを確認できないため、クラウドへの保存を中止しました。先にクラウドまたはJSONバックアップから読み込み直してください。');
     }
     const beforeSnapshot = await waitForLocalPersistence();
     if (!beforeSnapshot.ok) throw new Error(beforeSnapshot.error);
     return withCoordinatedDataRead(['app', 'notes'], async () => {
-      if (options.mode !== 'recovery' && safeGetItem(DATA_IMPORT_IN_PROGRESS_KEY).trim()) {
+      if (options.mode !== 'recovery' && isDataImportInProgress()) {
         throw new Error('前回のデータ読込が完了したことを確認できないため、クラウドへの保存を中止しました。先にクラウドまたはJSONバックアップから読み込み直してください。');
       }
       const localStorageData: Record<string, string> = {};
@@ -1328,10 +1393,8 @@ function finalizeCompletedLegacySyncUpgrade(
   }
 
   if (legacySyncId && currentSyncId === legacySyncId) {
-    setStoredSyncId(completed.syncId);
-    if (getStoredSyncId() !== completed.syncId) {
-      return { ok: false, error: '移行先を端末に保存できませんでした。端末の空き容量を確認して、もう一度お試しください。' };
-    }
+    const persisted = setStoredSyncId(completed.syncId);
+    if (!persisted.ok) return persisted;
   }
 
   // Keep the winner marker until the screen reconciles its own state. If a
@@ -1723,8 +1786,30 @@ function safeGetItem(key: string): string {
   }
 }
 
+function isDataImportInProgress(): boolean {
+  try {
+    return localStorage.getItem(DATA_IMPORT_IN_PROGRESS_KEY) !== null;
+  } catch {
+    // An unreadable import marker may represent an interrupted replacement.
+    // Do not export/upload until storage becomes readable again.
+    return true;
+  }
+}
+
+function dispatchSyncStateChanged() {
+  try {
+    window.dispatchEvent(new CustomEvent('quiz-make-sync-state-change'));
+  } catch {
+    // The verified storage value remains authoritative if notification fails.
+  }
+}
+
 function dispatchSyncSettingsChanged() {
-  window.dispatchEvent(new CustomEvent('quiz-make-sync-settings-change'));
+  try {
+    window.dispatchEvent(new CustomEvent('quiz-make-sync-settings-change'));
+  } catch {
+    // The verified storage value remains authoritative if notification fails.
+  }
 }
 
 function isStringRecord(value: unknown): value is Record<string, string> {

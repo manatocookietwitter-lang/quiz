@@ -145,112 +145,137 @@ export function ProblemSetDetailScreen({
 
         <div className="quiz-detail__content-grid">
           <div className="quiz-detail__main-column">
-        <button type="button" className="quiz-detail__share-button" onClick={onShare}>
-          <span aria-hidden="true">↗</span>
-          <span><strong>この問題セットを共有</strong><small>リンク・グループ・全体公開</small></span>
-          <b aria-hidden="true">›</b>
-        </button>
-        <section className="quiz-detail__summary">
-          <div className="quiz-detail__metric">
-            <span>{'\u554f\u984c\u6570'}</span>
-            <strong>{questions.length}</strong>
-          </div>
-          <div className="quiz-detail__metric">
-            <span>{'\u5fa9\u7fd2'}</span>
-            <strong>{allReviewQuestions.length}</strong>
-          </div>
-          <div className="quiz-detail__metric">
-            <span>{'\u6b63\u7b54\u7387'}</span>
-            <strong>{correctRate}%</strong>
-          </div>
-        </section>
+            <section className="quiz-detail__start-panel" aria-labelledby="quiz-detail-start-title">
+              <div className="quiz-detail__section-heading">
+                <div>
+                  <p>この問題セット</p>
+                  <h2 id="quiz-detail-start-title">学習を始める</h2>
+                </div>
+                <span>{questions.length}{'\u554f'}</span>
+              </div>
 
-        <button
-          type="button"
-          className="quiz-detail__review-entry"
-          disabled={allReviewQuestions.length === 0}
-          onClick={startReview}
-        >
-          <span>
-            <strong>この問題セットを復習</strong>
-            <small>{allReviewQuestions.length ? `間違えた問題・曖昧な問題 ${allReviewQuestions.length}問` : '復習対象はありません'}</small>
-          </span>
-          <b aria-hidden="true">›</b>
-        </button>
-
-        <section className="quiz-detail__start-panel">
-          <div className="quiz-detail__section-heading">
-            <h2>{'\u958b\u59cb'}</h2>
-            <span>{filteredStartQuestions.length}{'\u554f'}</span>
-          </div>
-
-          <div className="quiz-detail__segment-caption quiz-detail__segment-caption--top">{'\u5206\u985e\u4e00\u89a7'}</div>
-          <div className="quiz-detail__segments" aria-label={'\u5206\u985e\u4e00\u89a7'}>
-            {categories.map((item, index) => {
-              const value = index === 0 ? 'all' : item;
-              const active = startCategory === value || (startCategory === 'all' && index === 0);
-              return (
+              <div className="quiz-detail__start-actions" aria-label="学習方法">
                 <button
-                  key={item}
                   type="button"
-                  className={`quiz-detail__segment-item${active ? ' quiz-detail__segment-item--active' : ''}`}
-                  onClick={() => setStartCategory(value)}
-                  aria-pressed={active}
+                  className="quiz-detail__start-action quiz-detail__start-action--primary"
+                  disabled={filteredStartQuestions.length === 0}
+                  onClick={startOrdered}
                 >
-                  {item}
+                  <strong>登録順</strong>
+                  <small>{filteredStartQuestions.length}問を出題</small>
                 </button>
-              );
-            })}
-          </div>
+                <button
+                  type="button"
+                  className="quiz-detail__start-action"
+                  disabled={filteredStartQuestions.length === 0}
+                  onClick={startRandom}
+                >
+                  <strong>ランダム</strong>
+                  <small>{filteredStartQuestions.length}問を出題</small>
+                </button>
+                <button
+                  type="button"
+                  className="quiz-detail__start-action quiz-detail__start-action--review"
+                  disabled={allReviewQuestions.length === 0}
+                  onClick={startReview}
+                  aria-label="この問題セットを復習"
+                >
+                  <strong>復習</strong>
+                  <small>{allReviewQuestions.length ? `${allReviewQuestions.length}問が対象` : '対象なし'}</small>
+                </button>
+              </div>
 
-          <div className="quiz-detail__segment-caption">Level</div>
-          <div className="quiz-detail__segments" aria-label={'Level\u6761\u4ef6'}>
-            {REVIEW_FILTERS.map((item) => (
-              <button
-                key={item.value}
-                type="button"
-                className={`quiz-detail__segment-item${reviewFilter === item.value ? ' quiz-detail__segment-item--active' : ''}`}
-                onClick={() => setReviewFilter(item.value)}
-                aria-pressed={reviewFilter === item.value}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-          <p className="quiz-detail__selected-target">{'\u958b\u59cb\u6761\u4ef6\uff1a'}{selectedLabel} / {reviewFilterLabel}</p>
-          {filteredStartQuestions.length === 0 ? (
-            <p className="quiz-detail__empty-condition">{'\u3053\u306e\u6761\u4ef6\u306b\u8a72\u5f53\u3059\u308b\u554f\u984c\u304c\u3042\u308a\u307e\u305b\u3093'}</p>
-          ) : null}
-          <div className="quiz-detail__start-actions">
-            <button type="button" disabled={filteredStartQuestions.length === 0} onClick={startOrdered}>
-              {'\u767b\u9332\u9806\u3067\u958b\u59cb'}
-            </button>
-            <button type="button" disabled={filteredStartQuestions.length === 0} onClick={startRandom}>
-              {'\u30e9\u30f3\u30c0\u30e0\u3067\u958b\u59cb'}
-            </button>
-          </div>
-        </section>
+              <details className="quiz-detail__filters">
+                <summary>
+                  <span>{'\u51fa\u984c\u6761\u4ef6'}</span>
+                  <strong>{selectedLabel} / {reviewFilterLabel}</strong>
+                  <b aria-hidden="true">{'\u2304'}</b>
+                </summary>
+                <div className="quiz-detail__filters-body">
+                  <div className="quiz-detail__segment-caption">{'\u5206\u985e'}</div>
+                  <div className="quiz-detail__segments" aria-label={'\u5206\u985e\u4e00\u89a7'}>
+                    {categories.map((item, index) => {
+                      const value = index === 0 ? 'all' : item;
+                      const active = startCategory === value || (startCategory === 'all' && index === 0);
+                      return (
+                        <button
+                          key={item}
+                          type="button"
+                          className={`quiz-detail__segment-item${active ? ' quiz-detail__segment-item--active' : ''}`}
+                          onClick={() => setStartCategory(value)}
+                          aria-pressed={active}
+                        >
+                          {item}
+                        </button>
+                      );
+                    })}
+                  </div>
 
-        <section className="quiz-detail__body">
-          <div className="quiz-detail__entry-grid">
-            <button type="button" className="quiz-detail__list-entry" onClick={onOpenProblemList}>
+                  <div className="quiz-detail__segment-caption">Level</div>
+                  <div className="quiz-detail__segments" aria-label={'Level\u6761\u4ef6'}>
+                    {REVIEW_FILTERS.map((item) => (
+                      <button
+                        key={item.value}
+                        type="button"
+                        className={`quiz-detail__segment-item${reviewFilter === item.value ? ' quiz-detail__segment-item--active' : ''}`}
+                        onClick={() => setReviewFilter(item.value)}
+                        aria-pressed={reviewFilter === item.value}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </details>
+
+              {filteredStartQuestions.length === 0 ? (
+                <p className="quiz-detail__empty-condition">{'\u3053\u306e\u6761\u4ef6\u306b\u8a72\u5f53\u3059\u308b\u554f\u984c\u304c\u3042\u308a\u307e\u305b\u3093'}</p>
+              ) : null}
+            </section>
+
+            <section className="quiz-detail__summary" aria-label="学習状況">
+              <div className="quiz-detail__metric">
+                <span>{'\u554f\u984c\u6570'}</span>
+                <strong>{questions.length}</strong>
+              </div>
+              <div className="quiz-detail__metric">
+                <span>{'\u5fa9\u7fd2'}</span>
+                <strong>{allReviewQuestions.length}</strong>
+              </div>
+              <div className="quiz-detail__metric">
+                <span>{'\u6b63\u7b54\u7387'}</span>
+                <strong>{correctRate}%</strong>
+              </div>
+            </section>
+
+            <section className="quiz-detail__body">
+              <div className="quiz-detail__entry-grid">
+                <button type="button" className="quiz-detail__list-entry" onClick={onOpenProblemList}>
+                  <span>
+                    <strong>{'\u554f\u984c\u4e00\u89a7'}</strong>
+                    <small>{questions.length}{'\u554f / \u5206\u985e\u5225\u306b\u8868\u793a'}</small>
+                  </span>
+                  <b aria-hidden="true">{'\u203a'}</b>
+                </button>
+                {ENABLE_TABLET_NOTES ? (
+                  <button type="button" className="quiz-detail__list-entry quiz-detail__note-list-entry" onClick={onOpenNoteList}>
+                    <span>
+                      <strong>{'\u30ce\u30fc\u30c8\u4e00\u89a7'}</strong>
+                      <small>{selectedLabel}{' / \u5206\u985e\u5225\u30ce\u30fc\u30c8'}</small>
+                    </span>
+                    <b aria-hidden="true">{'\u203a'}</b>
+                  </button>
+                ) : null}
+              </div>
+            </section>
+
+            <button type="button" className="quiz-detail__share-button" onClick={onShare}>
               <span>
-                <strong>{'\u554f\u984c\u4e00\u89a7'}</strong>
-                <small>{questions.length}{'\u554f / \u5206\u91ce\u5225\u306b\u8868\u793a'}</small>
+                <strong>{'\u5171\u6709\u8a2d\u5b9a'}</strong>
+                <small>{'\u30ea\u30f3\u30af\u3084\u516c\u958b\u7bc4\u56f2\u3092\u7ba1\u7406'}</small>
               </span>
               <b aria-hidden="true">{'\u203a'}</b>
             </button>
-            {ENABLE_TABLET_NOTES ? (
-              <button type="button" className="quiz-detail__list-entry quiz-detail__note-list-entry" onClick={onOpenNoteList}>
-                <span>
-                  <strong>{'\u30ce\u30fc\u30c8\u4e00\u89a7'}</strong>
-                  <small>{selectedLabel}{' / \u5206\u985e\u5225\u30ce\u30fc\u30c8'}</small>
-                </span>
-                <b aria-hidden="true">{'\u203a'}</b>
-              </button>
-            ) : null}
-          </div>
-        </section>
 
           </div>
         </div>

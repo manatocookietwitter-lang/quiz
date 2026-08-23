@@ -1,4 +1,4 @@
-export type ProtectedWorkReason = 'backup' | 'create' | 'import' | 'quiz' | 'notes' | 'sync';
+export type ProtectedWorkReason = 'backup' | 'create' | 'import' | 'quiz' | 'notes' | 'sync' | 'library';
 
 let activeProtectedWorkReason: ProtectedWorkReason | null = null;
 

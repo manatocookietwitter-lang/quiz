@@ -10,6 +10,8 @@ const detailSource = readSource('../src/screens/ProblemSetDetailScreen.tsx');
 const appSource = readSource('../src/App.tsx');
 const globalCss = readSource('../src/index.css');
 const syncCss = readSource('../src/screens/SyncScreen.css');
+const detailCss = readSource('../src/screens/ProblemSetDetailScreen.css');
+const quizRunnerSource = readSource('../src/screens/QuizRunner.tsx');
 
 test('shared layout and loading state use the light application palette', () => {
   assert.doesNotMatch(layoutSource, /bg-\[#050505\]|text-white/);
@@ -37,6 +39,28 @@ test('quiz exit confirmation uses the light surface palette', () => {
   assert.doesNotMatch(exitDialogCss, /background:\s*#202020|background:\s*#2b2b2b/);
   assert.match(exitDialogCss, /background:\s*#ffffff/);
   assert.match(exitDialogCss, /color:\s*#173042/);
+});
+
+test('quiz runner uses the shared light palette while preserving answer states', () => {
+  assert.doesNotMatch(quizRunnerSource, /#E9E5D8|#B89C79|#F7F7F5|#5FA9DD/);
+  assert.match(globalCss, /\.quiz-runner \{[^}]*background:\s*var\(--ui-page/);
+  assert.match(globalCss, /\.quiz-runner__question-panel \{[^}]*background:\s*var\(--ui-surface/);
+  assert.match(globalCss, /\.quiz-choice--correct \{[^}]*background:\s*#e7f6eb/);
+  assert.match(globalCss, /\.quiz-choice--wrong \{[^}]*background:\s*#fff0f0/);
+  assert.match(globalCss, /\.answer-sheet__action--ambiguous \{[^}]*background:\s*#fff1dc/);
+  assert.match(globalCss, /\.answer-sheet__markdown-table-wrap \{[^}]*overflow-x:\s*auto/);
+});
+
+test('problem-set detail prioritizes starting and wraps optional filters', () => {
+  const startIndex = detailSource.indexOf('quiz-detail__start-panel');
+  const summaryIndex = detailSource.indexOf('quiz-detail__summary');
+  const shareIndex = detailSource.indexOf('quiz-detail__share-button');
+
+  assert.ok(startIndex >= 0 && startIndex < summaryIndex && summaryIndex < shareIndex);
+  assert.match(detailSource, /aria-label="学習方法"[\s\S]*?登録順[\s\S]*?ランダム[\s\S]*?復習/);
+  assert.match(detailSource, /<details className="quiz-detail__filters">/);
+  assert.match(detailCss, /\.quiz-detail \.quiz-detail__segments \{[^}]*flex-wrap:\s*wrap[^}]*overflow:\s*visible/);
+  assert.match(detailCss, /@media \(max-width: 430px\)[\s\S]*?quiz-detail__start-action--review[\s\S]*?grid-column:\s*1 \/ -1/);
 });
 
 test('sync settings uses the same restrained light palette as other settings screens', () => {
