@@ -109,7 +109,7 @@ export function ProblemListScreen({ data, setId, initialSortMode = 'ordered', on
           <header className="quiz-list__header">
             <div className="quiz-list__header-slope" />
             <BackButton onClick={onBack} className="quiz-list__back-button" />
-            <div className="quiz-list__title-wrap"><h1>問題一覧</h1><p>Quiz make</p></div>
+            <div className="quiz-list__title-wrap"><h1>問題一覧</h1></div>
           </header>
           <MissingResourceState
             title="問題セットが見つかりません"
@@ -169,7 +169,6 @@ export function ProblemListScreen({ data, setId, initialSortMode = 'ordered', on
             <div className="quiz-list__empty">
               <div className="quiz-list__empty-icon" aria-hidden="true">0</div>
               <h2>問題がありません</h2>
-              <p>この問題セットへ問題を追加すると、ここに一覧表示されます。</p>
               <button type="button" onClick={onBack}>問題セットへ戻る</button>
             </div>
           ) : groupedSections.map((section) => (

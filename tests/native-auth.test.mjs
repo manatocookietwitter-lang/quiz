@@ -53,6 +53,7 @@ test('return target is validated, expires and is consumed once', () => {
   const target = {
     name: 'community',
     tab: 'groups',
+    groupId: '9717fef5-e2e8-4a5d-a37f-f630b495196f',
     shareSetId: '21d58855-bda0-47bb-8a53-cfe5aa45c1ad',
     shareToken: 'share_token-123',
   };

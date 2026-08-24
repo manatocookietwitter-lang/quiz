@@ -158,7 +158,6 @@ export function SettingsScreen({ onExport, onImportBackup, onClearAll, onOpenSyn
           <section className="settings-section" aria-labelledby="settings-account-title">
             <div className="settings-section__heading">
               <h2 id="settings-account-title">アカウント</h2>
-              <p>問題セットの共有と端末間同期に使うアカウントです。端末内の学習だけならログインは不要です。</p>
             </div>
             <div className="settings-account">
               <span className="settings-account__icon" aria-hidden="true"><GroupIcon /></span>
@@ -169,7 +168,6 @@ export function SettingsScreen({ onExport, onImportBackup, onClearAll, onOpenSyn
               ) : session ? (
                 <div className="settings-account__content">
                   <strong>{session.user.email ?? 'ログイン中'}</strong>
-                  <small>ログイン済み</small>
                   <label className="settings-account__field"><span>共有時の表示名</span><input value={displayName} maxLength={40} onChange={(event) => setDisplayName(event.target.value)} /></label>
                   <div className="settings-account__actions">
                     <button type="button" className="settings-account__primary" disabled={accountBusy || !displayName.trim()} onClick={() => void saveDisplayName()}>表示名を保存</button>
@@ -180,8 +178,7 @@ export function SettingsScreen({ onExport, onImportBackup, onClearAll, onOpenSyn
               ) : (
                 <div className="settings-account__content">
                   <strong>未ログイン</strong>
-                  <small>メールで届くリンクからログインします。</small>
-                  <label className="settings-account__field"><span>メールアドレス</span><input type="email" value={email} autoComplete="email" placeholder="you@example.com" onChange={(event) => setEmail(event.target.value)} /></label>
+                  <label className="settings-account__field"><span>メールアドレス</span><input type="email" value={email} autoComplete="email" onChange={(event) => setEmail(event.target.value)} /></label>
                   <button type="button" className="settings-account__primary" disabled={accountBusy || !email.trim()} onClick={() => void sendLoginLink()}>{accountBusy ? '送信中…' : 'ログイン用リンクを送る'}</button>
                 </div>
               )}
@@ -192,14 +189,14 @@ export function SettingsScreen({ onExport, onImportBackup, onClearAll, onOpenSyn
 
           <section className="settings-section" aria-labelledby="settings-data-title">
             <div className="settings-section__heading"><h2 id="settings-data-title">データ管理</h2></div>
-            <SettingsRow icon={<SyncIcon />} title="端末間の同期" detail="スマホやPCで同じデータを使う" arrow onClick={onOpenSync} />
-            <SettingsRow icon={<DownloadIcon />} title="バックアップを書き出す" detail="現在のデータをJSONで保存" onClick={onExport} />
-            <SettingsRow icon={<UploadIcon />} title="バックアップを読み込む" detail="保存したJSONから復元" onClick={() => fileInputRef.current?.click()} />
+            <SettingsRow icon={<SyncIcon />} title="端末間の同期" arrow onClick={onOpenSync} />
+            <SettingsRow icon={<DownloadIcon />} title="バックアップを書き出す" onClick={onExport} />
+            <SettingsRow icon={<UploadIcon />} title="バックアップを読み込む" onClick={() => fileInputRef.current?.click()} />
           </section>
 
           <section className="settings-section" aria-labelledby="settings-info-title">
             <div className="settings-section__heading"><h2 id="settings-info-title">アプリ情報</h2></div>
-            <SettingsRow icon={<DocumentOutlineIcon />} title="プライバシーポリシー" detail="保存されるデータと削除方法" arrow onClick={onOpenPrivacy} />
+            <SettingsRow icon={<DocumentOutlineIcon />} title="プライバシーポリシー" arrow onClick={onOpenPrivacy} />
           </section>
 
           <section className="settings-section settings-section--danger" aria-labelledby="settings-danger-title">
@@ -245,7 +242,7 @@ function getErrorMessage(reason: unknown) {
 function SettingsRow({ icon, title, detail, state, arrow = false, danger = false, onClick }: {
   icon: React.ReactNode;
   title: string;
-  detail: string;
+  detail?: string;
   state?: string;
   arrow?: boolean;
   danger?: boolean;
@@ -254,7 +251,7 @@ function SettingsRow({ icon, title, detail, state, arrow = false, danger = false
   return (
     <button type="button" className={danger ? 'settings-row settings-row--danger' : 'settings-row'} onClick={onClick}>
       <span className="settings-row__icon" aria-hidden="true">{icon}</span>
-      <span className="settings-row__text"><strong>{title}</strong><small>{detail}</small></span>
+      <span className="settings-row__text"><strong>{title}</strong>{detail ? <small>{detail}</small> : null}</span>
       {state ? <span className="settings-row__state">{state}</span> : null}
       {arrow ? <ChevronRightIcon size={19} /> : null}
     </button>

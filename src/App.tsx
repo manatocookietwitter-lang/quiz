@@ -858,14 +858,21 @@ export default function App() {
       return;
     }
     const currentScreen = screenRef.current;
-    const backScreen: AppScreen = {
-      name: 'community',
-      tab: 'discover',
-      shareSetId: sharedSet.id,
-      ...(currentScreen.name === 'community' && currentScreen.shareToken
-        ? { shareToken: currentScreen.shareToken }
-        : {}),
-    };
+    const backScreen: AppScreen = currentScreen.name === 'community' && currentScreen.groupId
+      ? {
+          name: 'community',
+          tab: 'groups',
+          groupId: currentScreen.groupId,
+          shareSetId: sharedSet.id,
+        }
+      : {
+          name: 'community',
+          tab: 'discover',
+          shareSetId: sharedSet.id,
+          ...(currentScreen.name === 'community' && currentScreen.shareToken
+            ? { shareToken: currentScreen.shareToken }
+            : {}),
+        };
     if (currentScreen.name === 'community') replaceScreen(backScreen);
     navigate({
       name: 'quizSession',
@@ -1236,18 +1243,22 @@ export default function App() {
       </Suspense>
     );
   } else if (screen.name === 'community') {
-    const communityBackScreen = screen.backScreen && screen.backScreen.name !== 'community'
-      ? screen.backScreen
-      : null;
+    const communityBackScreen = screen.groupId
+      ? screen.backScreen ?? { name: 'community' as const, tab: 'groups' as const }
+      : screen.backScreen && screen.backScreen.name !== 'community'
+        ? screen.backScreen
+        : null;
     content = (
       <Suspense fallback={<div className="quiz-app-loading">共有機能を読み込み中...</div>}>
         <CommunityScreen
           data={data}
           initialTab={screen.tab}
           initialSetId={screen.shareSetId}
+          initialGroupId={screen.groupId}
           shareToken={screen.shareToken}
           onBack={communityBackScreen ? () => goBackTo(communityBackScreen) : goHome}
           onCreateProblemSet={() => navigate({ name: 'createProblemSet', backScreen: screen })}
+          onOpenGroup={(groupId) => navigate({ name: 'community', tab: 'groups', groupId, backScreen: { name: 'community', tab: 'groups' } })}
           onOpenLocalSet={(setId) => navigate({ name: 'problemSetDetail', setId })}
           onCopySharedSet={handleCopySharedProblemSet}
           onPracticeSharedSet={handlePracticeSharedProblemSet}
@@ -1555,7 +1566,7 @@ function getPrimaryNavItem(screen: AppScreen): PrimaryNavItem | null {
   if (screen.name === 'home') return 'home';
   if (screen.name === 'settings') return 'settings';
   if (screen.name === 'createProblemSet') return 'create';
-  if (screen.name === 'community' && !screen.shareSetId && !screen.shareToken) {
+  if (screen.name === 'community' && !screen.groupId && !screen.shareSetId && !screen.shareToken) {
     if (screen.tab === 'groups') return 'groups';
     if (screen.tab === 'discover') return 'discover';
   }

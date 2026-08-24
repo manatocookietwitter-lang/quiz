@@ -21,13 +21,23 @@ const resultSource = readSource('../src/screens/ResultScreen.tsx');
 const resultCss = readSource('../src/screens/ResultScreen.css');
 const noteDrawerSource = readSource('../src/components/CategoryNoteDrawer.tsx');
 
-test('template actions explain what is copied and what to do next', () => {
+test('problem-set creation uses a direct, concise JSON entry', () => {
+  assert.match(createSource, /title: 'JSONを貼り付ける'/);
+  assert.match(createSource, /'JSONを読み取る'/);
+  assert.doesNotMatch(createSource, /指示文をコピー|資料から問題を作る|過去問をまとめる/);
+  assert.doesNotMatch(createSource, /title: '1問ずつ作る'|title: 'まとめて貼り付ける'/);
+  assert.doesNotMatch(createSource, /placeholder=/);
   assert.doesNotMatch(settingsSource, /ChatGPTで問題を作る|資料から問題を作る|過去問をまとめる/);
-  assert.match(createSource, /指示文をコピー/);
-  assert.match(createSource, /資料から問題を作る/);
-  assert.match(createSource, /過去問をまとめる/);
-  assert.match(createSource, /ChatGPTで作成したら、下の入力欄へ結果を貼り付け/);
   assert.doesNotMatch(homeSource, /ChatGPTで問題を作る|quiz-home__menu-button/);
+});
+
+test('discovery and group screens remove redundant copy explanations', () => {
+  assert.doesNotMatch(communitySource, /追加すると自分用の独立したコピーになります/);
+  assert.doesNotMatch(communitySource, /placeholder=/);
+  assert.match(communitySource, /グループ詳細/);
+  assert.match(communitySource, /community-group-folder-list/);
+  assert.match(communitySource, /<details className="community-members">/);
+  assert.match(communitySource, /自分の問題にコピー/);
 });
 
 test('shared layout scrolls long screens and create actions never float over form controls', () => {

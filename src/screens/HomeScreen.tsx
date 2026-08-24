@@ -60,7 +60,6 @@ export function HomeScreen({
             <div className="quiz-home__empty">
               <div className="quiz-home__empty-icon" aria-hidden="true"><PlusIcon size={24} /></div>
               <h2>学習フォルダを作りましょう</h2>
-              <p>科目や試験ごとに整理すると、問題と復習記録を探しやすくなります。</p>
               <div className="quiz-home__empty-actions">
                 <button type="button" onClick={onCreateSample}>サンプルで試す</button>
                 <button type="button" className="quiz-home__empty-secondary" onClick={() => setCreateOpen(true)}>自分のフォルダを作る</button>
@@ -210,7 +209,6 @@ function CreateFolderDialog({
           value={folderName}
           onChange={(event) => onChange(event.target.value)}
           className="quiz-home__input"
-          placeholder="フォルダ名"
           aria-label="フォルダ名"
         />
         <div className="quiz-home__sheet-actions">

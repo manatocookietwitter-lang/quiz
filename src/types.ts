@@ -150,7 +150,7 @@ export interface QuizSession {
 export type AppScreen =
   | { name: 'home' }
   | { name: 'settings' }
-  | { name: 'community'; tab?: 'mine' | 'groups' | 'discover'; shareSetId?: string; shareToken?: string; backScreen?: AppScreen }
+  | { name: 'community'; tab?: 'mine' | 'groups' | 'discover'; groupId?: string; shareSetId?: string; shareToken?: string; backScreen?: AppScreen }
   | { name: 'sync' }
   | { name: 'privacy' }
   | { name: 'createProblemSet'; folderId?: string; editSetId?: string; backScreen?: AppScreen }

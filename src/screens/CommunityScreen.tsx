@@ -4,7 +4,8 @@ import type { Session } from '@supabase/supabase-js';
 import type { AppData, ProblemSetVisibility } from '../types';
 import { BackButton } from '../components/BackButton';
 import { Layout } from '../components/Layout';
-import { DocumentOutlineIcon } from '../components/UiIcons';
+import { ChevronRightIcon, DocumentOutlineIcon, FolderOutlineIcon, GroupIcon, SearchIcon } from '../components/UiIcons';
+import { buildGroupProblemSetFolders } from '../utils/groupDataView';
 import { writeClipboardText } from '../utils/nativePlatform';
 import {
   buildShareUrl,
@@ -41,9 +42,11 @@ interface CommunityScreenProps {
   data: AppData;
   initialTab?: CommunityTab;
   initialSetId?: string;
+  initialGroupId?: string;
   shareToken?: string;
   onBack: () => void;
   onCreateProblemSet: () => void;
+  onOpenGroup: (groupId: string) => void;
   onOpenLocalSet: (setId: string) => void;
   onCopySharedSet: (set: CloudProblemSet) => Promise<string | null>;
   onPracticeSharedSet: (set: CloudProblemSet) => void;
@@ -55,9 +58,11 @@ export function CommunityScreen({
   data,
   initialTab = 'mine',
   initialSetId,
+  initialGroupId,
   shareToken = '',
   onBack,
   onCreateProblemSet,
+  onOpenGroup,
   onOpenLocalSet,
   onCopySharedSet,
   onPracticeSharedSet,
@@ -76,7 +81,7 @@ export function CommunityScreen({
   const [publicLoading, setPublicLoading] = useState(false);
   const [publishedSets, setPublishedSets] = useState<CloudProblemSet[]>([]);
   const [groups, setGroups] = useState<CloudGroup[]>([]);
-  const [selectedGroupId, setSelectedGroupId] = useState('');
+  const [selectedGroupId, setSelectedGroupId] = useState(initialGroupId ?? '');
   const [groupSets, setGroupSets] = useState<CloudProblemSet[]>([]);
   const [groupMembers, setGroupMembers] = useState<CloudGroupMember[]>([]);
   const [query, setQuery] = useState('');
@@ -95,9 +100,12 @@ export function CommunityScreen({
   const [reportReason, setReportReason] = useState('incorrect_answer');
   const [reportDetails, setReportDetails] = useState('');
   const publicRequestIdRef = useRef(0);
-  const isPrimaryRoot = !initialSetId && !shareToken && (initialTab === 'discover' || initialTab === 'groups');
+  const isGroupDetail = Boolean(initialGroupId);
+  const isGroupSetDetail = isGroupDetail && Boolean(directSet);
+  const isPrimaryRoot = !initialSetId && !initialGroupId && !shareToken && (initialTab === 'discover' || initialTab === 'groups');
   const selectedGroup = groups.find((group) => group.id === selectedGroupId);
   const canManageSelectedGroup = selectedGroup?.role === 'owner' || selectedGroup?.role === 'admin';
+  const groupFolders = useMemo(() => buildGroupProblemSetFolders(groupSets), [groupSets]);
   const subjectOptions = useMemo(() => [...new Set(publicSets.map((set) => set.subject).filter(Boolean))].sort(), [publicSets]);
   const visiblePublicSets = useMemo(() => publicSets.filter((set) => (
     (subjectFilter === 'all' || set.subject === subjectFilter)
@@ -172,6 +180,29 @@ export function CommunityScreen({
   }, [session]);
 
   useEffect(() => {
+    if (!initialGroupId || !authReady || !session) return;
+    let cancelled = false;
+    setSelectedGroupId(initialGroupId);
+    setBusy(true);
+    setError('');
+    void Promise.all([listGroupProblemSets(initialGroupId), listCloudGroupMembers(initialGroupId)])
+      .then(([nextSets, nextMembers]) => {
+        if (cancelled) return;
+        setGroupSets(nextSets);
+        setGroupMembers(nextMembers);
+      })
+      .catch((reason) => {
+        if (!cancelled) setError(getErrorMessage(reason));
+      })
+      .finally(() => {
+        if (!cancelled) setBusy(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [authReady, initialGroupId, session]);
+
+  useEffect(() => {
     if (!initialSetId || !shareToken || !cloudConfigured) return;
     setBusy(true);
     setError('');
@@ -190,7 +221,7 @@ export function CommunityScreen({
       .then((set) => {
         if (!cancelled) {
           setDirectSet(set);
-          setTab('discover');
+          if (!initialGroupId) setTab('discover');
         }
       })
       .catch((reason) => {
@@ -202,12 +233,17 @@ export function CommunityScreen({
     return () => {
       cancelled = true;
     };
-  }, [authReady, initialSetId, initialTab, session, shareToken]);
+  }, [authReady, initialGroupId, initialSetId, initialTab, session, shareToken]);
 
   useEffect(() => {
     if (!initialSetId || shareToken || !authReady || session) return;
     setLoginOpen(true);
   }, [initialSetId, shareToken, authReady, session]);
+
+  useEffect(() => {
+    if (!initialGroupId || !authReady || session) return;
+    setLoginOpen(true);
+  }, [authReady, initialGroupId, session]);
 
   const requireLogin = () => {
     if (session) return true;
@@ -225,6 +261,7 @@ export function CommunityScreen({
         name: 'community',
         tab,
         ...(returnSetId ? { shareSetId: returnSetId } : {}),
+        ...(initialGroupId ? { groupId: initialGroupId } : {}),
         ...(shareToken ? { shareToken } : {}),
       });
       setAuthMessage('ログイン用リンクをメールへ送りました。この画面に戻るとログインが完了します。');
@@ -313,7 +350,7 @@ export function CommunityScreen({
     try {
       setDirectSet(await getSharedProblemSet(summary.id));
       setDetailBackTab(backTab);
-      setTab('discover');
+      if (!initialGroupId) setTab('discover');
     } catch (reason) {
       setError(getErrorMessage(reason));
     } finally {
@@ -350,7 +387,7 @@ export function CommunityScreen({
       const created = await createCloudGroup(newGroupName);
       setNewGroupName('');
       await refreshGroups();
-      setSelectedGroupId(created.id);
+      onOpenGroup(created.id);
     } catch (reason) {
       setError(getErrorMessage(reason));
     } finally {
@@ -366,22 +403,7 @@ export function CommunityScreen({
       const joined = await joinCloudGroup(inviteCode);
       setInviteCode('');
       await refreshGroups();
-      setSelectedGroupId(joined.id);
-    } catch (reason) {
-      setError(getErrorMessage(reason));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const openGroup = async (groupId: string) => {
-    setSelectedGroupId(groupId);
-    setBusy(true);
-    setError('');
-    try {
-      const [nextSets, nextMembers] = await Promise.all([listGroupProblemSets(groupId), listCloudGroupMembers(groupId)]);
-      setGroupSets(nextSets);
-      setGroupMembers(nextMembers);
+      onOpenGroup(joined.id);
     } catch (reason) {
       setError(getErrorMessage(reason));
     } finally {
@@ -400,6 +422,7 @@ export function CommunityScreen({
         setGroupMembers([]);
         setGroupSets([]);
         await refreshGroups();
+        onBack();
       } else {
         setGroupMembers(await listCloudGroupMembers(selectedGroupId));
         await refreshGroups();
@@ -446,12 +469,23 @@ export function CommunityScreen({
     }
   };
 
+  const headerTitle = isGroupSetDetail
+    ? '問題セット'
+    : isGroupDetail
+      ? 'グループ詳細'
+      : tab === 'groups'
+        ? 'グループ'
+        : tab === 'discover'
+          ? '見つける'
+          : '問題セット';
+  const handleHeaderBack = isGroupSetDetail ? () => setDirectSet(null) : onBack;
+
   return (
     <Layout>
       <div className="community-screen">
         <header className="community-screen__header">
-          {isPrimaryRoot ? <span className="community-screen__header-spacer" aria-hidden="true" /> : <BackButton onClick={onBack} label="戻る" />}
-          <div><h1>{tab === 'groups' ? 'グループ' : tab === 'discover' ? '見つける' : '問題セット'}</h1></div>
+          {isPrimaryRoot ? <span className="community-screen__header-spacer" aria-hidden="true" /> : <BackButton onClick={handleHeaderBack} label="戻る" />}
+          <div><h1>{headerTitle}</h1></div>
           <span className="community-screen__header-spacer" aria-hidden="true" />
         </header>
 
@@ -460,10 +494,74 @@ export function CommunityScreen({
         {authMessage ? <div className="community-notice" role="status">{authMessage}<button type="button" onClick={() => setAuthMessage('')}>閉じる</button></div> : null}
 
         <main className="community-screen__body">
+          {isGroupDetail ? (
+            isGroupSetDetail && directSet ? (
+              <section className="community-section" aria-label="グループの問題セット詳細">
+                <ProblemSetCards
+                  sets={[directSet]}
+                  busy={busy}
+                  onCopy={(set) => void copySharedSet(set)}
+                  onPractice={(set) => void practiceSharedSet(set)}
+                  onReport={setReportTarget}
+                  detailed
+                />
+              </section>
+            ) : (
+              <section className="community-section community-group-detail">
+                <div className="community-section__heading">
+                  <h2>{selectedGroup?.name ?? 'グループ'}</h2>
+                  {canManageSelectedGroup ? <button type="button" disabled={busy} onClick={() => void copyInvite(selectedGroupId)}>招待</button> : null}
+                </div>
+                {!session ? (
+                  <EmptyState title="ログインが必要です" action="ログイン" onAction={() => setLoginOpen(true)} />
+                ) : (
+                  <>
+                    {busy && groupFolders.length === 0 ? <div className="community-loading" role="status">読み込み中…</div> : null}
+                    <div className="community-group-folder-list" aria-label="グループのフォルダ">
+                      {groupFolders.map((folder) => (
+                        <section key={folder.id} className="community-group-folder">
+                          <div className="community-group-folder__heading">
+                            <span aria-hidden="true"><FolderOutlineIcon size={32} /></span>
+                            <div><strong>{folder.name}</strong><small>{folder.problemSets.length}セット</small></div>
+                          </div>
+                          <div className="community-group-set-list">
+                            {folder.problemSets.map((problemSet) => (
+                              <button key={problemSet.id} type="button" onClick={() => void openSharedDetail(problemSet, 'groups')}>
+                                <span aria-hidden="true"><DocumentOutlineIcon size={22} /></span>
+                                <span><strong>{problemSet.title}</strong><small>{problemSet.questionCount}問</small></span>
+                                <ChevronRightIcon size={20} />
+                              </button>
+                            ))}
+                          </div>
+                        </section>
+                      ))}
+                      {!busy && groupFolders.length === 0 ? <EmptyState title="問題セットはまだありません" /> : null}
+                    </div>
+                    {groupMembers.length > 0 ? (
+                      <details className="community-members">
+                        <summary>メンバー・管理 <span>{groupMembers.length}人</span></summary>
+                        <div className="community-members__list">
+                          {groupMembers.map((member) => (
+                            <div key={member.userId}>
+                              <span><strong>{member.displayName}</strong><small>{roleLabel(member.role)}</small></span>
+                              {member.role !== 'owner' && (canManageSelectedGroup || member.userId === session.user.id) ? (
+                                <button type="button" disabled={busy} onClick={() => void removeGroupMember(member)}>{member.userId === session.user.id ? '退出' : '削除'}</button>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    ) : null}
+                  </>
+                )}
+              </section>
+            )
+          ) : (
+          <>
           {tab === 'mine' ? (
             <section className="community-section">
               <div className="community-section__heading">
-                <div><h2>自分の問題セット</h2><p>端末内のデータは共有するまで非公開です。</p></div>
+                <h2>自分の問題セット</h2>
                 <button type="button" onClick={onCreateProblemSet}>新規作成</button>
               </div>
               <div className="community-account">
@@ -498,48 +596,32 @@ export function CommunityScreen({
                     </div>
                   </article>
                 ))}
-                {data.problemSets.length === 0 ? <EmptyState title="問題セットはまだありません" body="まず1つ作ると、ここから共有できます。" action="問題セットを作る" onAction={onCreateProblemSet} /> : null}
+                {data.problemSets.length === 0 ? <EmptyState title="問題セットはまだありません" action="問題セットを作る" onAction={onCreateProblemSet} /> : null}
               </div>
             </section>
           ) : null}
 
           {tab === 'groups' ? (
             <section className="community-section">
-              <div className="community-section__heading"><div><h2>グループ</h2><p>クラスや友人だけで問題セットを共有します。</p></div></div>
-              {!session ? <EmptyState title="グループ機能はログイン後に使えます" body="問題作成と学習にはログイン不要です。" action="ログイン" onAction={() => setLoginOpen(true)} /> : (
+              {!session ? <EmptyState title="グループ機能はログイン後に使えます" action="ログイン" onAction={() => setLoginOpen(true)} /> : (
                 <>
                   <div className="community-group-actions">
-                    <label>新しいグループ<input value={newGroupName} onChange={(event) => setNewGroupName(event.target.value)} placeholder="例：英語ゼミ" /></label>
+                    <label>新しいグループ<input value={newGroupName} onChange={(event) => setNewGroupName(event.target.value)} /></label>
                     <button type="button" disabled={busy || !newGroupName.trim()} onClick={() => void createGroup()}>作成</button>
-                    <label>招待コードで参加<input value={inviteCode} onChange={(event) => setInviteCode(event.target.value.toUpperCase())} placeholder="12文字のコード" /></label>
+                    <label>招待コードで参加<input value={inviteCode} onChange={(event) => setInviteCode(event.target.value.toUpperCase())} /></label>
                     <button type="button" disabled={busy || !inviteCode.trim()} onClick={() => void joinGroup()}>参加</button>
                   </div>
                   <div className="community-card-list">
                     {groups.map((group) => (
-                      <article key={group.id} className={`community-group-card${selectedGroupId === group.id ? ' community-group-card--active' : ''}`}>
-                        <button type="button" className="community-group-card__main" onClick={() => void openGroup(group.id)}>
-                          <strong>{group.name}</strong><small>{group.memberCount}人 · {group.setCount}セット · {roleLabel(group.role)}</small>
+                      <article key={group.id} className="community-group-card">
+                        <button type="button" className="community-group-card__main" onClick={() => onOpenGroup(group.id)}>
+                          <span className="community-group-card__icon" aria-hidden="true"><GroupIcon size={24} /></span>
+                          <span><strong>{group.name}</strong><small>{group.memberCount}人 · {group.setCount}セット</small></span>
+                          <ChevronRightIcon size={20} />
                         </button>
-                        {(group.role === 'owner' || group.role === 'admin') ? <button type="button" onClick={() => void copyInvite(group.id)}>招待</button> : null}
                       </article>
                     ))}
                   </div>
-                  {selectedGroupId ? (
-                    <>
-                      <section className="community-members" aria-label="グループメンバー">
-                        <h3>メンバー</h3>
-                        {groupMembers.map((member) => (
-                          <div key={member.userId}>
-                            <span><strong>{member.displayName}</strong><small>{roleLabel(member.role)}</small></span>
-                            {member.role !== 'owner' && (canManageSelectedGroup || member.userId === session.user.id) ? (
-                              <button type="button" disabled={busy} onClick={() => void removeGroupMember(member)}>{member.userId === session.user.id ? '退出' : '削除'}</button>
-                            ) : null}
-                          </div>
-                        ))}
-                      </section>
-                      <ProblemSetCards sets={groupSets} busy={busy} onCopy={(set) => void copySharedSet(set)} onPractice={(set) => void practiceSharedSet(set)} onDetail={(set) => void openSharedDetail(set, 'groups')} onReport={setReportTarget} />
-                    </>
-                  ) : null}
                 </>
               )}
             </section>
@@ -547,11 +629,11 @@ export function CommunityScreen({
 
           {tab === 'discover' ? (
             <section className="community-section">
-              <div className="community-section__heading"><div><h2>{directSet ? '共有された問題セット' : '見つける'}</h2><p>追加すると自分用の独立したコピーになります。</p></div>{directSet && !shareToken ? <button type="button" onClick={() => { setDirectSet(null); setTab(detailBackTab); }}>一覧へ戻る</button> : null}</div>
+              {directSet ? <div className="community-section__heading"><h2>共有された問題セット</h2>{!shareToken ? <button type="button" onClick={() => { setDirectSet(null); setTab(detailBackTab); }}>一覧へ戻る</button> : null}</div> : null}
               {directSet ? <ProblemSetCards sets={[directSet]} busy={busy} onCopy={(set) => void copySharedSet(set, shareToken)} onPractice={(set) => void practiceSharedSet(set, shareToken)} onReport={setReportTarget} detailed /> : (
                 <>
                   <div className="community-search">
-                    <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="タイトル・科目から検索" aria-label="公開問題セットを検索" />
+                    <div className="community-search__input"><SearchIcon size={19} /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} aria-label="公開問題セットを検索" /></div>
                     <select value={sort} onChange={(event) => setSort(event.target.value as 'new' | 'popular')} aria-label="並び順"><option value="new">新着順</option><option value="popular">人気順</option></select>
                   </div>
                   <div className="community-filters" aria-label="絞り込み">
@@ -560,18 +642,21 @@ export function CommunityScreen({
                   </div>
                   {publicLoading ? <div className="community-notice" role="status">公開問題セットを読み込み中…</div> : null}
                   <ProblemSetCards sets={visiblePublicSets} busy={busy || publicLoading} onCopy={(set) => void copySharedSet(set)} onPractice={(set) => void practiceSharedSet(set)} onDetail={(set) => void openSharedDetail(set, 'discover')} onReport={setReportTarget} />
-                  {cloudConfigured && visiblePublicSets.length === 0 && !publicLoading ? <EmptyState title="条件に合うセットはありません" body="検索条件を変えるか、自分のセットを最初に公開してみましょう。" /> : null}
+                  {cloudConfigured && visiblePublicSets.length === 0 && !publicLoading ? <EmptyState title="条件に合うセットはありません" /> : null}
                 </>
               )}
             </section>
           ) : null}
 
+          </>
+          )}
+
         </main>
 
         {loginOpen ? (
           <CommunityModal ariaLabel="ログイン" busy={busy} onClose={() => setLoginOpen(false)}>
-              <h2>共有機能にログイン</h2><p>入力したメールへログイン用リンクを送ります。問題作成と学習だけならログインは不要です。</p>
-              <label>メールアドレス<input data-dialog-autofocus type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" autoComplete="email" /></label>
+              <h2>共有機能にログイン</h2>
+              <label>メールアドレス<input data-dialog-autofocus type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" /></label>
               <div className="community-sheet__actions"><button type="button" onClick={() => setLoginOpen(false)}>キャンセル</button><button type="button" className="community-primary" disabled={busy || !email.trim()} onClick={() => void submitMagicLink()}>リンクを送る</button></div>
           </CommunityModal>
         ) : null}
@@ -601,7 +686,7 @@ export function CommunityScreen({
           <CommunityModal ariaLabel="問題セットを通報" busy={busy} onClose={() => setReportTarget(null)}>
               <h2>問題セットを通報</h2><p>{reportTarget.title}</p>
               <label>理由<select data-dialog-autofocus value={reportReason} onChange={(event) => setReportReason(event.target.value)}><option value="incorrect_answer">正解が誤っている</option><option value="incorrect_explanation">解説が誤っている</option><option value="unclear_question">問題文が不明確</option><option value="duplicate">重複している</option><option value="copyright">著作権上の問題</option><option value="other">その他</option></select></label>
-              <label>詳細<textarea value={reportDetails} onChange={(event) => setReportDetails(event.target.value)} placeholder="確認に必要な情報（任意）" /></label>
+              <label>詳細（任意）<textarea value={reportDetails} onChange={(event) => setReportDetails(event.target.value)} /></label>
               <div className="community-sheet__actions"><button type="button" onClick={() => setReportTarget(null)}>キャンセル</button><button type="button" className="community-danger" disabled={busy} onClick={() => void submitReport()}>通報する</button></div>
           </CommunityModal>
         ) : null}
@@ -697,14 +782,14 @@ function ProblemSetCards({ sets, busy, onCopy, onPractice, onDetail, onReport, d
       {set.description ? <p>{set.description}</p> : null}
       <div className="community-public-card__meta"><span>{set.questionCount}問</span><span>{difficultyLabel(set.difficulty)}</span><span>追加 {set.addCount}</span><span>作成：{set.authorName}</span></div>
       {detailed && set.questions ? <details><summary>問題の内容を確認</summary>{set.questions.slice(0, 5).map((question, index) => <div className="community-question-preview" key={`${index}_${question.question}`}><strong>{index + 1}. {question.question}</strong><span>{question.choices.join(' / ')}</span></div>)}</details> : null}
-      <div className="community-public-card__actions"><button type="button" className="community-primary" disabled={busy} onClick={() => onPractice(set)}>このまま解く</button><button type="button" disabled={busy} onClick={() => onCopy(set)}>自分の問題に追加</button></div>
+      <div className="community-public-card__actions"><button type="button" className="community-primary" disabled={busy} onClick={() => onCopy(set)}>自分の問題にコピー</button><button type="button" disabled={busy} onClick={() => onPractice(set)}>このまま解く</button></div>
       <div className="community-public-card__minor-actions">{onDetail && !detailed ? <button type="button" onClick={() => onDetail(set)}>詳細を見る</button> : null}<button type="button" onClick={() => onReport(set)}>誤りを報告</button></div>
     </article>
   ))}</div>;
 }
 
-function EmptyState({ title, body, action, onAction }: { title: string; body: string; action?: string; onAction?: () => void }) {
-  return <div className="community-empty"><span aria-hidden="true"><DocumentOutlineIcon size={30} /></span><h3>{title}</h3><p>{body}</p>{action && onAction ? <button type="button" className="community-primary" onClick={onAction}>{action}</button> : null}</div>;
+function EmptyState({ title, body, action, onAction }: { title: string; body?: string; action?: string; onAction?: () => void }) {
+  return <div className="community-empty"><span aria-hidden="true"><DocumentOutlineIcon size={30} /></span><h3>{title}</h3>{body ? <p>{body}</p> : null}{action && onAction ? <button type="button" className="community-primary" onClick={onAction}>{action}</button> : null}</div>;
 }
 
 function formatDate(value: string) {

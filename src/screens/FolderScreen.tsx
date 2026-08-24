@@ -64,7 +64,6 @@ export function FolderScreen({ data, folderId, onBack, onCreateProblemSet, onOpe
             <div className="quiz-folder__empty">
               <div className="quiz-folder__empty-icon" aria-hidden="true"><PlusIcon size={24} /></div>
               <h2>問題セットがありません</h2>
-              <p>問題を追加すると、ここから演習を始められます。</p>
               <button type="button" onClick={() => onCreateProblemSet(folder.id)}>
                 最初の問題セットを作る
               </button>

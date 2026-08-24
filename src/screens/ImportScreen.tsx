@@ -289,7 +289,6 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
               id="setTitle"
               value={title}
               onChange={(event) => handleTitleChange(event.target.value)}
-              placeholder="JSONのsetTitleを読み込むか入力"
               maxLength={IMPORT_RESOURCE_LIMITS.setTitle}
               className="quiz-import__input"
             />
@@ -331,7 +330,6 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
                       value={file.editableSetTitle}
                       onChange={(event) => handleFileTitleChange(file.id, event.target.value)}
                       className="quiz-import__file-title-input"
-                      placeholder="問題セット名"
                       maxLength={IMPORT_RESOURCE_LIMITS.setTitle}
                       aria-label={`${file.fileName}の問題セット名`}
                     />
@@ -352,7 +350,6 @@ export function ImportScreen({ folderName, onBack, onImport, onImportComplete }:
               id="jsonText"
               value={jsonText}
               onChange={(event) => handleJsonTextChange(event.target.value)}
-              placeholder="ここにJSONを貼り付けるか、クリップボード/JSONファイルから読み込んでください"
               className="quiz-import__textarea"
             />
           </section>

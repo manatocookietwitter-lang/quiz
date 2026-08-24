@@ -1092,7 +1092,6 @@ function AnswerPanel({
               setDetailMessage('');
               setDetailMessageTone('neutral');
             }}
-            placeholder={'\u8a73\u7d30\u89e3\u8aac\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044'}
             aria-label={'\u8a73\u7d30\u89e3\u8aac'}
              disabled={isSavingDetail}
            />

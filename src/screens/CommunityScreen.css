@@ -100,7 +100,7 @@
 .community-set-card__main,
 .community-group-card__main { display: flex; flex: 1; align-items: center; gap: 12px; min-width: 0; padding: 15px; border: 0; background: transparent; color: inherit; text-align: left; }
 .community-set-card__main > span:last-child,
-.community-group-card__main { min-width: 0; }
+.community-group-card__main > span:nth-child(2) { min-width: 0; }
 .community-set-card strong,
 .community-set-card small,
 .community-group-card strong,
@@ -110,22 +110,43 @@
 .community-set-card small,
 .community-group-card small { margin-top: 4px; color: #80929b; font-size: 12px; }
 .community-set-card__icon { display: grid; place-items: center; width: 32px; height: 38px; flex: 0 0 auto; color: #279b9a; }
-.community-group-card > button { width: 92px; border: 0; border-left: 1px solid #e4edef; background: #f7fbfb; color: #17817e; font-size: 13px; font-weight: 900; }
+.community-group-card__icon { display: grid; place-items: center; width: 34px; height: 34px; flex: 0 0 auto; border-radius: 10px; background: #edf8f7; color: #168d87; }
+.community-group-card__main > svg { flex: 0 0 auto; margin-left: auto; color: #8a9aa2; }
 .community-set-card__actions { display: grid; width: 82px; flex: 0 0 auto; border-left: 1px solid #e4edef; }
 .community-set-card__actions button { border: 0; background: #f7fbfb; color: #17817e; font-size: 12px; font-weight: 900; }
 .community-set-card__actions button + button { border-top: 1px solid #e4edef; color: #a85555; }
 .community-set-card__actions button:disabled { opacity: .45; }
-.community-group-card--active { border-color: #4ec6bf; }
-
-.community-members { padding: 14px 16px; border: 1px solid #dbe8eb; border-radius: 18px; background: #fff; }
-.community-members h3 { margin: 0 0 7px; font-size: 15px; }
-.community-members > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; border-top: 1px solid #edf2f3; }
-.community-members > div > span { min-width: 0; }
+.community-members { overflow: hidden; border: 1px solid #dbe8eb; border-radius: 12px; background: #fff; }
+.community-members summary { display: flex; justify-content: space-between; gap: 12px; padding: 14px 16px; cursor: pointer; font-size: 13px; font-weight: 900; list-style: none; }
+.community-members summary::-webkit-details-marker { display: none; }
+.community-members summary span { color: #80929b; font-weight: 700; }
+.community-members__list { padding: 0 16px 8px; border-top: 1px solid #edf2f3; }
+.community-members__list > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; border-top: 1px solid #edf2f3; }
+.community-members__list > div:first-child { border-top: 0; }
+.community-members__list > div > span { min-width: 0; }
 .community-members strong,
 .community-members small { display: block; }
 .community-members strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .community-members small { margin-top: 2px; color: #81929a; font-size: 11px; }
 .community-members button { padding: 7px 10px; border: 0; border-radius: 10px; background: #f8eeee; color: #a24d4d; font-size: 12px; font-weight: 850; }
+
+.community-group-folder-list { display: grid; gap: 12px; }
+.community-group-folder { overflow: hidden; border: 1px solid #dce8eb; border-radius: 12px; background: #fff; }
+.community-group-folder__heading { display: flex; align-items: center; gap: 12px; padding: 15px 16px; }
+.community-group-folder__heading > span { display: grid; place-items: center; width: 40px; height: 40px; flex: 0 0 auto; color: #1769ff; }
+.community-group-folder__heading strong,
+.community-group-folder__heading small { display: block; }
+.community-group-folder__heading small { margin-top: 3px; color: #80929b; font-size: 12px; }
+.community-group-set-list { border-top: 1px solid #e8eef0; }
+.community-group-set-list button { display: grid; grid-template-columns: 28px minmax(0, 1fr) 20px; align-items: center; gap: 10px; width: 100%; min-height: 62px; padding: 10px 15px; border: 0; border-top: 1px solid #edf2f3; background: #fff; color: #183241; text-align: left; }
+.community-group-set-list button:first-child { border-top: 0; }
+.community-group-set-list button > span:first-child { display: grid; place-items: center; color: #6d7d85; }
+.community-group-set-list button > span:nth-child(2) { min-width: 0; }
+.community-group-set-list strong,
+.community-group-set-list small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.community-group-set-list small { margin-top: 3px; color: #80929b; font-size: 12px; }
+.community-group-set-list button > svg { color: #8a9aa2; }
+.community-loading { padding: 20px; color: #6f828c; text-align: center; }
 
 .community-group-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
 .community-group-actions label { display: grid; gap: 6px; color: #60747e; font-size: 12px; font-weight: 800; }
@@ -133,6 +154,9 @@
 .community-group-actions button { align-self: end; height: 44px; padding: 0 16px; border: 0; border-radius: 12px; background: #e2f6f3; color: #087d78; font-weight: 900; }
 
 .community-search { display: grid; grid-template-columns: minmax(0, 1fr) 104px; gap: 8px; }
+.community-search__input { display: flex; align-items: center; min-width: 0; border: 1px solid #cedde1; border-radius: 13px; background: #fff; color: #70838d; }
+.community-search__input > svg { flex: 0 0 auto; margin-left: 13px; }
+.community-search__input:focus-within { border-color: #39b9b3; box-shadow: 0 0 0 3px rgba(57, 185, 179, .12); }
 .community-filters { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .community-filters label { display: grid; gap: 5px; color: #667b85; font-size: 11px; font-weight: 850; }
 .community-search input,
@@ -146,11 +170,13 @@
 .community-filters select,
 .community-sheet input,
 .community-sheet select { height: 46px; padding: 0 13px; }
+.community-search__input input { border: 0; background: transparent; box-shadow: none; }
 .community-search input:focus,
 .community-filters select:focus,
 .community-sheet input:focus,
 .community-sheet select:focus,
 .community-sheet textarea:focus { border-color: #39b9b3; box-shadow: 0 0 0 3px rgba(57, 185, 179, .12); }
+.community-search__input input:focus { border-color: transparent; box-shadow: none; }
 
 .community-public-card {
   padding: 18px;

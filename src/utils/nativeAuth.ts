@@ -22,6 +22,7 @@ export type NativeAuthReturnTarget =
   | {
       name: 'community';
       tab: 'mine' | 'groups' | 'discover';
+      groupId?: string;
       shareSetId?: string;
       shareToken?: string;
     };
@@ -290,15 +291,20 @@ function normalizeReturnTarget(value: unknown): NativeAuthReturnTarget | null {
   const shareSetId = typeof target.shareSetId === 'string' && SAFE_ID_PATTERN.test(target.shareSetId)
     ? target.shareSetId
     : undefined;
+  const groupId = typeof target.groupId === 'string' && SAFE_ID_PATTERN.test(target.groupId)
+    ? target.groupId
+    : undefined;
   const shareToken = typeof target.shareToken === 'string' && SAFE_SHARE_TOKEN_PATTERN.test(target.shareToken)
     ? target.shareToken
     : undefined;
   if (target.shareSetId !== undefined && !shareSetId) return null;
+  if (target.groupId !== undefined && !groupId) return null;
   if (target.shareToken !== undefined && !shareToken) return null;
 
   return {
     name: 'community',
     tab: target.tab,
+    ...(groupId ? { groupId } : {}),
     ...(shareSetId ? { shareSetId } : {}),
     ...(shareToken ? { shareToken } : {}),
   };

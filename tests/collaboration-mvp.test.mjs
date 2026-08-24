@@ -30,7 +30,7 @@ test('the primary navigation exposes the five global destinations', () => {
   }
   assert.doesNotMatch(screenSource, /community-tabs/);
   assert.match(screenSource, /共有するときだけログイン/);
-  assert.match(screenSource, /問題作成と学習だけならログインは不要/);
+  assert.doesNotMatch(screenSource, /問題作成と学習だけならログインは不要/);
 });
 
 test('public discovery supports required filters, detail preview and both primary actions', () => {
@@ -38,10 +38,20 @@ test('public discovery supports required filters, detail preview and both primar
   assert.match(screenSource, />難易度<select/);
   assert.match(screenSource, /問題の内容を確認/);
   assert.match(screenSource, /このまま解く/);
-  assert.match(screenSource, /自分の問題に追加/);
+  assert.match(screenSource, /自分の問題にコピー/);
   const previewAnswerBody = appSource.slice(appSource.indexOf('const handlePreviewAnswer'), appSource.indexOf('const handleCreateProblemSet'));
   assert.doesNotMatch(previewAnswerBody, /commitData|persistThenCommitData|recordAnswer/);
   assert.match(previewAnswerBody, /学習履歴には記録しません/);
+});
+
+test('groups navigate to a dedicated detail with foldered problem sets', () => {
+  assert.match(typesSource, /name: 'community';[^\n]*groupId\?: string/);
+  assert.match(appSource, /onOpenGroup=\{\(groupId\) => navigate\(\{ name: 'community', tab: 'groups', groupId/);
+  assert.match(screenSource, /initialGroupId/);
+  assert.match(screenSource, /community-group-folder-list/);
+  assert.match(screenSource, /community-group-set-list/);
+  assert.match(screenSource, /<details className="community-members">/);
+  assert.doesNotMatch(screenSource, /selectedGroupId === group\.id/);
 });
 
 test('a copied cloud set gets new local ids and source attribution', () => {

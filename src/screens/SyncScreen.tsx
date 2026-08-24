@@ -930,7 +930,6 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
         <BackButton onClick={onBack} label="戻る" className="sync-screen__back" disabled={busy || diagnosticBusy} />
         <div className="sync-screen__header-text">
           <h1>同期設定</h1>
-          <p>スマホやPCで同じデータを使う</p>
         </div>
       </header>
 
@@ -949,7 +948,6 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
           <section className="sync-auth-gate" aria-labelledby="sync-auth-title">
             <div>
               <h2 id="sync-auth-title">同期にはログインが必要です</h2>
-              <p>同期データをアカウントごとに安全に分けます。問題作成と端末内の学習は、ログインなしでも使えます。</p>
             </div>
             <div className="sync-auth-gate__form">
               <label htmlFor="sync-login-email">メールアドレス</label>
@@ -960,7 +958,6 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
                   type="email"
                   value={loginEmail}
                   autoComplete="email"
-                  placeholder="you@example.com"
                   onChange={(event) => setLoginEmail(event.target.value)}
                 />
                 <button type="button" className="sync-button sync-button--primary" disabled={loginBusy || !loginEmail.trim()} onClick={() => void handleSendLoginLink()}>
@@ -985,7 +982,6 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
           <div className="sync-card__title-row sync-card__title-row--top">
             <div>
               <h2>端末をつなぐ</h2>
-              <p>長いIDを入力せず、8文字の一時コードで接続できます。</p>
             </div>
             <span className={`sync-status${hasStrongConnection && authenticated ? ' sync-status--ok' : ' sync-status--unset'}`}>
               {!authenticated ? 'ログイン待ち' : hasStrongConnection ? '接続済み' : '未接続'}
@@ -1011,7 +1007,6 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
                 <span className="sync-connected__dot" aria-hidden="true" />
                 <span>
                   <strong>この端末は同期に接続されています</strong>
-                  <small>別の端末を追加するときだけ、接続コードを発行します。</small>
                 </span>
               </div>
               <button type="button" className="sync-button sync-button--secondary" onClick={() => void handleIssuePairingCode()} disabled={busy || !configured || !authenticated}>
@@ -1034,7 +1029,6 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
               <SyncIcon size={22} />
               <span>
                 <strong>この端末で同期を始める</strong>
-                <small>安全な接続を作成します</small>
               </span>
             </button>
           )}
@@ -1047,7 +1041,6 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
                 className="sync-input sync-input--pairing"
                 value={pairingCodeInput}
                 onChange={(event) => handlePairingCodeInput(event.target.value)}
-                placeholder="8文字のコード"
                 autoComplete="one-time-code"
                 autoCapitalize="characters"
                 spellCheck={false}
@@ -1066,7 +1059,6 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
             <div className="sync-card__title-row">
               <div>
                 <h2>データを同期</h2>
-                <p>この端末から保存するか、クラウドの内容を読み込みます。</p>
               </div>
             </div>
 
@@ -1075,14 +1067,12 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
                 <UploadIcon size={24} />
                 <span>
                   <strong>{busy ? '処理中...' : 'この端末をクラウドへ保存'}</strong>
-                  <small>この端末の最新内容を送る</small>
                 </span>
               </button>
               <button type="button" className="sync-transfer-button" onClick={handleDownload} disabled={!canRun}>
                 <DownloadIcon size={24} />
                 <span>
                   <strong>{busy ? '処理中...' : 'クラウドからこの端末へ読込'}</strong>
-                  <small>確認してから端末へ反映する</small>
                 </span>
               </button>
             </div>
@@ -1114,7 +1104,6 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
           <summary>
             <span>
               <strong>バックアップ・診断・詳細</strong>
-              <small>困ったときやJSON保存が必要なときに開く</small>
             </span>
             <ChevronDownIcon size={20} />
           </summary>
@@ -1127,7 +1116,6 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
                 className="sync-input sync-input--recovery"
                 value={syncId}
                 onChange={(event) => updateSyncIdDraft(event.target.value)}
-                placeholder="36文字の同期ID"
                 aria-label="復旧用の同期ID"
                 autoComplete="off"
                 spellCheck={false}
@@ -1154,7 +1142,6 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
 
             <section className="sync-advanced__section">
               <h2>端末内バックアップ</h2>
-              <p>同期とは別に、現在のデータをJSONファイルとして保存できます。</p>
               <div className="sync-actions">
                 <button type="button" className="sync-button sync-button--secondary" onClick={handleDownloadBackup} disabled={busy}>
                   <DownloadIcon size={18} />
@@ -1169,7 +1156,6 @@ export function SyncScreen({ onBack }: SyncScreenProps) {
 
             <section className="sync-advanced__section">
               <h2>接続診断</h2>
-              <p>同期できない場合に、クラウドとの接続状態を確認します。</p>
               <button type="button" className="sync-button sync-button--secondary" onClick={handleDiagnostic} disabled={diagnosticBusy}>
                 {diagnosticBusy ? '診断中...' : '接続を診断する'}
               </button>

@@ -3,7 +3,7 @@ import type { AppData, AppScreen, QuizResult } from '../types';
 export function getScreenKey(screen: AppScreen): string {
   if (screen.name === 'createProblemSet') return `create-${screen.editSetId ?? ''}-${screen.folderId ?? ''}`;
   if (screen.name === 'folder') return `folder-${screen.folderId}`;
-  if (screen.name === 'community') return `community-${screen.tab ?? 'mine'}-${screen.shareSetId ?? ''}`;
+  if (screen.name === 'community') return `community-${screen.tab ?? 'mine'}-${screen.groupId ?? ''}-${screen.shareSetId ?? ''}`;
   if (screen.name === 'problemSetDetail') return `detail-${screen.setId}`;
   if (screen.name === 'problemList') return `problem-list-${screen.setId}-${screen.sortMode ?? 'ordered'}`;
   if (screen.name === 'noteList') return `note-list-${screen.setId}`;
@@ -58,7 +58,10 @@ export function getResultReturnLabel(target: AppScreen): string {
   if (target.name === 'problemList') return '問題一覧へ戻る';
   if (target.name === 'noteList') return 'ノート一覧へ戻る';
   if (target.name === 'folder') return 'フォルダへ戻る';
-  if (target.name === 'community') return target.shareSetId || target.shareToken ? '共有詳細へ戻る' : '共有画面へ戻る';
+  if (target.name === 'community') {
+    if (target.groupId) return target.shareSetId ? 'グループの問題へ戻る' : 'グループへ戻る';
+    return target.shareSetId || target.shareToken ? '共有詳細へ戻る' : '共有画面へ戻る';
+  }
   if (target.name === 'home') return 'ホームへ戻る';
   return '前の画面へ戻る';
 }

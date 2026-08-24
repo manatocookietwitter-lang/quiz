@@ -109,7 +109,7 @@ export function NoteListScreen({ data, setId, onBack }: NoteListScreenProps) {
           <header className="quiz-notes__header">
             <div className="quiz-notes__header-slope" />
             <BackButton onClick={onBack} className="quiz-notes__back-button" />
-            <div className="quiz-notes__title-wrap"><h1>ノート一覧</h1><p>Quiz make</p></div>
+            <div className="quiz-notes__title-wrap"><h1>ノート一覧</h1></div>
           </header>
           <MissingResourceState
             title="問題セットが見つかりません"
