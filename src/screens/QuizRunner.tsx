@@ -712,7 +712,7 @@ function AnswerPanel({
       return Math.max(240, Math.min(320, viewportHeight - 128));
     }
 
-    const availableHeight = isMobile ? viewportHeight - 104 : viewportHeight - 88;
+    const availableHeight = isMobile ? viewportHeight - 24 : viewportHeight - 88;
     return Math.max(320, isMobile ? availableHeight : Math.min(760, availableHeight));
   };
 

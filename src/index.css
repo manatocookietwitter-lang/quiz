@@ -762,7 +762,7 @@ button:disabled {
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  overflow: visible;
+  overflow: hidden;
   visibility: visible;
   opacity: 1;
   border: 1px solid var(--ui-border, #d6e4ea);
@@ -1080,7 +1080,6 @@ button:disabled {
 
 .answer-sheet__drag-area {
   position: relative;
-  z-index: 2;
   min-height: 44px;
   align-items: center;
   padding: 12px 0 8px;
@@ -1091,7 +1090,7 @@ button:disabled {
   position: absolute;
   left: 0;
   right: 0;
-  top: -140px;
+  top: -8px;
   bottom: -12px;
 }
 
@@ -1364,7 +1363,7 @@ button:disabled {
   }
 
   .answer-sheet--expanded {
-    height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 104px);
+    height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 24px);
     max-height: none;
     min-height: min(320px, calc(100dvh - var(--safe-top) - var(--safe-bottom) - 24px));
   }
