@@ -1,8 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
   <title>QuizMake</title>
-  <rect width="512" height="512" rx="112" fill="#f7fbff"/>
-  <rect x="190" y="82" width="224" height="304" rx="62" fill="#b9d2ff"/>
-  <rect x="108" y="116" width="292" height="302" rx="62" fill="#ffffff" stroke="#1769ff" stroke-width="28"/>
-  <circle cx="244" cy="267" r="67" fill="#ffffff" stroke="#1769ff" stroke-width="28"/>
-  <path d="m289 312 53 51" fill="none" stroke="#1769ff" stroke-width="28" stroke-linecap="round"/>
+  <rect width="512" height="512" rx="112" fill="#fff"/>
+  <circle cx="238" cy="248" r="143" fill="none" stroke="#1769ff" stroke-width="58"/>
+  <path d="M326 347l82 79" fill="none" stroke="#1769ff" stroke-linecap="round" stroke-width="58"/>
+  <path d="M273 324 389 208l48 48-116 116-68 22z" fill="#ffbd27" stroke="#18324d" stroke-linejoin="round" stroke-width="14"/>
+  <path d="m253 394 20-70 48 48z" fill="#f5d1a2" stroke="#18324d" stroke-linejoin="round" stroke-width="14"/>
+  <path d="m253 394 12-40 28 28z" fill="#18324d"/>
+  <path d="m389 208 23-23c13-13 33-13 46 0l2 2c13 13 13 33 0 46l-23 23z" fill="#ff5d83" stroke="#18324d" stroke-width="14"/>
+  <path d="m377 220 48 48" stroke="#dce6f4" stroke-width="18"/>
 </svg>

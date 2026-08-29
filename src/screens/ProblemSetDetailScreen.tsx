@@ -3,6 +3,7 @@ import type { AppData, Question } from '../types';
 import { BackButton } from '../components/BackButton';
 import { Layout } from '../components/Layout';
 import { MissingResourceState } from '../components/MissingResourceState';
+import { StudyIcon } from '../components/UiIcons';
 import {
   getProgress,
   getQuestionsBySet,
@@ -147,8 +148,8 @@ export function ProblemSetDetailScreen({
           <div className="quiz-detail__main-column">
             <section className="quiz-detail__start-panel" aria-labelledby="quiz-detail-start-title">
               <div className="quiz-detail__section-heading">
-                <div>
-                  <p>この問題セット</p>
+                <div className="quiz-detail__section-title">
+                  <StudyIcon size={26} />
                   <h2 id="quiz-detail-start-title">学習を始める</h2>
                 </div>
                 <span>{questions.length}{'\u554f'}</span>

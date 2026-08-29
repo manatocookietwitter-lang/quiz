@@ -12,15 +12,16 @@ const htmlSource = readSource('../index.html');
 const workerSource = readSource('../public/sw.js');
 const globalCss = readSource('../src/index.css');
 
-test('home and folder navigation use outline icons while retaining learning counts', () => {
+test('home and folder navigation use the illustrated blue icon system while retaining learning counts', () => {
   assert.match(homeSource, /FolderOutlineIcon/);
   assert.doesNotMatch(homeSource, /QuizMakeMarkIcon|MenuIcon|quiz-home__menu-button/);
   assert.match(homeSource, /Quiz Make/);
   assert.doesNotMatch(homeSource, /MY LIBRARY/);
-  assert.match(homeSource, /📁 \{setCount\}/);
-  assert.match(homeSource, /🏷 \{questionCount\}/);
-  assert.match(homeSource, /🔖 \{reviewCount\}/);
-  assert.match(homeSource, /✅ \{correctRate\}%/);
+  assert.match(homeSource, /DocumentOutlineIcon size=\{17\}/);
+  assert.match(homeSource, /TagIcon size=\{17\}/);
+  assert.match(homeSource, /BookmarkIcon size=\{17\}/);
+  assert.match(homeSource, /ProgressIcon size=\{17\}/);
+  assert.doesNotMatch(homeSource, /📁|🏷|🔖|✅/);
   assert.match(globalCss, /\.quiz-home \.quiz-home__folder-stats \{[\s\S]*?font-size:\s*clamp\(15px, 2vw, 17px\)/);
   assert.doesNotMatch(homeSource, /quiz-home__folder-tab/);
   for (const icon of ['HomeIcon', 'SearchIcon', 'GroupIcon', 'AddSquareIcon', 'SettingsIcon']) {
@@ -28,15 +29,18 @@ test('home and folder navigation use outline icons while retaining learning coun
   }
 
   assert.match(folderSource, /DocumentOutlineIcon/);
-  assert.match(folderSource, /問題 \{questionCount\}/);
-  assert.match(folderSource, /復習 \{reviewCount\}/);
-  assert.match(folderSource, /正答 \{correctRate\}%/);
+  assert.match(folderSource, /TagIcon size=\{16\}/);
+  assert.match(folderSource, /BookmarkIcon size=\{16\}/);
+  assert.match(folderSource, /ProgressIcon size=\{16\}/);
+  assert.match(folderSource, /aria-label=\{`問題 \$\{questionCount\}`\}/);
+  assert.match(folderSource, /aria-label=\{`復習 \$\{reviewCount\}`\}/);
+  assert.match(folderSource, /aria-label=\{`正答率 \$\{correctRate\}%`\}/);
   assert.doesNotMatch(folderSource, /🏷|🔖|✅/);
 });
 
-test('PWA icon manifest points to the light QuizMake mark', () => {
-  const iconRevision = '20260815-5';
-  assert.match(manifestSource, /"theme_color": "#f1f7fa"/);
+test('PWA icon manifest points to the Q and pencil artwork', () => {
+  const iconRevision = '20260829-1';
+  assert.match(manifestSource, /"theme_color": "#f8fafc"/);
   assert.match(manifestSource, /"background_color": "#ffffff"/);
   assert.match(manifestSource, new RegExp(`icon-192\\.png\\?v=${iconRevision}`));
   assert.match(manifestSource, new RegExp(`icon-512\\.png\\?v=${iconRevision}`));
@@ -45,7 +49,9 @@ test('PWA icon manifest points to the light QuizMake mark', () => {
   assert.match(htmlSource, new RegExp(`apple-touch-icon[^>]+${iconRevision}`));
   assert.match(workerSource, new RegExp(`icon-192\\.png\\?v=${iconRevision}`));
   assert.match(iconSource, /#1769ff/);
+  assert.match(iconSource, /#ffbd27/);
   assert.match(iconSource, /<circle/);
+  assert.ok(existsSync(new URL('../public/icons/quiz-make-pencil-master.png', import.meta.url)), 'approved Q and pencil master should exist');
   const sourceIconPath = new URL('../public/icons/quiz-make-icon-1024.png', import.meta.url);
   assert.ok(existsSync(sourceIconPath), 'generated QuizMake logo source should exist');
   assert.ok(statSync(sourceIconPath).size > 100_000, 'generated QuizMake logo source should retain high-resolution detail');

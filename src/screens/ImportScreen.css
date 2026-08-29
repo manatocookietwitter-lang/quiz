@@ -118,7 +118,7 @@
   height: 28px;
   flex: 0 0 28px;
   border-radius: 999px;
-  background: #12bfc0;
+  background: #1769ff;
   display: grid;
   place-items: center;
   color: #ffffff;
@@ -164,7 +164,7 @@
 }
 
 .quiz-import__template-button {
-  background: #12bfc0;
+  background: #1769ff;
   color: #ffffff;
 }
 
@@ -178,7 +178,7 @@
 .quiz-import__notice {
   margin: 0 16px 14px;
   border-radius: 14px;
-  background: rgba(18, 191, 192, 0.16);
+  background: rgba(23, 105, 255, 0.12);
   padding: 12px;
   color: #d8ffff;
   font-size: 13px;
@@ -189,7 +189,7 @@
   min-height: 46px;
   margin: 0 16px 12px;
   border-radius: 14px;
-  background: rgba(18, 191, 192, 0.14);
+  background: rgba(23, 105, 255, 0.1);
   display: flex;
   align-items: center;
   gap: 10px;
@@ -206,7 +206,7 @@
   flex: 0 0 16px;
   border-radius: 999px;
   border: 2px solid rgba(216, 255, 255, 0.32);
-  border-top-color: #12bfc0;
+  border-top-color: #1769ff;
   animation: quizImportSpin 0.8s linear infinite;
 }
 
@@ -233,7 +233,7 @@
   margin-right: 12px;
   border: none;
   border-radius: 10px;
-  background: #12bfc0;
+  background: #1769ff;
   padding: 8px 12px;
   color: #ffffff;
   font: inherit;
@@ -364,7 +364,7 @@
   overflow-y: auto;
   margin: 0 16px 12px;
   border-radius: 14px;
-  background: rgba(18, 191, 192, 0.16);
+  background: rgba(23, 105, 255, 0.12);
   padding: 12px;
   color: #d8ffff;
   font-size: 13px;
@@ -403,7 +403,7 @@
   flex: 0 0 56px;
   margin: 16px;
   border-radius: 14px;
-  background: #12bfc0;
+  background: #1769ff;
   color: #ffffff;
   font-size: 17px;
   font-weight: 700;

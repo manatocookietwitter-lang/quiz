@@ -119,11 +119,11 @@
 }
 
 .quiz-list__sort button.is-active {
-  border-color: #12bfc0;
-  background: #12bfc0;
+  border-color: #1769ff;
+  background: #1769ff;
   color: #ffffff;
   font-weight: 800;
-  box-shadow: 0 0 0 2px rgba(18, 191, 192, 0.18);
+  box-shadow: 0 0 0 2px rgba(23, 105, 255, 0.16);
 }
 
 .quiz-list__chips {
@@ -152,11 +152,11 @@
 }
 
 .quiz-list__chip--active {
-  border-color: #12bfc0;
-  background: #12bfc0;
+  border-color: #1769ff;
+  background: #1769ff;
   color: #ffffff;
   font-weight: 800;
-  box-shadow: 0 0 0 2px rgba(18, 191, 192, 0.18);
+  box-shadow: 0 0 0 2px rgba(23, 105, 255, 0.16);
 }
 
 .quiz-list__items {
@@ -188,7 +188,7 @@
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: rgba(18, 191, 192, 0.16);
+  background: rgba(23, 105, 255, 0.12);
   color: #67e8f9;
   font-size: 22px;
   font-weight: 900;
@@ -213,7 +213,7 @@
   width: 100%;
   min-height: 48px;
   border-radius: 14px;
-  background: #12bfc0;
+  background: #1769ff;
   color: #ffffff;
   font-size: 14px;
   font-weight: 900;
@@ -250,7 +250,7 @@
 }
 
 .quiz-list__number {
-  color: #12bfc0;
+  color: #1769ff;
   font-size: 13px;
   font-weight: 800;
 }
@@ -302,7 +302,7 @@
 }
 
 .quiz-list__badge--review {
-  background: rgba(18, 191, 192, 0.18);
+  background: rgba(23, 105, 255, 0.13);
   color: #67e8f9;
 }
 

@@ -331,7 +331,7 @@ export function QuizRunner({ data, title, subtitle, questions, mode, setId, init
           percent={progressPercent}
         />
 
-        <main className="quiz-runner__main flex min-h-0 flex-1 flex-col">
+        <main key={currentQuestion.id} className="quiz-runner__main quiz-runner__question-stage flex min-h-0 flex-1 flex-col">
           <section className="quiz-runner__question-panel flex h-[clamp(104px,17dvh,132px)] shrink-0 items-center justify-center overflow-hidden px-5 py-3 text-center">
             <div className="min-h-0 w-full">
               {currentQuestion.category ? (

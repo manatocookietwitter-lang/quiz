@@ -1,0 +1,43 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+
+const readSource = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
+const quizSource = readSource('../src/screens/QuizRunner.tsx');
+const globalCss = readSource('../src/index.css');
+const navCss = readSource('../src/components/PrimaryBottomNav.css');
+const iconSource = readSource('../src/components/UiIcons.tsx');
+const createCss = readSource('../src/screens/CreateProblemSetScreen.css');
+const communityCss = readSource('../src/screens/CommunityScreen.css');
+
+test('the historical answer sheet and screen transitions remain intact', () => {
+  assert.match(globalCss, /\.quiz-screen-transition--forward/);
+  assert.match(globalCss, /@keyframes quizScreenForwardIn/);
+  assert.match(globalCss, /\.answer-sheet--expanded/);
+  assert.match(globalCss, /height 280ms cubic-bezier/);
+  assert.match(globalCss, /\.answer-sheet__content-rail--detail/);
+  assert.match(quizSource, /onPointerDown: handleDetailPointerDown/);
+  assert.match(quizSource, /remarkPlugins=\{\[remarkGfm\]\}/);
+});
+
+test('learning feedback animates without removing reduced-motion support', () => {
+  assert.match(quizSource, /key=\{currentQuestion\.id\}[^>]+quiz-runner__question-stage/);
+  assert.match(globalCss, /@keyframes quizQuestionEnter/);
+  assert.match(globalCss, /@keyframes quizChoiceCorrect/);
+  assert.match(globalCss, /@keyframes quizChoiceWrong/);
+  assert.match(globalCss, /@keyframes answerSheetReveal/);
+  assert.match(globalCss, /@keyframes answerResultReveal/);
+  assert.match(globalCss, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.quiz-runner__question-stage/);
+  assert.match(navCss, /\.primary-bottom-nav__item:active/);
+});
+
+test('management icons use soft fills and one shared blue currentColor system', () => {
+  for (const icon of ['FolderOutlineIcon', 'DocumentOutlineIcon', 'BookmarkIcon', 'TagIcon', 'ProgressIcon', 'ProfileIcon']) {
+    assert.match(iconSource, new RegExp(`export function ${icon}`));
+  }
+  assert.match(iconSource, /fill="currentColor"/);
+  assert.doesNotMatch(iconSource, /#(?:[a-f\d]{3}|[a-f\d]{6})/i);
+  for (const source of [globalCss, createCss, communityCss]) {
+    assert.doesNotMatch(source, /#12bfc0|#149da1|#168e92|#39b9b3|rgba\(18,\s*191,\s*192/i);
+  }
+});

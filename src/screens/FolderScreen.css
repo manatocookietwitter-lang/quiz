@@ -122,7 +122,7 @@
   width: 56px;
   height: 56px;
   border-radius: 50%;
-  background: #12bfc0;
+  background: #1769ff;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -178,7 +178,7 @@
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: #12bfc0;
+  background: #1769ff;
   font-size: 26px;
   font-weight: 800;
 }
@@ -204,7 +204,7 @@
   min-height: 48px;
   margin-top: 18px;
   border-radius: 14px;
-  background: #12bfc0;
+  background: #1769ff;
   color: #ffffff;
   font-size: 15px;
   font-weight: 900;
@@ -364,7 +364,7 @@
 }
 
 .quiz-folder__start-button--primary {
-  background: #12bfc0;
+  background: #1769ff;
 }
 
 .quiz-folder__start-button--muted {

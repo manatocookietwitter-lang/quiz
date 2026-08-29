@@ -6,7 +6,7 @@ import {
   ChevronRightIcon,
   DocumentOutlineIcon,
   DownloadIcon,
-  GroupIcon,
+  ProfileIcon,
   SyncIcon,
   TrashIcon,
   UploadIcon,
@@ -160,7 +160,7 @@ export function SettingsScreen({ onExport, onImportBackup, onClearAll, onOpenSyn
               <h2 id="settings-account-title">アカウント</h2>
             </div>
             <div className="settings-account">
-              <span className="settings-account__icon" aria-hidden="true"><GroupIcon /></span>
+              <span className="settings-account__icon" aria-hidden="true"><ProfileIcon /></span>
               {!cloudConfigured ? (
                 <div className="settings-account__content"><strong>共有機能は現在利用できません</strong><small>端末内の問題作成・学習・バックアップはそのまま使えます。</small></div>
               ) : !authReady ? (

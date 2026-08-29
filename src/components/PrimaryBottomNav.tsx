@@ -11,12 +11,13 @@ interface PrimaryBottomNavProps {
 const items: Array<{
   id: PrimaryNavItem;
   label: string;
+  shortLabel?: string;
   icon: typeof HomeIcon;
 }> = [
   { id: 'home', label: 'ホーム', icon: HomeIcon },
   { id: 'discover', label: '見つける', icon: SearchIcon },
   { id: 'groups', label: 'グループ', icon: GroupIcon },
-  { id: 'create', label: '問題セットを作る', icon: AddSquareIcon },
+  { id: 'create', label: '問題セットを作る', shortLabel: '問題作成', icon: AddSquareIcon },
   { id: 'settings', label: '設定', icon: SettingsIcon },
 ];
 
@@ -37,7 +38,7 @@ export function PrimaryBottomNav({ active, onSelect }: PrimaryBottomNavProps) {
               onClick={() => onSelect(item.id)}
             >
               <Icon size={24} />
-              <span>{item.label}</span>
+              <span>{item.shortLabel ?? item.label}</span>
             </button>
           );
         })}

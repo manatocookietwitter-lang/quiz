@@ -6,8 +6,12 @@ import { Layout } from '../components/Layout';
 import {
   CheckIcon,
   ChevronRightIcon,
+  DocumentOutlineIcon,
   FolderOutlineIcon,
+  BookmarkIcon,
   PlusIcon,
+  ProgressIcon,
+  TagIcon,
   TrashIcon,
 } from '../components/UiIcons';
 import { buildAppDataView } from '../utils/appDataView';
@@ -150,10 +154,10 @@ function QuizHomeFolderItem({
         <span className="quiz-home__folder-body">
           <span className="quiz-home__folder-name">{folder.name}</span>
           <span className="quiz-home__folder-stats">
-            <span aria-label={`問題セット ${setCount}`}>📁 {setCount}</span>
-            <span aria-label={`問題 ${questionCount}`}>🏷 {questionCount}</span>
-            <span aria-label={`復習 ${reviewCount}`}>🔖 {reviewCount}</span>
-            <span aria-label={`正答率 ${correctRate}%`}>✅ {correctRate}%</span>
+            <span aria-label={`問題セット ${setCount}`}><DocumentOutlineIcon size={17} />{setCount}</span>
+            <span aria-label={`問題 ${questionCount}`}><TagIcon size={17} />{questionCount}</span>
+            <span aria-label={`復習 ${reviewCount}`}><BookmarkIcon size={17} />{reviewCount}</span>
+            <span aria-label={`正答率 ${correctRate}%`}><ProgressIcon size={17} />{correctRate}%</span>
           </span>
           <span className="quiz-home__folder-date">更新 {formatDisplayDate(folder.updatedAt)}</span>
         </span>

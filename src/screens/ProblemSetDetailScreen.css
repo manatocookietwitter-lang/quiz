@@ -123,6 +123,17 @@
   min-width: 0;
 }
 
+.quiz-detail__section-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--ui-accent, #1769ff);
+}
+
+.quiz-detail__section-title svg {
+  flex: 0 0 auto;
+}
+
 .quiz-detail__section-heading p,
 .quiz-detail__section-heading h2 {
   margin: 0;

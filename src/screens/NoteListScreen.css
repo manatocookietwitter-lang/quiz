@@ -140,8 +140,8 @@
   display: grid;
   place-items: center;
   border-radius: 999px;
-  background: rgba(18, 191, 192, 0.16);
-  color: #12bfc0;
+  background: rgba(23, 105, 255, 0.12);
+  color: #1769ff;
   font-size: 13px;
   font-weight: 900;
 }
@@ -191,14 +191,14 @@
 }
 
 .quiz-notes__category--active {
-  border-color: rgba(18, 191, 192, 0.6);
-  background: rgba(18, 191, 192, 0.14);
+  border-color: rgba(23, 105, 255, 0.5);
+  background: rgba(23, 105, 255, 0.1);
   color: #ffffff;
-  box-shadow: inset 4px 0 0 #12bfc0;
+  box-shadow: inset 4px 0 0 #1769ff;
 }
 
 .quiz-notes__category--active b {
-  color: #12bfc0;
+  color: #1769ff;
 }
 
 .quiz-notes__panel-wrap {

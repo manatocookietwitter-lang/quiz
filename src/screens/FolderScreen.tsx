@@ -4,7 +4,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { BackButton } from '../components/BackButton';
 import { Layout } from '../components/Layout';
 import { MissingResourceState } from '../components/MissingResourceState';
-import { CheckIcon, ChevronRightIcon, DocumentOutlineIcon, PlusIcon, TrashIcon } from '../components/UiIcons';
+import { BookmarkIcon, CheckIcon, ChevronRightIcon, DocumentOutlineIcon, PlusIcon, ProgressIcon, TagIcon, TrashIcon } from '../components/UiIcons';
 import { buildAppDataView } from '../utils/appDataView';
 import { formatDisplayDate } from '../utils/date';
 import './FolderScreen.css';
@@ -148,9 +148,9 @@ function SetCard({
           <span className="quiz-folder__set-name">{problemSet.title}</span>
           <span className="quiz-folder__set-source">{problemSet.source || `更新 ${formatDisplayDate(problemSet.updatedAt)}`}</span>
           <span className="quiz-folder__set-stats">
-            <span>問題 {questionCount}</span>
-            <span>復習 {reviewCount}</span>
-            <span>正答 {correctRate}%</span>
+            <span aria-label={`問題 ${questionCount}`}><TagIcon size={16} />{questionCount}</span>
+            <span aria-label={`復習 ${reviewCount}`}><BookmarkIcon size={16} />{reviewCount}</span>
+            <span aria-label={`正答率 ${correctRate}%`}><ProgressIcon size={16} />{correctRate}%</span>
           </span>
         </span>
         {!editMode ? <span className="quiz-folder__set-arrow"><ChevronRightIcon /></span> : null}

@@ -22,8 +22,11 @@ function iconProps(size: IconProps['size'], props: SVGProps<SVGSVGElement>) {
 export function FolderOutlineIcon({ size = 42, ...props }: IconProps) {
   return (
     <svg {...iconProps(size, props)} aria-hidden={props['aria-hidden'] ?? true}>
-      <path d="M3.25 7.25a2 2 0 0 1 2-2h4l1.75 2h7.75a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2H5.25a2 2 0 0 1-2-2z" />
-      <path d="M3.25 9.25h17.5" />
+      <path d="M3.25 8.1V6.75a2 2 0 0 1 2-2h4.1l1.8 2h7.6a2 2 0 0 1 2 2v1.05" fill="currentColor" opacity="0.18" stroke="none" />
+      <path d="M3.25 8.1V6.75a2 2 0 0 1 2-2h4.1l1.8 2h7.6a2 2 0 0 1 2 2v1.05" />
+      <path d="M3.25 8.5h17.5v8.25a2 2 0 0 1-2 2H5.25a2 2 0 0 1-2-2z" fill="currentColor" opacity="0.1" />
+      <path d="M3.25 8.5h17.5v8.25a2 2 0 0 1-2 2H5.25a2 2 0 0 1-2-2z" />
+      <path d="M6.5 15h4.25" opacity="0.48" />
     </svg>
   );
 }
@@ -31,9 +34,76 @@ export function FolderOutlineIcon({ size = 42, ...props }: IconProps) {
 export function DocumentOutlineIcon({ size = 34, ...props }: IconProps) {
   return (
     <svg {...iconProps(size, props)} aria-hidden={props['aria-hidden'] ?? true}>
-      <path d="M6.25 3.5h7.1l4.4 4.4v12.6H6.25z" />
-      <path d="M13.25 3.5v4.75H18" />
-      <path d="M9 12.25h5.75M9 15.5h5.75" />
+      <path d="M8.5 2.75h7.1l3.15 3.2v11.8" fill="currentColor" opacity="0.08" />
+      <path d="M8.5 2.75h7.1l3.15 3.2v11.8" opacity="0.52" />
+      <path d="M5.25 5.75h7.1l4.4 4.4v10.1H5.25z" fill="currentColor" opacity="0.12" />
+      <path d="M5.25 5.75h7.1l4.4 4.4v10.1H5.25z" />
+      <path d="M12.25 5.75v4.75H17M8.25 14h5.25M8.25 17h4" opacity="0.68" />
+    </svg>
+  );
+}
+
+export function StudyIcon({ size = 24, ...props }: IconProps) {
+  return (
+    <svg {...iconProps(size, props)} aria-hidden={props['aria-hidden'] ?? true}>
+      <path d="M5 4.25h6.8v15H5a2 2 0 0 1-2-2v-11a2 2 0 0 1 2-2Z" fill="currentColor" opacity="0.12" />
+      <path d="M19 4.25h-7.2v15H19a2 2 0 0 0 2-2v-11a2 2 0 0 0-2-2Z" fill="currentColor" opacity="0.07" />
+      <path d="M5 4.25h6.8v15H5a2 2 0 0 1-2-2v-11a2 2 0 0 1 2-2ZM19 4.25h-7.2v15H19a2 2 0 0 0 2-2v-11a2 2 0 0 0-2-2Z" />
+      <path d="M7.25 8h2.4M14.25 8h3M14.25 11h3" opacity="0.58" />
+    </svg>
+  );
+}
+
+export function BookmarkIcon({ size = 24, ...props }: IconProps) {
+  return (
+    <svg {...iconProps(size, props)} aria-hidden={props['aria-hidden'] ?? true}>
+      <path d="M6.25 3.5h11.5v17l-5.75-4-5.75 4Z" fill="currentColor" opacity="0.12" />
+      <path d="M6.25 3.5h11.5v17l-5.75-4-5.75 4Z" />
+      <path d="M9 7h6" opacity="0.5" />
+    </svg>
+  );
+}
+
+export function TagIcon({ size = 24, ...props }: IconProps) {
+  return (
+    <svg {...iconProps(size, props)} aria-hidden={props['aria-hidden'] ?? true}>
+      <path d="M4 4.5h7.25L20 13.25 13.25 20 4.5 11.25Z" fill="currentColor" opacity="0.1" />
+      <path d="M4 4.5h7.25L20 13.25 13.25 20 4.5 11.25Z" />
+      <circle cx="8.25" cy="8.5" r="1.45" fill="currentColor" opacity="0.3" />
+      <path d="m11.25 12.25 3.25 3.25" opacity="0.5" />
+    </svg>
+  );
+}
+
+export function ProgressIcon({ size = 24, ...props }: IconProps) {
+  return (
+    <svg {...iconProps(size, props)} aria-hidden={props['aria-hidden'] ?? true}>
+      <path d="M4 19.5h16" />
+      <path d="M6.25 19.5v-5h3v5M10.5 19.5v-8h3v8M14.75 19.5v-11h3v11" fill="currentColor" opacity="0.12" />
+      <path d="M6.25 19.5v-5h3v5M10.5 19.5v-8h3v8M14.75 19.5v-11h3v11" />
+      <path d="m5 10.5 4-3 3 1.5 6-5M15.5 4H18v2.5" />
+    </svg>
+  );
+}
+
+export function HistoryIcon({ size = 24, ...props }: IconProps) {
+  return (
+    <svg {...iconProps(size, props)} aria-hidden={props['aria-hidden'] ?? true}>
+      <circle cx="12" cy="12" r="8.25" fill="currentColor" opacity="0.08" />
+      <path d="M4.4 8.75A8.25 8.25 0 1 1 4 13M4.4 8.75H8M4.4 8.75V5.2" />
+      <path d="M12 7.5v5l3.5 2" />
+    </svg>
+  );
+}
+
+export function ProfileIcon({ size = 24, ...props }: IconProps) {
+  return (
+    <svg {...iconProps(size, props)} aria-hidden={props['aria-hidden'] ?? true}>
+      <circle cx="12" cy="12" r="9" fill="currentColor" opacity="0.08" />
+      <circle cx="12" cy="9" r="3.1" fill="currentColor" opacity="0.16" />
+      <circle cx="12" cy="9" r="3.1" />
+      <path d="M6.4 18.4c.55-3.1 2.35-4.65 5.6-4.65s5.05 1.55 5.6 4.65" fill="currentColor" opacity="0.12" />
+      <path d="M6.4 18.4c.55-3.1 2.35-4.65 5.6-4.65s5.05 1.55 5.6 4.65" />
     </svg>
   );
 }
@@ -161,6 +231,7 @@ export function AddSquareIcon({ size = 24, ...props }: IconProps) {
 export function SettingsIcon({ size = 24, ...props }: IconProps) {
   return (
     <svg {...iconProps(size, props)} aria-hidden={props['aria-hidden'] ?? true}>
+      <circle cx="12" cy="12" r="3.25" fill="currentColor" opacity="0.15" />
       <circle cx="12" cy="12" r="3.25" />
       <path d="M19.1 13.7a7.9 7.9 0 0 0 0-3.4l1.55-1.2-1.8-3.1-1.85.75a7.5 7.5 0 0 0-2.9-1.7L13.8 3h-3.6l-.3 2.05A7.5 7.5 0 0 0 7 6.75L5.15 6l-1.8 3.1 1.55 1.2a7.9 7.9 0 0 0 0 3.4l-1.55 1.2 1.8 3.1L7 17.25a7.5 7.5 0 0 0 2.9 1.7l.3 2.05h3.6l.3-2.05a7.5 7.5 0 0 0 2.9-1.7l1.85.75 1.8-3.1z" />
     </svg>
