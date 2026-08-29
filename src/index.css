@@ -818,9 +818,9 @@ button:disabled {
 }
 
 .answer-sheet--default {
-  height: 320px;
+  height: 360px;
   max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 100px);
-  min-height: 240px;
+  min-height: 260px;
 }
 
 .answer-sheet--expanded {
@@ -864,7 +864,7 @@ button:disabled {
 }
 
 .answer-sheet__drag-handle {
-  width: 44px;
+  width: 56px;
   height: 5px;
   border-radius: 999px;
   background: #b9c8d0;
@@ -1080,9 +1080,9 @@ button:disabled {
 
 .answer-sheet__drag-area {
   position: relative;
-  min-height: 44px;
+  min-height: 64px;
   align-items: center;
-  padding: 12px 0 8px;
+  padding: 20px 0 12px;
 }
 
 .answer-sheet__drag-area::before {
@@ -1358,8 +1358,8 @@ button:disabled {
   }
 
   .answer-sheet--default {
-    height: min(320px, calc(100dvh - var(--safe-top) - var(--safe-bottom) - 128px));
-    min-height: 240px;
+    height: min(360px, calc(100dvh - var(--safe-top) - var(--safe-bottom) - 128px));
+    min-height: 260px;
   }
 
   .answer-sheet--expanded {
@@ -1391,8 +1391,8 @@ button:disabled {
   }
 
   .answer-sheet--default {
-    height: 272px;
-    min-height: 224px;
+    height: 304px;
+    min-height: 240px;
   }
 }
 
