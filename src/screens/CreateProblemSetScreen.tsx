@@ -6,7 +6,12 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Layout } from '../components/Layout';
 import { ChevronRightIcon, CopyIcon, DocumentOutlineIcon, UploadIcon } from '../components/UiIcons';
 import { getDraftAnswerIndexes, parseBulkQuestionText, parseQuestionCsv, getDraftIssues, type BulkQuestionDraft } from '../utils/bulkQuestionParser';
-import { validateImportJson } from '../utils/importValidator';
+import {
+  CHATGPT_MATERIAL_TEMPLATE_PROMPT,
+  CHATGPT_PAST_EXAM_TEMPLATE_PROMPT,
+  validateImportJson,
+} from '../utils/importValidator';
+import { writeClipboardText } from '../utils/nativePlatform';
 import {
   hasUncommittedManualQuestion,
   inspectPendingManualQuestion,
@@ -72,12 +77,18 @@ export function CreateProblemSetScreen({ data, onSave, onOpenLegacyImport, onDir
   const [sourceSetId, setSourceSetId] = useState<string | undefined>();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [copiedTemplate, setCopiedTemplate] = useState<'material' | 'past-exam' | ''>('');
   const [pendingMethod, setPendingMethod] = useState<CreationView | null>(null);
   const [pendingQuestionSave, setPendingQuestionSave] = useState<PendingManualQuestion | null>(null);
   const csvInputRef = useRef<HTMLInputElement | null>(null);
   const saveInFlightRef = useRef(false);
   const initialMetaRef = useRef(meta);
   const activeMethodRef = useRef<CreationView | null>(editingProblemSet ? 'manual' : null);
+  const copiedTemplateTimerRef = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (copiedTemplateTimerRef.current !== null) window.clearTimeout(copiedTemplateTimerRef.current);
+  }, []);
 
   const reviewedDrafts = useMemo(() => drafts.map(refreshIssues), [drafts]);
   const needsReviewCount = reviewedDrafts.filter((draft) => draft.issues.length > 0).length;
@@ -330,6 +341,21 @@ export function CreateProblemSetScreen({ data, onSave, onOpenLegacyImport, onDir
     setError('');
   };
 
+  const copyPromptTemplate = async (kind: 'material' | 'past-exam') => {
+    try {
+      const template = kind === 'material'
+        ? CHATGPT_MATERIAL_TEMPLATE_PROMPT
+        : CHATGPT_PAST_EXAM_TEMPLATE_PROMPT;
+      await writeClipboardText(template);
+      setCopiedTemplate(kind);
+      setError('');
+      if (copiedTemplateTimerRef.current !== null) window.clearTimeout(copiedTemplateTimerRef.current);
+      copiedTemplateTimerRef.current = window.setTimeout(() => setCopiedTemplate(''), 2200);
+    } catch {
+      setError('プロンプトをコピーできませんでした。');
+    }
+  };
+
   return (
     <Layout>
       <main className="create-set">
@@ -370,6 +396,29 @@ export function CreateProblemSetScreen({ data, onSave, onOpenLegacyImport, onDir
 
         {(view === 'bulk' || view === 'chatgpt') ? (
           <div className="create-set__flow">
+            {view === 'chatgpt' ? (
+              <section className="create-set__panel create-set__prompt-panel" aria-labelledby="create-set-prompt-title">
+                <h2 id="create-set-prompt-title">生成用プロンプト</h2>
+                <div className="create-set__prompt-actions">
+                  <button
+                    type="button"
+                    className={copiedTemplate === 'material' ? 'is-copied' : ''}
+                    onClick={() => void copyPromptTemplate('material')}
+                  >
+                    <CopyIcon size={19} />
+                    <span>{copiedTemplate === 'material' ? 'コピーしました' : '資料用をコピー'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={copiedTemplate === 'past-exam' ? 'is-copied' : ''}
+                    onClick={() => void copyPromptTemplate('past-exam')}
+                  >
+                    <CopyIcon size={19} />
+                    <span>{copiedTemplate === 'past-exam' ? 'コピーしました' : '過去問用をコピー'}</span>
+                  </button>
+                </div>
+              </section>
+            ) : null}
             <SetMetaFields data={data} value={meta} onChange={setMeta} />
             <section className="create-set__panel">
               <h2>{view === 'chatgpt' ? 'JSON' : '複数の問題'}</h2>

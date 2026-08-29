@@ -17,6 +17,13 @@
 .create-set__panel { border: 1px solid #dce8ed; border-radius: 12px; background: #fff; padding: 18px; }
 .create-set__panel h2 { margin: 0 0 15px; font-size: 1.05rem; }
 .create-set__panel--compact { width: 100%; margin: 0; box-shadow: none; }
+.create-set__prompt-panel { padding: 15px 18px 18px; }
+.create-set__prompt-panel h2 { margin-bottom: 11px; }
+.create-set__prompt-actions { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px; }
+.create-set__prompt-actions button { min-width: 0; min-height: 48px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid #cddce3; border-radius: 12px; background: #fbfdfe; padding: 9px 10px; color: #174b84; font: inherit; font-size: .86rem; font-weight: 900; }
+.create-set__prompt-actions button svg { flex: 0 0 auto; color: #1769ff; }
+.create-set__prompt-actions button:active { transform: translateY(1px); }
+.create-set__prompt-actions button.is-copied { border-color: #1769ff; background: #eef4ff; color: #1553c8; }
 .create-set__field { display: grid; gap: 7px; margin-bottom: 14px; color: #50616c; font-size: .82rem; font-weight: 800; }
 .create-set__field span { display: flex; gap: 6px; align-items: center; }
 .create-set__field b,.create-set__choices b { color: #d05a49; font-size: .7rem; }
@@ -91,6 +98,7 @@
   .create-set__draft .create-set__delete { grid-column: 3; }
 }
 @media (max-width: 360px) {
+  .create-set__prompt-actions { grid-template-columns: 1fr; }
   .create-set__pending-dialog { padding: 17px; }
   .create-set__pending-actions { grid-template-columns: 1fr; }
   .create-set__pending-button--include { grid-column: auto; }

@@ -20,10 +20,20 @@ const quizRunnerSource = readSource('../src/screens/QuizRunner.tsx');
 const resultSource = readSource('../src/screens/ResultScreen.tsx');
 const resultCss = readSource('../src/screens/ResultScreen.css');
 const noteDrawerSource = readSource('../src/components/CategoryNoteDrawer.tsx');
+const nativePlatformSource = readSource('../src/utils/nativePlatform.ts');
 
 test('problem-set creation uses a direct, concise JSON entry', () => {
   assert.match(createSource, /title: 'JSONを貼り付ける'/);
   assert.match(createSource, /'JSONを読み取る'/);
+  assert.match(createSource, /CHATGPT_MATERIAL_TEMPLATE_PROMPT/);
+  assert.match(createSource, /CHATGPT_PAST_EXAM_TEMPLATE_PROMPT/);
+  assert.match(createSource, /writeClipboardText/);
+  assert.match(createSource, /生成用プロンプト/);
+  assert.match(createSource, /資料用をコピー/);
+  assert.match(createSource, /過去問用をコピー/);
+  assert.match(createSource, /コピーしました/);
+  assert.match(nativePlatformSource, /navigator\.clipboard\?\.writeText/);
+  assert.match(nativePlatformSource, /document\.execCommand\('copy'\)/);
   assert.doesNotMatch(createSource, /指示文をコピー|資料から問題を作る|過去問をまとめる/);
   assert.doesNotMatch(createSource, /title: '1問ずつ作る'|title: 'まとめて貼り付ける'/);
   assert.doesNotMatch(createSource, /placeholder=/);

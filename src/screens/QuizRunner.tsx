@@ -1152,7 +1152,7 @@ function AnswerPanel({
       >
         <div className="answer-sheet__drag-handle" />
       </button>
-      <div className="answer-sheet__fixed">
+      <div className="answer-sheet__fixed" {...dragProps}>
         <div>
           <div className={'answer-sheet__result ' + (isCorrect ? 'answer-sheet__result--correct' : 'answer-sheet__result--wrong')}>{isCorrect ? '\u6b63\u89e3' : '\u4e0d\u6b63\u89e3'}</div>
           {savedLevelLabel ? <p className="answer-sheet__saved">{savedLevelLabel}</p> : null}

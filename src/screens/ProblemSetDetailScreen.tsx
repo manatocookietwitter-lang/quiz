@@ -152,46 +152,14 @@ export function ProblemSetDetailScreen({
                   <StudyIcon size={26} />
                   <h2 id="quiz-detail-start-title">学習を始める</h2>
                 </div>
-                <span>{questions.length}{'\u554f'}</span>
+                <span>{filteredStartQuestions.length}{'\u554f'}</span>
               </div>
 
-              <div className="quiz-detail__start-actions" aria-label="学習方法">
-                <button
-                  type="button"
-                  className="quiz-detail__start-action quiz-detail__start-action--primary"
-                  disabled={filteredStartQuestions.length === 0}
-                  onClick={startOrdered}
-                >
-                  <strong>登録順</strong>
-                  <small>{filteredStartQuestions.length}問を出題</small>
-                </button>
-                <button
-                  type="button"
-                  className="quiz-detail__start-action"
-                  disabled={filteredStartQuestions.length === 0}
-                  onClick={startRandom}
-                >
-                  <strong>ランダム</strong>
-                  <small>{filteredStartQuestions.length}問を出題</small>
-                </button>
-                <button
-                  type="button"
-                  className="quiz-detail__start-action quiz-detail__start-action--review"
-                  disabled={allReviewQuestions.length === 0}
-                  onClick={startReview}
-                  aria-label="この問題セットを復習"
-                >
-                  <strong>復習</strong>
-                  <small>{allReviewQuestions.length ? `${allReviewQuestions.length}問が対象` : '対象なし'}</small>
-                </button>
-              </div>
-
-              <details className="quiz-detail__filters">
-                <summary>
-                  <span>{'\u51fa\u984c\u6761\u4ef6'}</span>
+              <section className="quiz-detail__filters" aria-labelledby="quiz-detail-filter-title">
+                <div className="quiz-detail__filters-heading">
+                  <span id="quiz-detail-filter-title">{'\u51fa\u984c\u6761\u4ef6'}</span>
                   <strong>{selectedLabel} / {reviewFilterLabel}</strong>
-                  <b aria-hidden="true">{'\u2304'}</b>
-                </summary>
+                </div>
                 <div className="quiz-detail__filters-body">
                   <div className="quiz-detail__segment-caption">{'\u5206\u985e'}</div>
                   <div className="quiz-detail__segments" aria-label={'\u5206\u985e\u4e00\u89a7'}>
@@ -227,11 +195,42 @@ export function ProblemSetDetailScreen({
                     ))}
                   </div>
                 </div>
-              </details>
+              </section>
 
               {filteredStartQuestions.length === 0 ? (
                 <p className="quiz-detail__empty-condition">{'\u3053\u306e\u6761\u4ef6\u306b\u8a72\u5f53\u3059\u308b\u554f\u984c\u304c\u3042\u308a\u307e\u305b\u3093'}</p>
               ) : null}
+
+              <div className="quiz-detail__start-actions" aria-label="学習方法">
+                <button
+                  type="button"
+                  className="quiz-detail__start-action quiz-detail__start-action--primary"
+                  disabled={filteredStartQuestions.length === 0}
+                  onClick={startOrdered}
+                >
+                  <strong>登録順</strong>
+                  <small>{filteredStartQuestions.length}問を出題</small>
+                </button>
+                <button
+                  type="button"
+                  className="quiz-detail__start-action"
+                  disabled={filteredStartQuestions.length === 0}
+                  onClick={startRandom}
+                >
+                  <strong>ランダム</strong>
+                  <small>{filteredStartQuestions.length}問を出題</small>
+                </button>
+                <button
+                  type="button"
+                  className="quiz-detail__start-action quiz-detail__start-action--review"
+                  disabled={allReviewQuestions.length === 0}
+                  onClick={startReview}
+                  aria-label="この問題セットを復習"
+                >
+                  <strong>復習</strong>
+                  <small>{allReviewQuestions.length ? `${allReviewQuestions.length}問が対象` : '対象なし'}</small>
+                </button>
+              </div>
             </section>
 
             <section className="quiz-detail__summary" aria-label="学習状況">

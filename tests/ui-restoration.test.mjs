@@ -16,7 +16,12 @@ test('the historical answer sheet and screen transitions remain intact', () => {
   assert.match(globalCss, /\.answer-sheet--expanded/);
   assert.match(globalCss, /height 280ms cubic-bezier/);
   assert.match(globalCss, /\.answer-sheet__content-rail--detail/);
+  assert.match(globalCss, /\.answer-sheet__fixed \{[^}]*touch-action:\s*none/);
+  assert.match(quizSource, /const snapByDrag = \(dragOffset: number, velocityY: number\)/);
+  assert.match(quizSource, /onPointerDown: handlePointerDown[\s\S]*?onPointerMove: handlePointerMove[\s\S]*?onPointerUp: handlePointerUp/);
+  assert.match(quizSource, /className="answer-sheet__fixed" \{\.\.\.dragProps\}/);
   assert.match(quizSource, /onPointerDown: handleDetailPointerDown/);
+  assert.match(quizSource, /panelPage === 'answer' && deltaX > 0/);
   assert.match(quizSource, /remarkPlugins=\{\[remarkGfm\]\}/);
 });
 

@@ -882,6 +882,12 @@ button:disabled {
   justify-content: space-between;
   gap: 12px;
   padding: 0 16px 10px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.answer-sheet__fixed:active {
+  cursor: grabbing;
 }
 
 .answer-sheet__result {
