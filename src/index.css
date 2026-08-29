@@ -762,7 +762,7 @@ button:disabled {
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: visible;
   visibility: visible;
   opacity: 1;
   border: 1px solid var(--ui-border, #d6e4ea);
@@ -818,9 +818,9 @@ button:disabled {
 }
 
 .answer-sheet--default {
-  height: 400px;
+  height: 320px;
   max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 100px);
-  min-height: 300px;
+  min-height: 240px;
 }
 
 .answer-sheet--expanded {
@@ -1080,9 +1080,10 @@ button:disabled {
 
 .answer-sheet__drag-area {
   position: relative;
-  min-height: 96px;
-  align-items: flex-end;
-  padding: 0 0 16px;
+  z-index: 2;
+  min-height: 44px;
+  align-items: center;
+  padding: 12px 0 8px;
 }
 
 .answer-sheet__drag-area::before {
@@ -1090,7 +1091,7 @@ button:disabled {
   position: absolute;
   left: 0;
   right: 0;
-  top: -8px;
+  top: -140px;
   bottom: -12px;
 }
 
@@ -1358,8 +1359,8 @@ button:disabled {
   }
 
   .answer-sheet--default {
-    height: min(400px, calc(100dvh - var(--safe-top) - var(--safe-bottom) - 128px));
-    min-height: 300px;
+    height: min(320px, calc(100dvh - var(--safe-top) - var(--safe-bottom) - 128px));
+    min-height: 240px;
   }
 
   .answer-sheet--expanded {
@@ -1391,8 +1392,8 @@ button:disabled {
   }
 
   .answer-sheet--default {
-    height: 344px;
-    min-height: 260px;
+    height: 272px;
+    min-height: 224px;
   }
 }
 

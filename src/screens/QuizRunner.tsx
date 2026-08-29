@@ -656,7 +656,7 @@ function AnswerPanel({
   const lastPointerYRef = useRef(0);
   const lastPointerTimeRef = useRef(0);
   const velocityYRef = useRef(0);
-  const startHeightRef = useRef(400);
+  const startHeightRef = useRef(320);
   const detailSwipeStartRef = useRef<{ x: number; y: number } | null>(null);
   const wasDragGestureRef = useRef(false);
   const activeQuestionIdRef = useRef(questionId);
@@ -707,9 +707,9 @@ function AnswerPanel({
     const isMobile = window.matchMedia('(max-width: 899px)').matches;
 
     if (targetState === 'default') {
-      if (!isMobile) return 400;
-      if (window.matchMedia('(max-width: 380px) and (max-height: 720px)').matches) return 344;
-      return Math.max(300, Math.min(400, viewportHeight - 128));
+      if (!isMobile) return 320;
+      if (window.matchMedia('(max-width: 380px) and (max-height: 720px)').matches) return 272;
+      return Math.max(240, Math.min(320, viewportHeight - 128));
     }
 
     const availableHeight = isMobile ? viewportHeight - 104 : viewportHeight - 88;
