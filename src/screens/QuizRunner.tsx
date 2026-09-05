@@ -1142,6 +1142,7 @@ function AnswerPanel({
   return (
     <section ref={sheetRef} tabIndex={-1} aria-label={'\u56de\u7b54\u7d50\u679c'} className={'answer-sheet answer-sheet--' + state + ' ' + (isDragging ? 'answer-sheet--dragging' : '')}>
       <p className="sr-only" role="status" aria-live="polite">{isCorrect ? '\u6b63\u89e3\u3067\u3059' : '\u4e0d\u6b63\u89e3\u3067\u3059'}{`\u3002\u6b63\u89e3\u306f${answer}\u3067\u3059`}</p>
+      <div className="answer-sheet__drag-capture" aria-hidden="true" {...dragProps} />
       <button
         type="button"
         className="answer-sheet__drag-area"
